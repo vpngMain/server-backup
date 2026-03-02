@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{% block title %}PPL Inventura – {{ pobocka.nazev }}{% endblock %}
+{% block content %}
+<div class="ppl-page">
+    <header class="page-header">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb breadcrumb-apple">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Odběry</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('ppl_index') }}">PPL sklad</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('ppl_branch', pobocka_id=pobocka.id) }}">{{ pobocka.nazev }}</a></li>
+                <li class="breadcrumb-item active">Inventura</li>
+            </ol>
+        </nav>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <h1 class="page-title mb-0">Inventura · {{ pobocka.nazev }}</h1>
+            <a href="{{ url_for('ppl_branch', pobocka_id=pobocka.id) }}" class="btn btn-outline-primary btn-sm rounded-pill" title="Zpět na seznam zásilek" aria-label="Zpět na zásilky">Zpět na zásilky</a>
+        </div>
+    </header>
+
+    <div class="page-section">
+        <div class="card card-apple mb-4">
+            <div class="card-body p-4">
+                <p class="text-secondary mb-3">
+                    <strong>1.</strong> Napipat <strong>číslo zásilky</strong> (balíku) &rarr; <strong>2.</strong> Napipat <strong>umístění</strong> (kde leží).<br>
+                    <strong>Co napipáte, zůstane.</strong> Co nenapipáte, se označí ke smazání a smaže se za 7 dní.
+                </p>
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-5">
+                        <label for="inventuraScan" class="form-label" id="inventuraLabel">1. Číslo zásilky</label>
+                        <input type="text" id="inventuraScan" class="form-control form-control-lg" placeholder="Napipat zásilku, Enter" autofocus aria-label="Číslo zásilky nebo umístění" title="Nejprve napipat zásilku, pak umístění">
+                        <small class="text-muted d-block mt-1" id="inventuraHint">Nejprve napipat balík</small>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" id="inventuraAdd" class="btn btn-primary w-100 rounded-pill py-2 ppl-touch-target" title="Přidat zásilku a umístění" aria-label="Přidat do seznamu">Přidat</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card card-apple card-apple-static">
+            <div class="card-body p-4">
+                <h2 class="h6 fw-semibold mb-3">Ověřeno (zásilka + umístění) <span id="scannedCount" class="badge bg-primary rounded-pill">0</span></h2>
+                <ul id="scannedList" class="list-group list-group-flush mb-0" style="max-height: 280px; overflow-y: auto;"></ul>
+                <div class="mt-3 pt-3 border-top">
+                    <button type="button" id="inventuraFinish" class="btn btn-warning rounded-pill px-4 ppl-touch-target" title="Ukončit inventuru a označit nenapipané ke smazání" aria-label="Ukončit inventuru">Ukončit inventuru</button>
+                    <small class="d-block mt-2 text-muted">Zůstanou jen napipané zásilky. Nenapipané se smažou za 7 dní.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="pplInventuraToast" class="toast-apple position-fixed" style="display:none; z-index: 9999; bottom: 1.5rem; right: 1.5rem;"></div>
+
+<script>
+(function() {
+    var pobockaId = {{ pobocka.id }};
+    var apiFinish = '/ppl/' + pobockaId + '/api/inventura/finish';
+    var apiPair = '/ppl/' + pobockaId + '/api/inventura/pair';
+    var apiPairs = '/ppl/' + pobockaId + '/api/inventura/pairs';
+    var csrf = document.querySelector('meta[name="csrf-token"]');
+    var csrfHeader = csrf ? csrf.getAttribute('content') : '';
+
+    var pairs = [];
+    var step = 'parcel';
+    var currentParcel = '';
+
+    function showToast(msg, type) {
+        var el = document.getElementById('pplInventuraToast');
+        el.textContent = msg;
+        el.className = 'toast-apple position-fixed ' + (type === 'error' ? 'danger' : 'success');
+        el.style.display = 'block';
+        setTimeout(function() { el.style.display = 'none'; }, 4000);
+    }
+
+    function updateStepUI() {
+        var lab = document.getElementById('inventuraLabel');
+        var hint = document.getElementById('inventuraHint');
+        var inp = document.getElementById('inventuraScan');
+        if (step === 'parcel') {
+            lab.textContent = '1. Číslo zásilky';
+            hint.textContent = 'Napipat číslo balíku';
+            inp.placeholder = 'Napipat zásilku, Enter';
+        } else {
+            lab.textContent = '2. Umístění (ověření místa)';
+            hint.textContent = 'Zásilka ' + currentParcel + ' → nyní napipat umístění';
+            inp.placeholder = 'Napipat umístění, Enter';
+        }
+        inp.value = '';
+        inp.focus();
+    }
+
+    function normalizeParcelCode(s) {
+        s = (s || '').trim().replace(/\s/g, '');
+        if (s.indexOf('-') >= 0) return s;
+        if (/^\d{12}$/.test(s)) return s.slice(0, 11);
+        return s;
+    }
+    function addInput(val) {
+        val = (val || '').trim().replace(/\s/g, '');
+        if (!val) return;
+        if (step === 'parcel') {
+            currentParcel = normalizeParcelCode(val);
+            step = 'shelf';
+            updateStepUI();
+            return;
+        }
+        var shelfVal = val;
+        var parcelVal = currentParcel;
+        fetch(apiPair, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfHeader },
+            body: JSON.stringify({ parcel_code: parcelVal, shelf: shelfVal })
+        })
+        .then(function(r) {
+            if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Chyba'); });
+            return r.json();
+        })
+        .then(function() {
+            pairs.push({ parcel_code: parcelVal, shelf: shelfVal });
+            step = 'parcel';
+            currentParcel = '';
+            updateStepUI();
+            renderList();
+        })
+        .catch(function(err) {
+            showToast(err.message || 'Chyba ukládání.', 'error');
+        });
+    }
+
+    function renderList() {
+        var ul = document.getElementById('scannedList');
+        document.getElementById('scannedCount').textContent = pairs.length;
+        if (pairs.length === 0) {
+            ul.innerHTML = '<li class="list-group-item text-muted">Zatím nic neověřeno</li>';
+            return;
+        }
+        ul.innerHTML = pairs.map(function(p, i) {
+            return '<li class="list-group-item d-flex justify-content-between align-items-center">' +
+                '<span><strong>' + (p.parcel_code || '').replace(/</g,'&lt;') + '</strong> &rarr; ' + (p.shelf || '').replace(/</g,'&lt;') + '</span>' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary rounded-pill ppl-remove-pair" data-i="' + i + '">Odebrat</button></li>';
+        }).join('');
+        ul.querySelectorAll('.ppl-remove-pair').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var i = parseInt(btn.getAttribute('data-i'), 10);
+                pairs.splice(i, 1);
+                renderList();
+            });
+        });
+    }
+
+    var inventuraScanInput = document.getElementById('inventuraScan');
+    inventuraScanInput.addEventListener('input', function() {
+        if (step !== 'parcel') return;
+        var v = this.value.trim().replace(/\s/g, '');
+        if (v.indexOf('-') === -1 && /^\d{12}$/.test(v)) {
+            this.value = v.slice(0, 11);
+        }
+    });
+    inventuraScanInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addInput(this.value);
+        }
+    });
+    document.getElementById('inventuraAdd').addEventListener('click', function() {
+        addInput(document.getElementById('inventuraScan').value);
+    });
+
+    document.getElementById('inventuraFinish').addEventListener('click', function() {
+        if (!confirm('Ukončit inventuru?\n\nZůstanou jen napipané zásilky. Nenapipané se označí ke smazání a smažou se za 7 dní.')) return;
+        var btn = this;
+        btn.disabled = true;
+        fetch(apiFinish, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfHeader },
+                body: JSON.stringify({ scanned_pairs: pairs })
+            })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(res) {
+                if (res.ok) {
+                    var d = res.data;
+                    var kept = d.kept != null ? d.kept : 0;
+                    var marked = d.marked != null ? d.marked : 0;
+                    var summary = kept + ' zásilek zůstalo, ' + marked + ' označeno ke smazání.';
+                    showToast(summary, 'success');
+                    setTimeout(function() { window.location.href = '/ppl/' + pobockaId; }, 2200);
+                } else {
+                    showToast(res.data.error || 'Chyba.', 'error');
+                    btn.disabled = false;
+                }
+            })
+            .catch(function() {
+                showToast('Chyba spojení.', 'error');
+                btn.disabled = false;
+            });
+    });
+
+    fetch(apiPairs, { headers: { 'Accept': 'application/json' } })
+        .then(function(r) { return r.ok ? r.json() : []; })
+        .catch(function() { return []; })
+        .then(function(data) {
+            if (Array.isArray(data) && data.length) pairs = data;
+            renderList();
+        });
+    updateStepUI();
+    renderList();
+})();
+</script>
+<style>
+.ppl-page .card .list-group-item { background: var(--surface); color: var(--text); border-color: var(--border); }
+.ppl-page .card .list-group-item.text-muted { color: var(--text-secondary) !important; }
+[data-theme="dark"] .ppl-page .list-group-item { background: var(--surface) !important; color: var(--text) !important; border-color: var(--border) !important; }
+[data-theme="dark"] .ppl-page .list-group-item span { color: var(--text) !important; }
+[data-theme="dark"] .ppl-page .list-group-item strong { color: var(--text) !important; }
+[data-theme="dark"] .ppl-page #scannedList.list-group-flush .list-group-item { border-color: var(--border) !important; }
+@media (max-width: 767.98px) {
+    .ppl-page .card .form-control-lg { font-size: 1rem; min-height: 44px; }
+    .ppl-touch-target { min-height: 44px; }
+    .ppl-page #inventuraFinish { min-height: 44px; padding-left: 1.25rem; padding-right: 1.25rem; }
+}
+</style>
+{% endblock %}

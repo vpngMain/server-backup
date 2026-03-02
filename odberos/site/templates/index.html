@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+
+{% block title %}Odběry{% endblock %}
+
+{% block content %}
+<header class="page-header mb-4 hero-stagger">
+    <p class="hero-label text-secondary text-uppercase mb-2" style="font-size: 0.8125rem; letter-spacing: 0.15em; font-weight: 600;">Přehled poboček</p>
+    <h1 class="hero-title mb-2">
+        Vše na jednom místě
+    </h1>
+    <p class="page-subtitle mb-0" style="font-size: 1.0625rem; max-width: 32rem;">
+        Vyberte pobočku pro odběry nebo reklamace. Rychlé statistiky za rok {{ stat_rok }}.
+    </p>
+</header>
+
+<div class="page-section">
+<div class="row g-4">
+    {% if current_user.is_authenticated %}
+    <div class="col-md-6 col-lg-4 reveal-card" style="--delay: 0;">
+        <a href="{{ url_for('ppl_index') }}" class="card card-apple h-100 text-decoration-none ppl-index-card">
+            <div class="card-body d-flex flex-column p-4 p-lg-4">
+                <div class="d-flex align-items-start justify-content-between mb-3">
+                    <h3 class="card-title mb-0 fw-bold" style="font-size: 1.35rem; letter-spacing: -0.03em; line-height: 1.3;">PPL sklad</h3>
+                    <span class="branch-dot ppl-dot"></span>
+                </div>
+                <p class="text-secondary small mb-4" style="line-height: 1.5;">Zásilky PPL po pobočkách. Skenujte, ukládejte police a poznámky.</p>
+                <div class="mt-auto">
+                    <span class="btn btn-primary rounded-pill py-2 fw-semibold w-100"><i class="fas fa-box-open me-2"></i>Otevřít PPL sklad</span>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endif %}
+    {% for pobocka in pobocky %}
+    <div class="col-md-6 col-lg-4 reveal-card" style="--delay: {{ loop.index0 }};">
+        <div class="card card-apple h-100 branch-card">
+            <div class="card-body d-flex flex-column p-4 p-lg-4">
+                <div class="d-flex align-items-start justify-content-between mb-3">
+                    <h3 class="card-title mb-0 fw-bold" style="font-size: 1.35rem; letter-spacing: -0.03em; line-height: 1.3;">
+                        {{ pobocka.nazev }}
+                    </h3>
+                    <span class="branch-dot"></span>
+                </div>
+
+                {% if odbery_stat %}
+                    {% for o in odbery_stat if o.pobocka_id == pobocka.id %}
+                        <div class="mb-3">
+                            <p class="text-secondary small mb-2 text-uppercase fw-semibold" style="letter-spacing: 0.08em;">Odběry</p>
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background: var(--border); color: var(--text-secondary);">Aktivní {{ o.aktivni }}</span>
+                                <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background: rgba(34,197,94,0.15); color: #16a34a;">V pořádku {{ o.zelene }}</span>
+                                <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background: rgba(239,68,68,0.15); color: #dc2626;">Rozebrat {{ o.cervene }}</span>
+                                <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background: rgba(59,130,246,0.15); color: #2563eb;">Vydáno {{ o.vydano }}</span>
+                                <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background: rgba(245,158,11,0.15); color: #d97706;">Nevyzved. {{ o.nevyzvednuto }}</span>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+
+                {% if reklamace_stat %}
+                    {% for r in reklamace_stat if r.pobocka_id == pobocka.id %}
+                        <div class="mb-4">
+                            <p class="text-secondary small mb-2 text-uppercase fw-semibold" style="letter-spacing: 0.08em;">Reklamace</p>
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background: var(--border); color: var(--text-secondary);">Celkem {{ r.celkem }}</span>
+                                <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background: rgba(99,102,241,0.15); color: var(--accent-solid);">Čeká {{ r.ceka }}</span>
+                                <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background: rgba(34,197,94,0.15); color: #16a34a;">Prošlo {{ r.vymena }}</span>
+                                <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background: rgba(245,158,11,0.15); color: #d97706;">Posláno {{ r.poslano }}</span>
+                                <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background: rgba(168,85,247,0.15); color: #a855f7;">Sleva {{ r.sleva }}</span>
+                                <span class="badge rounded-pill px-3 py-2 fw-semibold" style="background: rgba(100,116,139,0.15); color: #64748b;">Zamítnuto {{ r.zamitnuto }}</span>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+                <div class="mt-auto d-flex flex-column gap-2 pt-2">
+                    <a href="{{ url_for('branch', pobocka_id=pobocka.id) }}" class="btn btn-primary rounded-pill py-2 fw-semibold">Otevřít odběry</a>
+                    <a href="{{ url_for('reklamace_branch', pobocka_id=pobocka.id) }}" class="btn btn-outline-secondary rounded-pill py-2 fw-semibold">Reklamace</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+</div>
+
+{% if not pobocky %}
+<div class="empty-state text-center py-5 my-4">
+    <div class="empty-state-icon mb-4">
+        <div class="rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px; background: var(--border);">
+            <i class="fas fa-store text-secondary" style="font-size: 2rem;"></i>
+        </div>
+    </div>
+    <h3 class="fw-bold mb-2" style="font-size: 1.5rem; letter-spacing: -0.03em;">Zatím žádné pobočky</h3>
+    <p class="text-secondary mb-0" style="font-size: 1.0625rem; max-width: 22rem; margin: 0 auto;">
+        Přihlaste se jako admin a přidejte první pobočku v Admin panelu.
+    </p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<style>
+.hero-title {
+    font-size: clamp(2.25rem, 5vw, 3.25rem);
+    font-weight: 800;
+    letter-spacing: -0.045em;
+    line-height: 1.1;
+    background: linear-gradient(135deg, var(--text) 0%, var(--text-secondary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+[data-theme="dark"] .hero-title {
+    background: linear-gradient(135deg, #fafafa 0%, #a1a1aa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+.branch-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-solid), #a855f7);
+    opacity: 0.6;
+    flex-shrink: 0;
+    margin-left: 0.5rem;
+}
+.reveal-card {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.6s cubic-bezier(0.4,0,0.2,1), transform 0.6s cubic-bezier(0.4,0,0.2,1);
+    transition-delay: calc(var(--delay, 0) * 0.08s);
+}
+.reveal-card.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+.hero-stagger .hero-label { opacity: 0; transform: translateY(8px); animation: heroIn 0.5s ease 0.1s forwards; }
+.hero-stagger .hero-title { opacity: 0; transform: translateY(12px); animation: heroIn 0.6s cubic-bezier(0.4,0,0.2,1) 0.2s forwards; }
+.hero-stagger .page-subtitle { opacity: 0; transform: translateY(8px); animation: heroIn 0.5s ease 0.35s forwards; }
+@keyframes heroIn { to { opacity: 1; transform: translateY(0); } }
+[data-theme="dark"] .branch-card .badge { border: 1px solid rgba(255,255,255,0.12); }
+.ppl-index-card { color: var(--text); }
+.ppl-index-card .card-body { color: var(--text); }
+.ppl-index-card:hover { color: var(--text); }
+.ppl-index-card .btn { pointer-events: none; }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var cards = document.querySelectorAll('.reveal-card');
+    var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(e) {
+            if (e.isIntersecting) e.target.classList.add('visible');
+        });
+    }, { threshold: 0.08, rootMargin: '0px 0px -30px 0px' });
+    cards.forEach(function(c) { observer.observe(c); });
+});
+</script>
+{% endblock %}

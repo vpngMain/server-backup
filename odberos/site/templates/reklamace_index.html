@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block title %}Reklamace{% endblock %}
+
+{% block content %}
+<style>
+.rekl-hero { margin-bottom: 2rem; }
+.rekl-hero .rekl-hero-label { font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--text-secondary); margin-bottom: 0.35rem; }
+.rekl-hero h1 { font-size: clamp(1.75rem, 4vw, 2.25rem); font-weight: 700; letter-spacing: -0.04em; margin: 0 0 0.4rem 0; color: var(--text); }
+.rekl-hero .rekl-hero-sub { font-size: 0.9375rem; color: var(--text-secondary); margin: 0; line-height: 1.5; }
+.rekl-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 1.5rem; height: 100%; display: flex; flex-direction: column; transition: box-shadow 0.25s, border-color 0.25s, transform 0.2s; }
+.rekl-card:hover { box-shadow: 0 12px 40px -12px rgba(0,0,0,0.12); border-color: rgba(99,102,241,0.2); transform: translateY(-2px); }
+[data-theme="dark"] .rekl-card:hover { border-color: rgba(129,140,248,0.3); }
+.rekl-card-title { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 1rem 0; color: var(--text); }
+.rekl-card-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1.25rem; }
+.rekl-badge { font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.75rem; border-radius: 999px; }
+.rekl-badge-total { background: var(--surface-hover); color: var(--text-secondary); }
+.rekl-badge-ceka { background: rgba(99,102,241,0.12); color: var(--accent-solid); }
+.rekl-badge-ok { background: rgba(34,197,94,0.12); color: #16a34a; }
+.rekl-badge-poslano { background: rgba(245,158,11,0.12); color: #d97706; }
+.rekl-badge-sleva { background: rgba(168,85,247,0.12); color: #a855f7; }
+.rekl-badge-zamitnuto { background: rgba(100,116,139,0.15); color: #64748b; }
+.rekl-card .btn { border-radius: 14px; padding: 0.65rem 1.25rem; font-weight: 600; font-size: 0.9375rem; margin-top: auto; }
+.rekl-empty { text-align: center; padding: 4rem 2rem; }
+.rekl-empty-icon { width: 80px; height: 80px; border-radius: 20px; background: var(--surface-hover); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.25rem; }
+.rekl-empty-icon i { font-size: 2rem; color: var(--text-secondary); }
+.rekl-empty p { font-size: 1.0625rem; color: var(--text-secondary); margin: 0; }
+</style>
+
+<header class="rekl-hero">
+    <p class="rekl-hero-label">Reklamace</p>
+    <h1>Elektronické cigarety</h1>
+    <p class="rekl-hero-sub">Přehled reklamací podle poboček. Adresa pro vrácení zboží se nastavuje v Admin → Pobočky.</p>
+</header>
+
+{% if prehled %}
+<div class="row g-4">
+    {% for p in prehled %}
+    <div class="col-md-6 col-lg-4">
+        <div class="rekl-card">
+            <h3 class="rekl-card-title">{{ p.nazev }}</h3>
+            <div class="rekl-card-badges">
+                <span class="rekl-badge rekl-badge-total">Celkem {{ p.celkem }}</span>
+                <span class="rekl-badge rekl-badge-ceka">Čeká {{ p.ceka }}</span>
+                <span class="rekl-badge rekl-badge-ok">Prošlo {{ p.vymena }}</span>
+                <span class="rekl-badge rekl-badge-poslano">Posláno {{ p.poslano }}</span>
+                <span class="rekl-badge rekl-badge-sleva">Sleva {{ p.sleva }}</span>
+                <span class="rekl-badge rekl-badge-zamitnuto">Zamítnuto {{ p.zamitnuto }}</span>
+            </div>
+            <a href="{{ url_for('reklamace_branch', pobocka_id=p.pobocka_id) }}" class="btn btn-primary w-100">Otevřít reklamace</a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="rekl-empty">
+    <div class="rekl-empty-icon"><i class="fas fa-folder-open"></i></div>
+    <p>Zatím nejsou k dispozici žádné pobočky. Vytvořte je v Admin panelu.</p>
+</div>
+{% endif %}
+{% endblock %}

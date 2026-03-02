@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Admin – Pobočky{% endblock %}
+{% block content %}
+<h2>Pobočky</h2>
+<p class="hint">Pobočka = místo (prodejna). Uživatelé s rolí „branch“ se přiřazují k pobočce v sekci Uživatelé.</p>
+<form method="post" action="{{ url_for('admin_branches') }}" class="form-inline">
+    <input type="hidden" name="action" value="create">
+    <div class="form-group">
+        <label for="name">Název pobočky</label>
+        <input type="text" id="name" name="name" required>
+    </div>
+    <div class="form-group">
+        <label for="code">Kód</label>
+        <input type="text" id="code" name="code" placeholder="volitelné">
+    </div>
+    <button type="submit" class="btn btn-primary">Přidat pobočku</button>
+</form>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Název</th>
+            <th>Kód</th>
+            <th>Akce</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for b in branches %}
+        <tr>
+            {% if b.id == edit_branch_id %}
+            <td colspan="3">
+                <form method="post" action="{{ url_for('admin_branch_edit', branch_id=b.id) }}" class="form-inline">
+                    <div class="form-group">
+                        <label>Název</label>
+                        <input type="text" name="name" value="{{ b.name }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Kód</label>
+                        <input type="text" name="code" value="{{ b.code or '' }}">
+                    </div>
+                    <button type="submit" class="btn btn-sm">Uložit</button>
+                    <a href="{{ url_for('admin_branches') }}" class="btn btn-sm">Zrušit</a>
+                </form>
+            </td>
+            {% else %}
+            <td>{{ b.name }}</td>
+            <td>{{ b.code or '—' }}</td>
+            <td>
+                <a href="{{ url_for('admin_branches') }}?edit={{ b.id }}" class="btn btn-sm">Upravit</a>
+                <form method="post" action="{{ url_for('admin_branch_delete', branch_id=b.id) }}" class="inline-form" onsubmit="return confirm('Smazat pobočku {{ b.name }}?');">
+                    <button type="submit" class="btn btn-sm">Smazat</button>
+                </form>
+            </td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

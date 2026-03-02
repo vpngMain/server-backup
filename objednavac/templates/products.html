@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}Produkty{% endblock %}
+{% block content %}
+<h2>Produkty</h2>
+<p class="branch-cart-info">Košík platí pro vaši pobočku: <strong>{{ current_branch.name if current_branch else '—' }}</strong></p>
+<div class="products-filters">
+    <div class="search-form">
+        <label for="live-search">Vyhledávání (název, sku)</label>
+        <input type="search" id="live-search" placeholder="Napište pro filtrování…" value="{{ search_q or '' }}" autocomplete="off">
+    </div>
+    {% if groups %}
+    <div class="form-group form-group-inline">
+        <label for="filter-group">Skupina</label>
+        <select id="filter-group" class="filter-group-select" onchange="applyUrlFilters();">
+            <option value="">Všechny skupiny</option>
+            {% for g in groups %}
+            <option value="{{ g }}" {{ 'selected' if group_filter == g else '' }}>{{ g }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    {% if brands %}
+    <div class="form-group form-group-inline">
+        <label for="filter-brand">Značka</label>
+        <select id="filter-brand" class="filter-group-select" onchange="applyUrlFilters();">
+            <option value="">Všechny značky</option>
+            {% for b in brands %}
+            <option value="{{ b }}" {{ 'selected' if brand_filter == b else '' }}>{{ b }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    {% if categories %}
+    <div class="form-group form-group-inline">
+        <label for="filter-category">Síla nikotinu</label>
+        <select id="filter-category" class="filter-group-select" onchange="applyUrlFilters();">
+            <option value="">Vše</option>
+            {% for c in categories %}
+            <option value="{{ c }}" {{ 'selected' if category_filter == c else '' }}>{{ c }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+</div>
+{% if products %}
+<div class="products-grid" id="products-grid">
+    <article class="product-card product-card-custom" id="product-card-custom">
+        <div class="product-card-inner">
+            <h3 class="product-card-title">Produkt nenalezen v seznamu?</h3>
+            <p class="product-card-meta">Vlastní položka</p>
+            <form method="post" action="{{ url_for('cart_add_custom') }}" class="product-card-form" id="form-custom">
+                <input type="text" name="custom_product_name" class="input-custom-name" placeholder="Napište název produktu…" required>
+                <span class="input-custom-sep">×</span>
+                <input type="number" name="quantity" value="1" min="0.01" step="any" class="input-qty" placeholder="ks">
+                <button type="submit" class="btn btn-sm btn-primary">Přidat do košíku</button>
+            </form>
+        </div>
+    </article>
+    {% for brand, plist in products_by_brand %}
+    {% for p in plist %}
+    {% set qty_in_cart = (cart.get((p.id)|string, 0)) or 0 %}
+    {% set cat = p.name | product_category %}
+    <article class="product-card product-row" id="product-{{ p.id }}" data-name="{{ (p.name or '')|lower }}" data-sku="{{ (p.sku or '')|lower }}" data-group="{{ (p.group_name or '')|lower }}" data-brand="{{ brand|lower }}" data-category="{{ cat|lower }}">
+        <div class="product-card-inner">
+            <div class="product-card-header">
+                <h3 class="product-card-title">{{ p.name }}</h3>
+                {% if cat %}<span class="product-card-category product-category-{{ cat }}">{{ cat }}</span>{% endif %}
+            </div>
+            <dl class="product-card-meta-list">
+                <dt>Jednotka</dt><dd>{{ p.unit or 'ks' }}</dd>
+                {% if p.sku %}
+                <dt>SKU</dt><dd class="td-sku">{{ p.sku }}</dd>
+                {% endif %}
+                {% if p.group_name %}
+                <dt>Skupina</dt><dd>{{ p.group_name }}</dd>
+                {% endif %}
+            </dl>
+            {% if qty_in_cart > 0 %}<p class="product-card-cart-badge">V košíku: {{ qty_in_cart | format_qty }}</p>{% endif %}
+            <form id="form-add-{{ p.id }}" method="post" action="{{ url_for('cart_add') }}" class="product-card-form">
+                <input type="hidden" name="product_id" value="{{ p.id }}">
+                <label for="qty-{{ p.id }}" class="sr-only">Množství</label>
+                <input type="number" id="qty-{{ p.id }}" name="quantity" value="{{ qty_in_cart or 1 }}" min="0.01" step="any" class="input-qty" placeholder="ks">
+                <button type="submit" class="btn btn-sm btn-primary">Přidat do košíku</button>
+            </form>
+        </div>
+    </article>
+    {% endfor %}
+    {% endfor %}
+</div>
+<p class="muted" id="live-search-no-results" style="display: none;">Žádný produkt nevyhovuje filtru.</p>
+{% else %}
+<p>Žádné produkty{% if search_q %} nevyhovují hledání „{{ search_q }}“. <a href="{{ url_for('index') }}">Zobrazit vše</a>{% else %}. Administrátor může naimportovat produkty (Import).{% endif %}</p>
+{% endif %}
+<script>
+(function() {
+    function applyUrlFilters() {
+        var q = (document.getElementById('live-search') && document.getElementById('live-search').value.trim()) || '';
+        var g = (document.getElementById('filter-group') && document.getElementById('filter-group').value) || '';
+        var b = (document.getElementById('filter-brand') && document.getElementById('filter-brand').value) || '';
+        var c = (document.getElementById('filter-category') && document.getElementById('filter-category').value) || '';
+        var params = new URLSearchParams();
+        if (g) params.set('group', g);
+        if (b) params.set('brand', b);
+        if (c) params.set('category', c);
+        if (q) params.set('q', q);
+        window.location.href = '{{ url_for("index") }}' + (params.toString() ? '?' + params.toString() : '');
+    }
+    window.applyUrlFilters = applyUrlFilters;
+})();
+(function() {
+    var table = document.getElementById('products-grid');
+    if (table) {
+        table.addEventListener('submit', function(e) {
+            var form = e.target;
+            if (form.method !== 'post' || !form.action || form.action.indexOf('/cart/add') === -1) return;
+            if (form.action.indexOf('/cart/add-custom') !== -1) return;
+            e.preventDefault();
+            var btn = form.querySelector('button[type="submit"]');
+            var qtyInput = form.querySelector('input[name="quantity"]');
+            var card = form.closest('.product-card');
+            var badgeEl = card ? card.querySelector('.product-card-cart-badge') : null;
+            if (btn) btn.disabled = true;
+            var fd = new FormData(form);
+            var opts = { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } };
+            fetch(form.action, opts)
+                .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, status: r.status, json: j }; }); })
+                .then(function(res) {
+                    if (btn) btn.disabled = false;
+                    if (res.ok && res.json.ok) {
+                        var qty = res.json.cart_qty;
+                        if (qtyInput) qtyInput.value = (qty === Math.floor(qty)) ? Math.floor(qty) : qty;
+                        var disp = (qty === Math.floor(qty)) ? Math.floor(qty) : qty;
+                        if (badgeEl) {
+                            badgeEl.textContent = 'V košíku: ' + disp;
+                        } else if (card && qty) {
+                            var p = document.createElement('p');
+                            p.className = 'product-card-cart-badge';
+                            p.textContent = 'V košíku: ' + disp;
+                            form.parentNode.insertBefore(p, form);
+                        }
+                    } else {
+                        alert(res.json.error || res.json.message || 'Chyba');
+                    }
+                })
+                .catch(function() {
+                    if (btn) btn.disabled = false;
+                    alert('Nepodařilo se přidat do košíku.');
+                });
+        });
+    }
+})();
+(function() {
+    var input = document.getElementById('live-search');
+    var grid = document.getElementById('products-grid');
+    var noResults = document.getElementById('live-search-no-results');
+    if (!input || !grid) return;
+    var cards = grid.querySelectorAll('.product-card.product-row');
+    var customCard = document.getElementById('product-card-custom');
+    function filter() {
+        var q = (input.value || '').trim().toLowerCase();
+        var visible = 0;
+        for (var i = 0; i < cards.length; i++) {
+            var card = cards[i];
+            var name = (card.getAttribute('data-name') || '');
+            var sku = (card.getAttribute('data-sku') || '');
+            var group = (card.getAttribute('data-group') || '');
+            var brand = (card.getAttribute('data-brand') || '');
+            var category = (card.getAttribute('data-category') || '');
+            var show = !q || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || group.indexOf(q) !== -1 || brand.indexOf(q) !== -1 || category.indexOf(q) !== -1;
+            card.style.display = show ? '' : 'none';
+            if (show) visible++;
+        }
+        if (noResults) noResults.style.display = (visible === 0 && cards.length > 0) ? 'block' : 'none';
+    }
+    function syncSearchToUrl() {
+        var q = (input.value || '').trim();
+        var params = new URLSearchParams(window.location.search);
+        if (q) params.set('q', q); else params.delete('q');
+        var newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+        var currentUrl = window.location.pathname + window.location.search;
+        if (newUrl !== currentUrl) {
+            if (!q) { window.location = newUrl; return; }
+            history.replaceState(null, '', newUrl);
+        }
+    }
+    var urlSyncTimer;
+    input.addEventListener('input', function() { filter(); clearTimeout(urlSyncTimer); urlSyncTimer = setTimeout(syncSearchToUrl, 400); });
+    input.addEventListener('keyup', filter);
+    filter();
+})();
+</script>
+{% endblock %}

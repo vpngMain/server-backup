@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin – Archiv reklamací{% endblock %}
+
+{% block content %}
+<style>
+.reklamace-archiv-table .table { background: var(--surface) !important; }
+.reklamace-archiv-table tbody td, .reklamace-archiv-table tbody th { color: var(--text) !important; background: var(--surface) !important; }
+[data-theme="dark"] .reklamace-archiv-table tbody td, [data-theme="dark"] .reklamace-archiv-table tbody th { color: #f8fafc !important; background: #16161a !important; }
+[data-theme="dark"] .reklamace-archiv-table thead th { color: #f8fafc !important; background: #25252b !important; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="fw-semibold mb-1" style="font-size: 1.5rem; letter-spacing: -0.03em;">Archiv reklamací</h1>
+        <p class="text-secondary small mb-0">Prohlížení všech reklamací včetně archivovaných – vyhledávání a filtry</p>
+    </div>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary rounded-pill">
+        <i class="fas fa-arrow-left me-2"></i>Zpět na Admin
+    </a>
+</div>
+
+<div class="card card-apple mb-4">
+    <div class="card-body p-4">
+        <h5 class="card-title fw-semibold mb-3">Filtry</h5>
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Hledat</label>
+                <input type="text" class="form-control" name="q" placeholder="Zákazník / tel / značka / model" value="{{ filter_q or '' }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Pobočka</label>
+                <select class="form-select" name="pobocka">
+                    <option value="">Vše</option>
+                    {% for p in pobocky %}
+                    <option value="{{ p.id }}" {% if filter_pobocka == (p.id|string) %}selected{% endif %}>{{ p.nazev }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Stav</label>
+                <select class="form-select" name="stav">
+                    <option value="">Vše</option>
+                    <option value="Čeká" {% if filter_stav == 'Čeká' %}selected{% endif %}>Čeká</option>
+                    <option value="Výměna kus za kus" {% if filter_stav == 'Výměna kus za kus' %}selected{% endif %}>Prošlo – výměna</option>
+                    <option value="Posláno do Ústí" {% if filter_stav == 'Posláno do Ústí' %}selected{% endif %}>Posláno do Ústí</option>
+                    <option value="Zamítnuto" {% if filter_stav == 'Zamítnuto' %}selected{% endif %}>Zamítnuto</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" name="archived" id="filterArchived" value="1" {% if filter_archived %}checked{% endif %}>
+                    <label class="form-check-label" for="filterArchived">Pouze archivované</label>
+                </div>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="submit" class="btn btn-primary rounded-pill">Hledat</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card card-apple overflow-hidden reklamace-archiv-table">
+    <div class="card-header py-2" style="background: var(--table-header-bg); color: var(--table-header-text);">
+        <strong>Reklamace ({{ reklamace|length }})</strong>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover table-bordered mb-0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Pobočka</th>
+                    <th>Zákazník</th>
+                    <th>Značka / model</th>
+                    <th>Přijetí</th>
+                    <th>Stav</th>
+                    <th>Archiv</th>
+                    <th>Akce</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in reklamace %}
+                <tr>
+                    <td><strong>#{{ r.id }}</strong></td>
+                    <td>{% if r.pobocka %}{{ r.pobocka.nazev }}{% else %}—{% endif %}</td>
+                    <td>{{ r.zakaznik }}{% if r.telefon %}<br><small class="text-secondary">{{ r.telefon }}</small>{% endif %}</td>
+                    <td><strong>{{ r.znacka }}</strong>{% if r.model %} / {{ r.model }}{% endif %}</td>
+                    <td>{{ r.datum_prijmu | cesky_datum if r.datum_prijmu else '—' }}</td>
+                    <td>
+                        {% if r.stav == 'Čeká' %}
+                            <span class="badge bg-secondary rounded-pill">Čeká</span>
+                        {% elif r.stav == 'Výměna kus za kus' %}
+                            <span class="badge bg-success rounded-pill">Prošlo</span>
+                        {% elif r.stav == 'Posláno do Ústí' %}
+                            <span class="badge bg-primary rounded-pill">Posláno</span>
+                        {% elif r.stav == 'Zamítnuto' %}
+                            <span class="badge bg-danger rounded-pill">Zamítnuto</span>
+                        {% else %}
+                            <span class="badge bg-secondary rounded-pill">{{ r.stav }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if r.archived %}
+                            <span class="badge bg-warning text-dark rounded-pill" title="Archivováno {{ r.archived_at | cesky_datum_cas if r.archived_at else '' }}">
+                                <i class="fas fa-archive me-1"></i>Archiv
+                            </span>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a class="btn btn-outline-primary btn-sm rounded-pill" href="{{ url_for('reklamace_edit', reklamace_id=r.id) }}">Upravit</a>
+                        <a class="btn btn-outline-secondary btn-sm rounded-pill" href="{{ url_for('reklamace_print', reklamace_id=r.id) }}" target="_blank">PDF</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="text-center text-secondary py-4">Žádné reklamace nenalezeny.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<p class="text-secondary small mt-2">Zobrazeno max. 500 záznamů. Pro detailní export použijte Excel nebo CSV v Admin panelu.</p>
+{% endblock %}

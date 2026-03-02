@@ -1,0 +1,387 @@
+{% extends 'base.html' %}
+{% block title %}PPL – {{ pobocka.nazev }}{% endblock %}
+{% block content %}
+<div class="ppl-page">
+    <header class="page-header">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb breadcrumb-apple">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Odběry</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('ppl_index') }}">PPL sklad</a></li>
+                <li class="breadcrumb-item active">{{ pobocka.nazev }}</li>
+            </ol>
+        </nav>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <h1 class="page-title mb-0">Sklad PPL · {{ pobocka.nazev }}</h1>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                {% if inventura_next_due %}
+                <div class="ppl-inventura-reminder {{ 'ppl-inventura-overdue' if today_iso >= inventura_next_due_iso else '' }}">
+                    <i class="fas fa-clipboard-check fa-sm me-1"></i>
+                    <span>Inventura {% if today_iso >= inventura_next_due_iso %}měla být do {{ inventura_next_due }}{% else %}do {{ inventura_next_due }}{% endif %}</span>
+                    <a href="{{ url_for('ppl_inventura', pobocka_id=pobocka.id) }}">Spustit</a>
+                </div>
+                {% endif %}
+                <div class="toolbar-wrap">
+                    <a href="{{ url_for('ppl_sklad', pobocka_id=pobocka.id) }}" class="btn btn-outline-primary btn-sm rounded-pill" title="Přehled zásilek po umístěních" aria-label="Přehled po umístěních">Přehled po umístěních</a>
+                    <a href="{{ url_for('ppl_inventura', pobocka_id=pobocka.id) }}" class="btn btn-outline-warning btn-sm rounded-pill" title="Spustit inventuru" aria-label="Inventura">Inventura</a>
+                    <a href="{{ url_for('ppl_historie', pobocka_id=pobocka.id) }}" class="btn btn-outline-secondary btn-sm rounded-pill" title="Historie akcí ve skladu" aria-label="Historie">Historie</a>
+                    <a href="{{ url_for('branch', pobocka_id=pobocka.id) }}" class="btn btn-outline-secondary btn-sm rounded-pill" title="Odběry pobočky" aria-label="Odběry">Odběry</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="page-section">
+    <div class="card card-apple ppl-card">
+        <div class="card-body p-4">
+            <h2 class="card-title mb-3 fw-semibold" style="font-size: 1.125rem;">Přidat zásilku</h2>
+            <form id="parcelForm" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label for="parcelCode" class="form-label">Číslo zásilky <span class="text-danger">*</span></label>
+                    <input type="text" id="parcelCode" class="form-control form-control-lg" placeholder="41498792168-54302 nebo 41498792168" required autofocus>
+                    <small class="text-muted d-block">Pip balík → Enter → pip umístění → Enter (uloží a připraví na další). Poslední 4 číslice z první části.</small>
+                </div>
+                <div class="col-md-2">
+                    <label for="shelf" class="form-label">Umístění <span class="text-danger">*</span></label>
+                    <input type="text" id="shelf" class="form-control" placeholder="A1" required>
+                </div>
+                <div class="col-md-3">
+                    <label for="notes" class="form-label">Poznámky</label>
+                    <input type="text" id="notes" class="form-control" placeholder="volitelné">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100 rounded-pill py-2 ppl-touch-target" title="Uložit zásilku do skladu" aria-label="Uložit zásilku">Uložit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    </div>
+
+    <div class="page-section">
+    <div class="mb-3">
+        <input type="text" id="searchBar" class="form-control rounded-pill ppl-touch-target" placeholder="🔍 Hledat podle čísla nebo posledních 4 číslic…" style="max-width: 380px;" aria-label="Vyhledat zásilku" title="Hledat podle čísla zásilky, posledních 4 číslic, umístění nebo poznámek">
+    </div>
+    <div class="card card-apple card-apple-static ppl-card overflow-hidden">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>Zásilka</th>
+                        <th>Umístění</th>
+                        <th>Poznámky</th>
+                        <th style="width: 180px;">Akce</th>
+                    </tr>
+                </thead>
+                <tbody id="parcelList"></tbody>
+            </table>
+        </div>
+    </div>
+    </div>
+
+    <div id="toDeleteSection" class="page-section" style="display: none;">
+        <h2 class="h6 fw-semibold mb-2 text-warning">Ke smazání za <span id="toDeleteDays">?</span> dní</h2>
+        <p class="text-muted small mb-2">Zásilky označené při inventuře ke smazání. Můžete zrušit označení.</p>
+        <div class="card card-apple card-apple-static overflow-hidden">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead>
+                        <tr>
+                            <th>Zásilka</th>
+                            <th>Umístění</th>
+                            <th>Poznámky</th>
+                            <th style="width: 140px;">Akce</th>
+                        </tr>
+                    </thead>
+                    <tbody id="toDeleteList"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="pplToast" class="toast-apple position-fixed" style="display:none; z-index: 9999; bottom: 1.5rem; right: 1.5rem;"></div>
+
+<script>
+(function() {
+    var pobockaId = {{ pobocka.id }};
+    var api = '/ppl/' + pobockaId + '/api/parcels';
+    var parcelList = document.getElementById('parcelList');
+    var searchBar = document.getElementById('searchBar');
+    var form = document.getElementById('parcelForm');
+    var csrf = document.querySelector('meta[name="csrf-token"]');
+    var csrfHeader = csrf ? csrf.getAttribute('content') : '';
+
+    function showToast(msg, type) {
+        var el = document.getElementById('pplToast');
+        el.textContent = msg;
+        el.className = 'toast-apple position-fixed ' + (type === 'error' ? 'danger' : 'success');
+        el.style.display = 'block';
+        el.style.bottom = '1.5rem';
+        el.style.right = '1.5rem';
+        setTimeout(function() { el.style.display = 'none'; }, 3500);
+    }
+
+    function pplTrackUrl(code) {
+        return 'https://www.ppl.cz/vyhledat-zasilku?shipmentId=' + encodeURIComponent(code);
+    }
+
+    function escapeHtml(s) {
+        return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function highlightMatch(text, q) {
+        if (!text || !q) return escapeHtml(text);
+        var s = String(text);
+        var lower = s.toLowerCase();
+        var ql = q.toLowerCase();
+        var idx = lower.indexOf(ql);
+        if (idx < 0) return escapeHtml(s);
+        return escapeHtml(s.slice(0, idx)) + '<mark class="ppl-search-highlight">' + escapeHtml(s.slice(idx, idx + q.length)) + '</mark>' + highlightMatch(s.slice(idx + q.length), q);
+    }
+
+    function renderRows(parcels) {
+        var q = (searchBar.value || '').trim();
+        if (!parcels.length) {
+            parcelList.innerHTML = '<tr><td colspan="4" class="text-muted text-center py-5">Žádné zásilky.<br><small>Přidejte první zásilku formulářem výše.</small></td></tr>';
+            return;
+        }
+        parcelList.innerHTML = parcels.map(function(p) {
+            var trackUrl = pplTrackUrl(p.parcel_code);
+            var codeHtml = q ? highlightMatch(p.parcel_code, q) : escapeHtml(p.parcel_code);
+            var lastFourHtml = q ? highlightMatch(p.last_four, q) : escapeHtml(p.last_four);
+            var shelfHtml = q ? highlightMatch(p.shelf, q) : escapeHtml(p.shelf);
+            return '<tr data-id="' + p.id + '">' +
+                '<td><a href="' + trackUrl + '" target="_blank" rel="noopener" class="fw-semibold">' + codeHtml + '</a> <span class="ppl-last-four small">(' + lastFourHtml + ')</span> <a href="' + trackUrl + '" target="_blank" class="btn btn-sm btn-link p-0 ms-1" title="Sledovat">📦</a></td>' +
+                '<td><span class="badge bg-light text-dark">' + shelfHtml + '</span></td>' +
+                '<td class="ppl-notes-cell"><span class="ppl-notes-text" data-id="' + p.id + '" contenteditable="true" title="Klikněte a upravte">' + escapeHtml(p.notes) + '</span><span class="ppl-notes-saving small ms-1" style="display:none;" aria-live="polite">Ukládám…</span></td>' +
+                '<td><button type="button" class="btn btn-success btn-sm rounded-pill ppl-vydat me-1" data-id="' + p.id + '" title="Vydat zásilku zákazníkovi" aria-label="Vydat zásilku">Vydat</button><button type="button" class="btn btn-danger btn-sm rounded-pill ppl-delete" data-id="' + p.id + '" title="Trvale smazat zásilku" aria-label="Smazat zásilku">Smazat</button></td>' +
+            '</tr>';
+        }).join('');
+        attachNotesListeners();
+    }
+
+    var saveNotesTimers = {};
+    function attachNotesListeners() {
+        parcelList.querySelectorAll('.ppl-notes-text').forEach(function(el) {
+            var id = el.getAttribute('data-id');
+            el.addEventListener('input', function() {
+                clearTimeout(saveNotesTimers[id]);
+                saveNotesTimers[id] = setTimeout(function() { saveNotes(id, el.textContent); }, 600);
+            });
+            el.addEventListener('blur', function() {
+                clearTimeout(saveNotesTimers[id]);
+                saveNotes(id, el.textContent);
+            });
+        });
+    }
+
+    function saveNotes(id, notes) {
+        notes = (notes || '').trim();
+        var row = parcelList.querySelector('tr[data-id="' + id + '"]');
+        var savingEl = row ? row.querySelector('.ppl-notes-saving') : null;
+        if (savingEl) savingEl.style.display = 'inline';
+        fetch(api + '/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfHeader },
+            body: JSON.stringify({ notes: notes })
+        })
+        .then(function(r) {
+            if (r.ok) { showToast('Poznámky uloženy.', 'success'); }
+            else { showToast('Chyba ukládání.', 'error'); }
+        })
+        .catch(function() { showToast('Chyba.', 'error'); })
+        .finally(function() { if (savingEl) savingEl.style.display = 'none'; });
+    }
+
+    function loadParcels() {
+        if (loadParcelsInFlight) return;
+        loadParcelsInFlight = true;
+        fetch(api, { headers: { 'Accept': 'application/json' } })
+            .then(function(r) {
+                if (!r.ok) throw new Error('API ' + r.status);
+                return r.json();
+            })
+            .then(function(data) {
+                window._pplParcels = Array.isArray(data) ? data : [];
+                window._pplLastRenderedIds = null;
+                filterParcels();
+            })
+            .catch(function() { showToast('Chyba načtení.', 'error'); window._pplParcels = []; window._pplLastRenderedIds = null; filterParcels(); })
+            .finally(function() { loadParcelsInFlight = false; });
+    }
+
+    function filterParcels() {
+        var q = (searchBar.value || '').toLowerCase().trim();
+        var list = window._pplParcels || [];
+        var filtered = !q ? list : list.filter(function(p) {
+            return (p.parcel_code && p.parcel_code.toLowerCase().indexOf(q) >= 0) ||
+                   (p.last_four && (p.last_four.indexOf(q) >= 0 || (q.length <= 4 && p.last_four === q))) ||
+                   (p.shelf && p.shelf.toLowerCase().indexOf(q) >= 0) ||
+                   (p.notes && p.notes.toLowerCase().indexOf(q) >= 0);
+        });
+        var ids = filtered.map(function(p) { return p.id; }).join(',');
+        if (window._pplLastRenderedIds === ids) return;
+        window._pplLastRenderedIds = ids;
+        renderRows(filtered);
+    }
+    var searchDebounceTimer;
+    var loadParcelsInFlight = false;
+    function scheduleFilter() {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(filterParcels, 280);
+    }
+
+    function normalizeParcelCode(s) {
+        s = (s || '').trim().replace(/\s/g, '');
+        if (s.indexOf('-') >= 0) return s;
+        if (/^\d{12}$/.test(s)) return s.slice(0, 11);
+        return s;
+    }
+    var parcelCodeInput = document.getElementById('parcelCode');
+    var shelfInput = document.getElementById('shelf');
+    parcelCodeInput.addEventListener('input', function() {
+        var v = this.value.trim().replace(/\s/g, '');
+        if (v.indexOf('-') === -1 && /^\d{12}$/.test(v)) {
+            this.value = v.slice(0, 11);
+        }
+    });
+    parcelCodeInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && this.value.trim()) {
+            e.preventDefault();
+            shelfInput.focus();
+        }
+    });
+    shelfInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        }
+    });
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var parcelCode = normalizeParcelCode(document.getElementById('parcelCode').value);
+        var shelf = document.getElementById('shelf').value.trim();
+        var notes = document.getElementById('notes').value.trim();
+        if (!shelf) { showToast('Vyplňte umístění.', 'error'); return; }
+        fetch(api, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfHeader
+            },
+            body: JSON.stringify({ parcelCode: parcelCode, shelf: shelf, notes: notes })
+        })
+        .then(function(r) {
+            if (!r.ok) return r.json().then(function(d) {
+                var msg = d.error || 'Chyba';
+                if (d.detail) msg += ': ' + d.detail;
+                throw new Error(msg);
+            });
+            return r.json();
+        })
+            .then(function() {
+            showToast('Zásilka přidána.', 'success');
+            form.reset();
+            document.getElementById('parcelCode').focus();
+            loadParcels();
+            loadToDelete();
+        })
+        .catch(function(err) { showToast(err.message || 'Chyba při ukládání.', 'error'); });
+    });
+
+    searchBar.addEventListener('input', function() { scheduleFilter(); });
+    searchBar.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); clearTimeout(searchDebounceTimer); filterParcels(); }
+    });
+
+    parcelList.addEventListener('click', function(e) {
+        var vydat = e.target.closest('.ppl-vydat');
+        if (vydat) {
+            fetch(api + '/' + vydat.dataset.id + '/vydat', { method: 'POST', headers: { 'X-CSRFToken': csrfHeader } })
+                .then(function(r) {
+                    if (r.ok) { showToast('Zásilka vydána.', 'success'); loadParcels(); }
+                    else { r.json().then(function(d) { showToast(d.error || 'Chyba.', 'error'); }); }
+                })
+                .catch(function() { showToast('Chyba.', 'error'); });
+            return;
+        }
+        var del = e.target.closest('.ppl-delete');
+        if (del) {
+            if (!confirm('Opravdu smazat zásilku? Tuto akci nelze vrátit zpět.')) return;
+            fetch(api + '/' + del.dataset.id, { method: 'DELETE' })
+                .then(function(r) {
+                    if (r.ok) { showToast('Zásilka smazána.', 'success'); loadParcels(); }
+                    else { showToast('Chyba mazání.', 'error'); }
+                })
+                .catch(function() { showToast('Chyba.', 'error'); });
+        }
+        var cancelBtn = e.target.closest('.ppl-cancel-delete');
+        if (cancelBtn) {
+            var id = cancelBtn.getAttribute('data-id');
+            if (!confirm('Zrušit označení ke smazání? Zásilka zůstane ve skladu.')) return;
+            fetch(api + '/' + id + '/cancel-delete', { method: 'POST', headers: { 'X-CSRFToken': csrfHeader } })
+                .then(function(r) {
+                    if (r.ok) { showToast('Označení zrušeno.', 'success'); loadParcels(); loadToDelete(); }
+                    else { r.json().then(function(d) { showToast(d.error || 'Chyba.', 'error'); }); }
+                })
+                .catch(function() { showToast('Chyba.', 'error'); });
+        }
+    });
+
+    function daysUntil(dateStr) {
+        if (!dateStr) return null;
+        var d = new Date(dateStr + 'T12:00:00');
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        d.setHours(0, 0, 0, 0);
+        var diff = Math.ceil((d - today) / (24 * 60 * 60 * 1000));
+        return diff;
+    }
+    function loadToDelete() {
+        fetch(api + '/to-delete', { headers: { 'Accept': 'application/json' } })
+            .then(function(r) { if (!r.ok) return []; return r.json(); })
+            .catch(function() { return []; })
+            .then(function(list) {
+                var wrap = document.getElementById('toDeleteSection');
+                var tbody = document.getElementById('toDeleteList');
+                if (!list || !list.length) {
+                    wrap.style.display = 'none';
+                    return;
+                }
+                wrap.style.display = 'block';
+                var firstDate = list[0].k_smazani_po;
+                var days = daysUntil(firstDate);
+                document.getElementById('toDeleteDays').textContent = days != null ? days : '?';
+                tbody.innerHTML = list.map(function(p) {
+                    var trackUrl = pplTrackUrl(p.parcel_code);
+                    return '<tr data-id="' + p.id + '">' +
+                        '<td><a href="' + trackUrl + '" target="_blank" rel="noopener" class="fw-semibold">' + escapeHtml(p.parcel_code) + '</a> <span class="ppl-last-four small">(' + escapeHtml(p.last_four || '') + ')</span></td>' +
+                        '<td><span class="badge bg-light text-dark">' + escapeHtml(p.shelf || '') + '</span></td>' +
+                        '<td class="text-break">' + escapeHtml(p.notes || '') + '</td>' +
+                        '<td><button type="button" class="btn btn-outline-secondary btn-sm rounded-pill ppl-cancel-delete" data-id="' + p.id + '" title="Zrušit označení ke smazání" aria-label="Zrušit označení ke smazání">Zrušit označení</button></td></tr>';
+                }).join('');
+            });
+    }
+    loadParcels();
+    loadToDelete();
+})();
+</script>
+<style>
+.ppl-page .ppl-card { border-radius: 16px; border: 1px solid var(--border); }
+.ppl-page .table thead th { font-weight: 600; font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); border-bottom: 1px solid var(--border); padding: 0.75rem 1rem; }
+.ppl-page .table td { padding: 0.75rem 1rem; vertical-align: middle; }
+.ppl-notes-text[contenteditable="true"] { min-width: 80px; outline: none; }
+.ppl-notes-text[contenteditable="true"]:focus { background: var(--surface-hover); border-radius: 6px; }
+.ppl-inventura-reminder { font-size: 0.8125rem; color: var(--text-secondary); background: var(--surface-hover); border: 1px solid var(--border); border-radius: 8px; padding: 0.35rem 0.6rem; display: inline-flex; align-items: center; }
+.ppl-inventura-reminder a { margin-left: 0.35rem; white-space: nowrap; }
+.ppl-inventura-reminder.ppl-inventura-overdue { color: var(--danger, #dc3545); border-color: rgba(220,53,69,0.35); background: rgba(220,53,69,0.08); }
+.ppl-search-highlight { background: rgba(255, 193, 7, 0.45); border-radius: 2px; padding: 0 2px; font-weight: 600; }
+.ppl-last-four { color: var(--text-secondary); font-weight: 500; }
+.ppl-notes-saving { color: var(--primary, #0d6efd); font-weight: 500; }
+@media (max-width: 767.98px) {
+    .ppl-page .table td, .ppl-page .table th { padding: 0.6rem 0.5rem; font-size: 0.875rem; }
+    .ppl-page .btn.btn-sm { padding: 0.4rem 0.65rem; }
+    .ppl-touch-target { min-height: 44px; }
+    .ppl-page #toDeleteSection .table-responsive { font-size: 0.875rem; }
+}
+</style>
+{% endblock %}

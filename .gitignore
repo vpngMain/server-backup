@@ -1,0 +1,75 @@
+# ----------------------------
+# Python
+# ----------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+
+# Virtual environments
+venv/
+venv_flask/
+.env
+*.env
+
+# ----------------------------
+# Testing / cache
+# ----------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ----------------------------
+# Databases
+# ----------------------------
+*.db
+*.sqlite3
+
+# ----------------------------
+# Logs / runtime files
+# ----------------------------
+logs/
+*.log
+gunicorn.ctl
+
+# ----------------------------
+# Uploads / runtime data
+# ----------------------------
+uploads/
+instance/
+
+# ----------------------------
+# OS / editor files
+# ----------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ----------------------------
+# Archives / binaries
+# ----------------------------
+*.zip
+*.tar
+*.gz
+
+# ----------------------------
+# Local services / drivers
+# ----------------------------
+chromedriver-linux64/
+chromedriver-linux64.zip
+
+# ----------------------------
+# Optional: ignore generated frontend builds
+# (uncomment if needed)
+# ----------------------------
+# dist/
+# build/
+# sneat-1.0.0/
+
+# ----------------------------
+# System / socket files
+# ----------------------------
+*.sock
+*.pid

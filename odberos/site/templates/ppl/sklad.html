@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+{% block title %}PPL – {{ pobocka.nazev }} · Umístění{% endblock %}
+{% block content %}
+<header class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb breadcrumb-apple">
+            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Odběry</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('ppl_index') }}">PPL sklad</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('ppl_branch', pobocka_id=pobocka.id) }}">{{ pobocka.nazev }}</a></li>
+            <li class="breadcrumb-item active">Umístění</li>
+        </ol>
+    </nav>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <h1 class="page-title mb-0">Přehled po umístěních · {{ pobocka.nazev }}</h1>
+        <a href="{{ url_for('ppl_branch', pobocka_id=pobocka.id) }}" class="btn btn-outline-primary btn-sm rounded-pill" title="Zpět na seznam zásilek" aria-label="Zpět na zásilky">Zpět na zásilky</a>
+    </div>
+</header>
+
+<div class="page-section">
+    <div id="stockFilterWrap" class="mb-3" style="display: none;">
+        <label for="stockSearch" class="form-label visually-hidden">Hledat</label>
+        <input type="text" id="stockSearch" class="form-control rounded-pill ppl-touch-target" placeholder="🔍 Hledat podle umístění nebo čísla zásilky…" style="max-width: 360px;" aria-label="Hledat podle umístění nebo čísla zásilky">
+    </div>
+    <div id="stockSummary" class="row g-3 mb-4" style="display: none;">
+        <div class="col-sm-6 col-lg-4">
+            <div class="card card-apple h-100 border-primary border-opacity-25">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="rounded-circle bg-primary bg-opacity-10 p-3">
+                        <span class="text-primary fw-bold" id="stockTotalCount">0</span>
+                    </div>
+                    <div>
+                        <div class="text-muted small text-uppercase">Celkem zásilek</div>
+                        <div class="fw-semibold" id="stockTotalLabel">0 ve skladu</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-4">
+            <div class="card card-apple h-100 border-secondary border-opacity-25">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="rounded-circle bg-secondary bg-opacity-10 p-3">
+                        <span class="text-secondary fw-bold" id="stockShelfCount">0</span>
+                    </div>
+                    <div>
+                        <div class="text-muted small text-uppercase">Umístění</div>
+                        <div class="fw-semibold">obsazených</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="stockLoading" class="text-center py-5 text-muted">
+        Načítám…
+    </div>
+    <div id="stockEmpty" class="card card-apple text-center py-5" style="display: none;">
+        <p class="mb-0 text-muted">Žádné zásilky ve skladu.</p>
+        <a href="{{ url_for('ppl_branch', pobocka_id=pobocka.id) }}" class="btn btn-primary rounded-pill mt-3 ppl-cta" title="Přidat první zásilku">Přidat první zásilku</a>
+    </div>
+    <div id="stockContent" class="row g-3" style="display: none;"></div>
+</div>
+
+<script>
+(function() {
+    var pobockaId = {{ pobocka.id }};
+    var trackBase = 'https://www.ppl.cz/vyhledat-zasilku?shipmentId=';
+    var allShelves = [];
+    function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function trackUrl(code) { return trackBase + encodeURIComponent(code); }
+    function renderCards(shelves) {
+        var q = (document.getElementById('stockSearch').value || '').toLowerCase().trim();
+        var filtered = shelves;
+        if (q) {
+            filtered = shelves.map(function(sh) {
+                var parcels = (sh.parcels || []).filter(function(p) {
+                    var code = (p.parcel_code || '').toLowerCase();
+                    var last4 = (p.last_four || '').toLowerCase();
+                    var shelf = (sh.shelf || '').toLowerCase();
+                    return code.indexOf(q) >= 0 || last4.indexOf(q) >= 0 || shelf.indexOf(q) >= 0;
+                });
+                return { shelf: sh.shelf, count: parcels.length, parcels: parcels };
+            }).filter(function(sh) { return sh.parcels.length > 0; });
+        }
+        var html = '';
+        filtered.forEach(function(sh) {
+            var shelfName = esc(sh.shelf) || '—';
+            var count = sh.count || 0;
+            var parcels = sh.parcels || [];
+            html += '<div class="col-12 col-md-6 col-xl-4">' +
+                '<div class="card card-apple h-100 ppl-stock-card">' +
+                '<div class="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3">' +
+                '<span class="fw-semibold">' + shelfName + '</span>' +
+                '<span class="badge bg-primary rounded-pill">' + count + '</span>' +
+                '</div>' +
+                '<div class="card-body py-2 px-3">' +
+                '<ul class="list-unstyled mb-0 ppl-stock-list">';
+            parcels.forEach(function(p) {
+                var code = p.parcel_code || '';
+                var link = trackUrl(code);
+                html += '<li class="py-1 d-flex align-items-center gap-2">' +
+                    '<a href="' + link + '" target="_blank" rel="noopener" class="text-decoration-none fw-medium" title="Sledovat zásilku ' + esc(code) + '">' + esc(code) + '</a>' +
+                    (p.last_four ? '<span class="text-muted small">(' + esc(p.last_four) + ')</span>' : '') +
+                    '<a href="' + link + '" target="_blank" rel="noopener" class="btn btn-sm btn-link p-0 ms-1" title="Sledovat na PPL">📦</a>' +
+                    '</li>';
+            });
+            html += '</ul></div></div></div>';
+        });
+        document.getElementById('stockContent').innerHTML = html || '<div class="col-12"><p class="text-muted text-center py-4 mb-0">Žádné umístění nevyhovuje hledání.</p></div>';
+    }
+    document.getElementById('stockSearch').addEventListener('input', function() {
+        if (allShelves.length) renderCards(allShelves);
+    });
+    fetch('/ppl/' + pobockaId + '/api/stock', { headers: { 'Accept': 'application/json' } })
+        .then(function(r) { if (!r.ok) throw new Error('API'); return r.json(); })
+        .then(function(data) {
+            document.getElementById('stockLoading').style.display = 'none';
+            var shelves = data.shelves || [];
+            var total = data.total || 0;
+            if (!shelves.length || total === 0) {
+                document.getElementById('stockEmpty').style.display = 'block';
+                return;
+            }
+            allShelves = shelves;
+            document.getElementById('stockFilterWrap').style.display = 'block';
+            document.getElementById('stockSummary').style.display = '';
+            document.getElementById('stockTotalCount').textContent = total;
+            document.getElementById('stockTotalLabel').textContent = total === 1 ? '1 zásilka' : (total < 5 ? total + ' zásilky' : total + ' zásilek');
+            document.getElementById('stockShelfCount').textContent = shelves.length;
+            document.getElementById('stockContent').style.display = 'flex';
+            renderCards(shelves);
+        })
+        .catch(function() {
+            document.getElementById('stockLoading').style.display = 'none';
+            document.getElementById('stockContent').innerHTML = '<div class="col-12"><div class="alert alert-danger">Chyba načtení. Zkuste to znovu.</div></div>';
+            document.getElementById('stockContent').style.display = 'block';
+        });
+})();
+</script>
+<style>
+.ppl-stock-card { border-radius: 12px; border: 1px solid var(--border); }
+.ppl-stock-card .card-header { border-radius: 12px 12px 0 0; border-bottom: 1px solid var(--border); font-size: 0.9375rem; }
+.ppl-stock-list { font-size: 0.875rem; max-height: 220px; overflow-y: auto; }
+.ppl-stock-list li { border-bottom: 1px solid var(--border); }
+.ppl-stock-list li:last-child { border-bottom: none; }
+@media (max-width: 767.98px) {
+    .ppl-touch-target { min-height: 44px; font-size: 1rem; }
+    .ppl-cta { min-height: 44px; padding-left: 1.25rem; padding-right: 1.25rem; }
+}
+</style>
+{% endblock %}

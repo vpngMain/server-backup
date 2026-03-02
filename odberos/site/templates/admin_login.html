@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+
+{% block title %}Přihlášení{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center py-5">
+    <div class="col-12 col-sm-10 col-md-5 col-lg-4">
+        <div class="card border-0 admin-login-card login-glow" style="border-radius: 20px; overflow: hidden; background: var(--surface); border: 1px solid var(--border);">
+            <div class="card-body p-4 p-md-5">
+                <div class="text-center mb-4">
+                    <p class="text-secondary mb-2" style="font-size: 0.6875rem; letter-spacing: 0.14em; font-weight: 600; text-transform: uppercase;">Přístup do aplikace</p>
+                    <h1 class="mb-2" style="font-size: 1.75rem; font-weight: 700; letter-spacing: -0.03em;">Přihlášení</h1>
+                    <p class="text-secondary mb-0" style="font-size: 0.9375rem;">Zadejte svůj PIN</p>
+                </div>
+
+                <form method="POST" id="loginForm">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-4">
+                        <label class="form-label" for="pin" style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary);">PIN</label>
+                        <input type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off"
+                               class="form-control text-center" name="pin" id="pin"
+                               placeholder="4–10 číslic" maxlength="10" minlength="4"
+                               aria-label="PIN" required
+                               style="border-radius: 14px; padding: 0.85rem 1rem; font-size: 1.125rem; letter-spacing: 0.2em;">
+                        <small class="form-text text-muted mt-1" style="font-size: 0.8125rem;">Rychlé přihlášení PINem</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 rounded-pill py-2 fw-semibold" style="border-radius: 999px;">Přihlásit se</button>
+                </form>
+
+                <p class="text-secondary small text-center mt-4 mb-0" style="font-size: 0.8125rem;">
+                    Po přihlášení budete přesměrováni na přehled nebo admin panel.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.login-glow { box-shadow: 0 20px 48px -12px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.02); }
+[data-theme="dark"] .login-glow { box-shadow: 0 20px 48px -12px rgba(0,0,0,0.3), 0 0 0 1px var(--border); }
+@media (max-width: 576px) {
+    .admin-login-card .card-body { padding: 1.5rem !important; }
+}
+</style>
+
+{% endblock %}

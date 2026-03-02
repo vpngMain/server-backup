@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Nová objednávka pro pobočku{% endblock %}
+{% block content %}
+<h2>Vytvořit objednávku pro pobočku</h2>
+<p class="hint">Objednávka bude přiřazena zvolené pobočce a označena jako vytvořená skladem.</p>
+
+<form method="post" action="{{ url_for('warehouse_order_new') }}">
+    <div class="form-group card-section">
+        <label for="branch_id">Pobočka <span class="required">*</span></label>
+        <select name="branch_id" id="branch_id" required>
+            <option value="">— vyberte pobočku —</option>
+            {% for b in branches %}
+            <option value="{{ b.id }}">{{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="card-section">
+        <h3>Položky (množství)</h3>
+        <p class="hint">Vyplňte množství u produktů, které chcete objednat. Prázdné nebo 0 se nezpracuje.</p>
+        <div class="dashboard-cards-grid dashboard-cards-warehouse-products">
+            {% for p in products %}
+            <article class="dashboard-item-card warehouse-product-card">
+                <div class="dashboard-item-card-body">
+                    <p class="dashboard-item-card-meta">{{ p.group_name or '—' }}</p>
+                    <h3 class="dashboard-item-card-title">{{ p.name }}</h3>
+                    <p class="dashboard-item-card-meta">Jednotka: {{ p.unit or 'ks' }}</p>
+                    <label for="qty_{{ p.id }}" class="sr-only">Množství</label>
+                    <input type="number" name="qty_{{ p.id }}" id="qty_{{ p.id }}" value="" min="0" step="any" class="input-qty warehouse-order-qty" placeholder="0">
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Vytvořit objednávku</button>
+        <a href="{{ url_for('warehouse_orders') }}" class="btn btn-secondary">Zrušit</a>
+    </div>
+</form>
+{% endblock %}

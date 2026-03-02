@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}PPL Sklad – výběr pobočky{% endblock %}
+{% block content %}
+<header class="page-header mb-4">
+    <p class="text-secondary text-uppercase mb-2" style="font-size: 0.8125rem; letter-spacing: 0.15em; font-weight: 600;">PPL Sklad</p>
+    <h1 class="page-title mb-2">Zásilky po pobočkách</h1>
+    <p class="page-subtitle mb-0">Vyberte pobočku – každá má vlastní sklad zásilek.</p>
+</header>
+<div class="page-section">
+<div class="row g-4">
+    {% for p in pobocky %}
+    <div class="col-md-6 col-lg-4">
+        <a href="{{ url_for('ppl_branch', pobocka_id=p.id) }}" class="card card-apple text-decoration-none ppl-branch-card">
+            <div class="card-body d-flex align-items-center gap-3">
+                <span class="fs-2 text-primary">📦</span>
+                <div>
+                    <strong class="d-block">{{ p.nazev }}</strong>
+                    <span class="small text-muted">Otevřít PPL sklad</span>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+</div>
+<style>.ppl-branch-card { color: var(--text); } .ppl-branch-card .card-body { color: var(--text); }</style>
+{% endblock %}

@@ -1,0 +1,620 @@
+{% extends 'base.html' %}
+{% from '_components.html' import stav_reklamace_badge %}
+
+{% block title %}Reklamace – {{ pobocka.nazev }}{% endblock %}
+
+{% block content %}
+<header class="rekl-branch-hero mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb breadcrumb-apple mb-2">
+            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Odběry</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('reklamace_index') }}">Reklamace</a></li>
+            <li class="breadcrumb-item active">{{ pobocka.nazev }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+            <h1 class="rekl-branch-title">{{ pobocka.nazev }}</h1>
+            <p class="rekl-branch-sub mb-0">Reklamace · {{ reklamace|length }} záznamů</p>
+        </div>
+        <div class="rekl-branch-toolbar">
+            <a href="{{ url_for('branch', pobocka_id=pobocka.id) }}" class="btn btn-outline-secondary btn-sm rekl-btn-pill">Odběry</a>
+            <a href="#reklamace-wizard-card" class="btn btn-primary btn-sm rekl-btn-pill" id="toolbar-nova-reklamace"><i class="fas fa-plus me-1"></i>Nová reklamace</a>
+            <a href="{{ url_for('reklamace_export_csv', pobocka_id=pobocka.id) }}{% if request.query_string %}?{{ request.query_string.decode('utf-8') }}{% endif %}" class="btn btn-outline-secondary btn-sm rekl-btn-pill"><i class="fas fa-download me-1"></i>Export CSV</a>
+            {% if current_user.role == 'admin' %}<a href="{{ url_for('admin_reklamace_archiv') }}" class="btn btn-outline-secondary btn-sm rekl-btn-pill">Archiv</a>{% endif %}
+        </div>
+    </div>
+</header>
+{% if pobocka.adresa or pobocka.firma %}
+<div class="rekl-return-address mb-4">
+    <span class="rekl-return-label">Adresa pro vrácení</span>
+    <span class="rekl-return-value">{{ pobocka.firma }}{% if pobocka.firma and pobocka.adresa %} · {% endif %}{{ pobocka.adresa or pobocka.nazev }}</span>
+</div>
+{% endif %}
+
+<div class="reklamace-filters-bar mb-4">
+    <form method="GET" class="reklamace-filters">
+        <div class="reklamace-filters-inner">
+            <input type="text" class="form-control reklamace-search" name="q" placeholder="Zákazník, tel, značka, model…" value="{{ filter_q or '' }}" aria-label="Hledat">
+            <select class="form-select reklamace-select" name="stav" aria-label="Stav">
+                <option value="" {% if not filter_stav %}selected{% endif %}>Všechny stavy</option>
+                <option value="Čeká" {% if filter_stav == 'Čeká' %}selected{% endif %}>Čeká</option>
+                <option value="Výměna kus za kus" {% if filter_stav == 'Výměna kus za kus' %}selected{% endif %}>Prošlo – výměna</option>
+                <option value="Posláno do Ústí" {% if filter_stav == 'Posláno do Ústí' %}selected{% endif %}>Posláno do Ústí</option>
+                <option value="Zamítnuto" {% if filter_stav == 'Zamítnuto' %}selected{% endif %}>Zamítnuto</option>
+            </select>
+            <input type="date" class="form-control reklamace-date" name="from" value="{{ filter_from or '' }}" aria-label="Od" title="Od">
+            <span class="reklamace-date-sep">–</span>
+            <input type="date" class="form-control reklamace-date" name="to" value="{{ filter_to or '' }}" aria-label="Do" title="Do">
+            <label class="reklamace-archiv-check">
+                <input type="checkbox" name="archived" value="1" {% if filter_archived %}checked{% endif %} onchange="this.form.submit()">
+                <span>Archiv</span>
+            </label>
+            <button type="submit" class="btn btn-primary rounded-pill reklamace-filters-btn">Filtrovat</button>
+            <a class="btn btn-outline-secondary btn-sm rounded-pill" href="{{ url_for('reklamace_branch', pobocka_id=pobocka.id) }}">Vyčistit</a>
+        </div>
+    </form>
+</div>
+
+<div class="rekl-wizard-card mb-4" id="reklamace-wizard-card">
+    <div class="rekl-wizard-inner">
+        <div class="rekl-wizard-head">
+            <h2 class="rekl-wizard-title"><i class="fas fa-clipboard-list me-2"></i>Průvodce reklamací</h2>
+            <div class="rekl-wizard-progress-wrap">
+                <div class="rekl-wizard-progress" role="progressbar" aria-label="Krok">
+                    <div class="rekl-wizard-progress-bar" id="wizardProgressBar" style="width: 25%;" aria-valuenow="1" aria-valuemin="0" aria-valuemax="4"></div>
+                </div>
+                <div class="reklamace-wizard-steps d-flex gap-2 mt-2">
+                    <span class="wizard-step active" data-step="1" title="Zákazník">1</span>
+                    <span class="wizard-step" data-step="2" title="Zboží">2</span>
+                    <span class="wizard-step" data-step="3" title="Závada">3</span>
+                    <span class="wizard-step" data-step="4" title="Shrnutí">4</span>
+                </div>
+            </div>
+        </div>
+
+        {% if validacni_chyba %}
+        <div class="alert alert-danger alert-dismissible fade show mb-3" role="alert">
+            <i class="fas fa-exclamation-circle me-2"></i>{{ validacni_chyba }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <form method="POST" id="reklamaceWizardForm">
+            {{ form.hidden_tag() }}
+
+            <div class="wizard-pane active" data-pane="1">
+                <h6 class="wizard-question mb-3">Kdo je zákazník?</h6>
+                <p class="text-secondary small mb-3">Zadejte jméno a kontaktní údaje.</p>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Jméno a příjmení <span class="text-danger">*</span></label>
+                        {{ form.zakaznik(class="form-control", placeholder="Jan Novák", required=True) }}
+                        {% if form.zakaznik.errors %}<div class="text-danger small mt-1">{% for e in form.zakaznik.errors %}{{ e }}{% endfor %}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Telefon <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text">+420</span>
+                            <input type="text" name="telefon" id="telefon" class="form-control" maxlength="9" placeholder="123456789" pattern="\d{9}" title="9 číslic" value="{{ request.form.get('telefon', '') }}" required>
+                        </div>
+                        {% if form.telefon.errors %}<div class="text-danger small mt-1">{% for e in form.telefon.errors %}{{ e }}{% endfor %}</div>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="wizard-pane" data-pane="2">
+                <h6 class="wizard-question mb-3">Jaké zboží reklamuje?</h6>
+                <p class="text-secondary small mb-3">Značka, model a kdy bylo zboží zakoupeno.</p>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label">Značka <span class="text-danger">*</span></label>
+                        {{ form.znacka(class="form-control", placeholder="např. Vaporesso", required=True) }}
+                        {% if form.znacka.errors %}<div class="text-danger small mt-1">{% for e in form.znacka.errors %}{{ e }}{% endfor %}</div>{% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Model <span class="text-danger">*</span></label>
+                        {{ form.model(class="form-control", placeholder="např. XROS 3", required=True) }}
+                        {% if form.model.errors %}<div class="text-danger small mt-1">{% for e in form.model.errors %}{{ e }}{% endfor %}</div>{% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Barva</label>
+                        {{ form.barva(class="form-control", placeholder="volitelné") }}
+                    </div>
+                    <div class="col-md-6 mt-2">
+                        <label class="form-label">Kdy bylo zboží zakoupeno? <span class="text-danger">*</span></label>
+                        {{ form.datum_zakoupeni(class="form-control", type="date", id="datumZakoupeni", required=True) }}
+                        <div id="zarukaInfo" class="small mt-1" style="min-height: 1.5em;"></div>
+                    </div>
+                    <div class="col-md-6 mt-2">
+                        <label class="form-label">Datum přijetí reklamace</label>
+                        {{ form.datum_prijmu(class="form-control", type="date") }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="wizard-pane" data-pane="3">
+                <h6 class="wizard-question mb-3">Jaká je závada?</h6>
+                <p class="text-secondary small mb-3">Přepište, co zákazník řekl nebo napsal – bude uvedeno na reklamačním formuláři jako popis zákazníka.</p>
+                {{ form.popis_zavady(class="form-control", rows="4", placeholder="Např.: Zařízení se po týdnu přestalo nabíjet, dioda nebliká…", required=True) }}
+                {% if form.popis_zavady.errors %}<div class="text-danger small mt-1">{% for e in form.popis_zavady.errors %}{{ e }}{% endfor %}</div>{% endif %}
+            </div>
+
+            <div class="wizard-pane" data-pane="4">
+                <h6 class="wizard-question mb-3">Přehled a dokončení</h6>
+                <div class="reklamace-summary mb-4 p-3 rounded" style="background: var(--card-bg);">
+                    <div class="summary-row mb-2"><strong>Zákazník:</strong> <span id="sum-zakaznik">—</span></div>
+                    <div class="summary-row mb-2"><strong>Zboží:</strong> <span id="sum-zbozi">—</span></div>
+                    <div class="summary-row mb-2"><strong>Záruka:</strong> <span id="sum-zaruka">—</span></div>
+                    <div class="summary-row mb-2"><strong>Závada:</strong> <span id="sum-zavada">—</span></div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-md-4">
+                        {{ form.stav.label(class="form-label") }}
+                        {{ form.stav(class="form-select") }}
+                    </div>
+                    <div class="col-md-4" id="slevaProcentWrap" style="display:none;">
+                        {{ form.sleva_procent.label(class="form-label") }}
+                        {{ form.sleva_procent(class="form-control", type="number", min="0", max="100", step="0.5", placeholder="např. 15") }}
+                    </div>
+                    <div class="col-12 mt-2">
+                        <div class="form-check form-check-lg">
+                            {{ form.zavolano_zakaznikovi(class="form-check-input") }}
+                            <label class="form-check-label fw-semibold" for="{{ form.zavolano_zakaznikovi.id }}">Zavoláno zákazníkovi</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-2">
+                    <div class="col-12">
+                        {{ form.zjistena_zavada_nas.label(class="form-label") }}
+                        {{ form.zjistena_zavada_nas(class="form-control", rows="2", placeholder="Např. závada neprokázána, závada vzniklá nevhodným použitím, vadná baterie při měření…") }}
+                    </div>
+                    <div class="col-md-6">
+                        {{ form.reseni.label(class="form-label") }}
+                        {{ form.reseni(class="form-control", rows="2", placeholder="Řešení (volitelné)") }}
+                    </div>
+                    <div class="col-md-6">
+                        {{ form.poznamky.label(class="form-label") }}
+                        {{ form.poznamky(class="form-control", rows="2", placeholder="Poznámky (volitelné)") }}
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary w-100 rounded-pill py-2 mt-4 fw-semibold">
+                    <i class="fas fa-check-circle me-2"></i>Uložit reklamaci a vytvořit PDF
+                </button>
+            </div>
+
+            <div class="d-flex justify-content-between mt-4 pt-3 rekl-wizard-nav">
+                <button type="button" class="btn btn-outline-secondary rekl-btn-pill wizard-nav" id="wizardPrev" style="display:none;">← Zpět</button>
+                <button type="button" class="btn btn-primary rekl-btn-pill wizard-nav" id="wizardNext">Další →</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+/* —— Reklamace branch: hero + adresa —— */
+.rekl-branch-hero { }
+.rekl-branch-title { font-size: clamp(1.5rem, 3.5vw, 2rem); font-weight: 700; letter-spacing: -0.04em; margin: 0 0 0.25rem 0; color: var(--text); }
+.rekl-branch-sub { font-size: 0.9375rem; color: var(--text-secondary); }
+.rekl-branch-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.rekl-btn-pill { border-radius: 14px !important; font-weight: 500; }
+.rekl-return-address { background: var(--surface-hover); border: 1px solid var(--border); border-radius: 14px; padding: 0.75rem 1.25rem; }
+.rekl-return-label { font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary); margin-right: 0.5rem; }
+.rekl-return-value { font-size: 0.9375rem; color: var(--text); }
+
+/* —— Wizard card —— */
+.rekl-wizard-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
+.rekl-wizard-inner { padding: 1.75rem 1.75rem 1.5rem; }
+.rekl-wizard-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1.5rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
+.rekl-wizard-title { font-size: 1.125rem; font-weight: 700; letter-spacing: -0.02em; margin: 0; color: var(--text); }
+.rekl-wizard-title i { color: var(--accent-solid); }
+.rekl-wizard-progress-wrap { min-width: 180px; }
+.rekl-wizard-progress { height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.rekl-wizard-progress-bar { height: 100%; background: var(--accent-solid); border-radius: 999px; transition: width 0.35s ease; }
+.reklamace-wizard-steps .wizard-step {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 0.875rem; font-weight: 600;
+    background: var(--border); color: var(--text-secondary);
+    transition: all 0.25s;
+}
+.reklamace-wizard-steps .wizard-step.active { background: var(--accent-solid); color: #fff; }
+.reklamace-wizard-steps .wizard-step.done { background: rgba(34,197,94,0.3); color: #16a34a; }
+.wizard-pane { display: none; min-height: 140px; }
+.wizard-pane.active { display: block; animation: wizardFade 0.3s ease; }
+@keyframes wizardFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.wizard-question { font-size: 1.125rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
+.wizard-pane .form-label { font-size: 0.875rem; font-weight: 500; margin-bottom: 0.35rem; }
+.wizard-pane .form-control, .wizard-pane .form-select { border-radius: 12px; padding: 0.6rem 1rem; font-size: 1rem; }
+.wizard-pane .row.g-2 { margin-bottom: 0; }
+.wizard-pane .row.g-2 > [class*="col-"] { margin-bottom: 0.5rem; }
+.reklamace-summary { border-radius: 12px; }
+
+/* Filtry */
+.reklamace-filters-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 1rem 1.35rem; }
+.reklamace-filters { margin: 0; }
+.reklamace-filters-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.reklamace-search { width: 100%; max-width: 220px; min-width: 140px; border-radius: 12px; padding: 0.5rem 1rem; flex-shrink: 0; font-size: 0.9375rem; }
+.reklamace-select { width: auto; min-width: 160px; border-radius: 12px; flex-shrink: 0; font-size: 0.9375rem; }
+.reklamace-date { width: 130px; border-radius: 12px; flex-shrink: 0; font-size: 0.9375rem; padding: 0.5rem 0.75rem; }
+.reklamace-date-sep { color: var(--text-secondary); font-size: 0.875rem; flex-shrink: 0; }
+.reklamace-archiv-check { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.875rem; color: var(--text-secondary); cursor: pointer; margin: 0; flex-shrink: 0; }
+.reklamace-archiv-check input { margin: 0; }
+.reklamace-filters-btn { padding: 0.5rem 1.1rem; flex-shrink: 0; font-size: 0.9375rem; }
+
+/* Sekce tabulky */
+.reklamace-table-section { margin-bottom: 1.5rem; }
+.reklamace-table-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.75rem; }
+.reklamace-table-title { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+.reklamace-count { display: inline-flex; align-items: center; justify-content: center; min-width: 1.75rem; height: 1.75rem; padding: 0 0.5rem; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); background: var(--surface-hover); border-radius: 999px; }
+.reklamace-bulk-bar { display: none; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: var(--surface-hover); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 0.75rem; }
+.reklamace-bulk-label { font-size: 0.875rem; color: var(--text-secondary); }
+/* Přepisujeme overflow z base, aby dropdown „Stav“ (Bootstrap strategy: fixed) nebyl oříznutý */
+.reklamace-card.card-apple,
+.reklamace-card { border-radius: 18px; overflow: visible !important; border: 1px solid var(--border); background: var(--surface); }
+.reklamace-card .table-responsive { overflow: visible !important; }
+.reklamace-table.table,
+.reklamace-table { background: transparent !important; overflow: visible !important; table-layout: auto; width: 100%; }
+.reklamace-table tbody,
+.reklamace-table tr,
+.reklamace-table td { overflow: visible !important; }
+.reklamace-table thead { background: var(--table-header-bg) !important; }
+.reklamace-th { font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--table-header-text); padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.reklamace-td { padding: 0.85rem 1rem; vertical-align: middle; border-bottom: 1px solid var(--border); font-size: 0.9375rem; overflow: visible !important; line-height: 1.4; }
+.reklamace-row:last-child .reklamace-td { border-bottom: none; }
+.reklamace-row:hover .reklamace-td { background: var(--surface-hover) !important; }
+.reklamace-th-check, .reklamace-td-check { width: 44px; text-align: center; }
+.reklamace-th-id, .reklamace-td-id { width: 56px; }
+.reklamace-id { font-weight: 600; color: var(--text-secondary); font-size: 0.875rem; }
+.reklamace-zakaznik { display: block; font-weight: 500; }
+.reklamace-tel { display: block; font-size: 0.8125rem; color: var(--text-secondary); margin-top: 0.2rem; }
+.reklamace-zbozi { display: block; font-weight: 500; }
+.reklamace-barva { display: block; font-size: 0.8125rem; color: var(--text-secondary); margin-top: 0.15rem; }
+.reklamace-th-zavolano, .reklamace-td-zavolano { width: 88px; text-align: center; }
+.reklamace-th-akce, .reklamace-td-akce { width: 1%; min-width: 200px; }
+.reklamace-akce-cell { white-space: nowrap; }
+.reklamace-akce-btns { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.reklamace-akce-btns .btn-akce-link { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); text-decoration: none; font-size: 0.875rem; transition: background 0.2s, color 0.2s, border-color 0.2s; }
+.reklamace-akce-btns .btn-akce-link:hover { background: var(--surface-hover); color: var(--accent-solid); border-color: var(--accent-solid); }
+.reklamace-akce-btns .btn-akce-link.btn-protokol { color: #059669; border-color: rgba(5,150,105,0.4); }
+.reklamace-akce-btns .btn-akce-link.btn-protokol:hover { background: rgba(5,150,105,0.1); color: #047857; }
+.reklamace-dropdown { position: relative; display: inline-block; }
+.reklamace-dropdown-menu { position: absolute; top: 100%; right: 0; margin-top: 4px; min-width: 200px; border-radius: 12px; padding: 0.35rem; background: var(--surface); box-shadow: var(--shadow-lg); border: 1px solid var(--border); z-index: 1060; }
+.reklamace-dropdown-menu[hidden] { display: none !important; }
+.reklamace-dropdown-btn { font-size: 0.8125rem; padding: 0.35rem 0.65rem; }
+.rekl-dropdown-item-form { margin: 0; padding: 0; display: block; }
+.rekl-dropdown-item { border-radius: 8px; padding: 0.5rem 0.75rem; font-size: 0.875rem; width: 100%; text-align: left; border: none; background: transparent; cursor: pointer; display: block; color: inherit; }
+.rekl-dropdown-item:hover { background: var(--surface-hover); }
+.rekl-dropdown-divider { height: 1px; margin: 0.35rem 0; background: var(--border); }
+.reklamace-empty { padding: 3rem 2rem; text-align: center; color: var(--text-secondary); }
+.rekl-empty-icon-inline { width: 56px; height: 56px; border-radius: 16px; background: var(--surface-hover); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1rem; }
+.rekl-empty-icon-inline i { font-size: 1.5rem; color: var(--text-secondary); }
+.reklamace-table-section .reklamace-table-title { font-size: 1.125rem; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 0.5rem; }
+.reklamace-table-section .reklamace-count { font-weight: 700; }
+@media (max-width: 768px) {
+    .reklamace-filters-bar { padding: 0.85rem 1rem; }
+    .reklamace-filters-inner { flex-direction: column; align-items: stretch; }
+    .reklamace-search { max-width: none; }
+    .reklamace-date { width: 100%; }
+    .reklamace-table-header { flex-direction: column; align-items: flex-start; }
+    .reklamace-table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .reklamace-th, .reklamace-td { padding: 0.7rem 0.75rem; font-size: 0.875rem; }
+    .reklamace-th-akce, .reklamace-td-akce { min-width: 160px; }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelector('#toolbar-nova-reklamace')?.addEventListener('click', function(e) {
+        var el = document.getElementById('reklamace-wizard-card');
+        if (el) { e.preventDefault(); el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    });
+    var panes = document.querySelectorAll('.wizard-pane');
+    var steps = document.querySelectorAll('.wizard-step');
+    var prevBtn = document.getElementById('wizardPrev');
+    var nextBtn = document.getElementById('wizardNext');
+    var currentStep = 1;
+
+    function goTo(step) {
+        currentStep = step;
+        panes.forEach(function(p) {
+            p.classList.remove('active');
+            if (parseInt(p.dataset.pane) === step) p.classList.add('active');
+        });
+        steps.forEach(function(s) {
+            s.classList.remove('active', 'done');
+            var n = parseInt(s.dataset.step);
+            if (n === step) s.classList.add('active');
+            else if (n < step) s.classList.add('done');
+        });
+        var pbar = document.getElementById('wizardProgressBar');
+        if (pbar) { pbar.style.width = (step * 25) + '%'; pbar.setAttribute('aria-valuenow', step); }
+        prevBtn.style.display = step === 1 ? 'none' : '';
+        nextBtn.style.display = step === 4 ? 'none' : '';
+        if (step === 4) updateSummary();
+        if (step === 2) updateZarukaInfo();
+    }
+
+    function formatDate(str) {
+        if (!str || str.length !== 10) return str;
+        var p = str.split('-');
+        return p[2] + '.' + p[1] + '.' + p[0];
+    }
+    function updateSummary() {
+        var form = document.getElementById('reklamaceWizardForm');
+        var z = form.querySelector('input[name="zakaznik"]');
+        var t = form.querySelector('input[name="telefon"]');
+        var zn = form.querySelector('input[name="znacka"]');
+        var m = form.querySelector('input[name="model"]');
+        var b = form.querySelector('input[name="barva"]');
+        var dz = form.querySelector('input[name="datum_zakoupeni"]');
+        var pz = form.querySelector('textarea[name="popis_zavady"]');
+        var zakaznik = (z && z.value.trim()) ? z.value.trim() : '—';
+        var tel = (t && t.value.trim()) ? '+420 ' + t.value.trim() : '';
+        var zbozi = [zn&&zn.value, m&&m.value, b&&b.value].filter(Boolean).join(' ') || '—';
+        if (dz && dz.value) zbozi += ' (zakoupeno ' + formatDate(dz.value) + ')';
+        var zavada = (pz && pz.value.trim()) ? (pz.value.length > 80 ? pz.value.substring(0,80)+'…' : pz.value) : '—';
+        var zarukaText = '—';
+        if (dz && dz.value) {
+            var konec = zarukaVyprsi(dz.value);
+            var platna = jeZarukaPlatna(dz.value);
+            if (platna) zarukaText = 'Platí do ' + formatDateCs(konec);
+            else zarukaText = 'Vypršela – nelze přijmout';
+        }
+        document.getElementById('sum-zakaznik').textContent = zakaznik + (tel ? ' · ' + tel : '');
+        document.getElementById('sum-zbozi').textContent = zbozi;
+        document.getElementById('sum-zaruka').textContent = zarukaText;
+        document.getElementById('sum-zavada').textContent = zavada;
+    }
+
+    function zarukaVyprsi(datumZakoupeni) {
+        if (!datumZakoupeni || datumZakoupeni.length !== 10) return null;
+        var d = new Date(datumZakoupeni);
+        var konec = new Date(d);
+        konec.setFullYear(konec.getFullYear() + 2);
+        return konec;
+    }
+    function jeZarukaPlatna(datumZakoupeni) {
+        var konec = zarukaVyprsi(datumZakoupeni);
+        if (!konec) return null;
+        return new Date() <= konec;
+    }
+    function formatDateCs(d) {
+        return d.getDate() + '.' + (d.getMonth()+1) + '.' + d.getFullYear();
+    }
+    function updateZarukaInfo() {
+        var dz = (document.getElementById('datumZakoupeni') || {}).value || '';
+        var el = document.getElementById('zarukaInfo');
+        if (!el) return;
+        if (!dz) { el.innerHTML = '<span class="text-secondary">Záruka 2 roky – zadejte datum zakoupení</span>'; return; }
+        var konec = zarukaVyprsi(dz);
+        var platna = jeZarukaPlatna(dz);
+        if (platna === null) { el.innerHTML = ''; return; }
+        if (platna) {
+            el.innerHTML = '<span class="text-success"><i class="fas fa-check-circle me-1"></i>Záruka platí do ' + formatDateCs(konec) + '</span>';
+        } else {
+            el.innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>Záruka vypršela – reklamace starší než 2 roky</span>';
+        }
+    }
+
+    function validujKrok(step) {
+        var form = document.getElementById('reklamaceWizardForm');
+        var z = (form.querySelector('input[name="zakaznik"]') || {}).value || '';
+        var t = (form.querySelector('input[name="telefon"]') || {}).value || '';
+        var zn = (form.querySelector('input[name="znacka"]') || {}).value || '';
+        var m = (form.querySelector('input[name="model"]') || {}).value || '';
+        var dp = (form.querySelector('input[name="datum_prijmu"]') || {}).value || '';
+        var dz = (form.querySelector('input[name="datum_zakoupeni"]') || document.getElementById('datumZakoupeni') || {}).value || '';
+        var pz = (form.querySelector('textarea[name="popis_zavady"]') || {}).value || '';
+        if (step === 1) {
+            if (!z.trim()) { alert('Zadejte jméno zákazníka.'); return false; }
+            if (!/^\d{9}$/.test((t || '').replace(/\s/g, ''))) { alert('Zadejte platné telefonní číslo (9 číslic).'); return false; }
+        } else if (step === 2) {
+            if (!zn.trim()) { alert('Zadejte značku zboží.'); return false; }
+            if (!m.trim()) { alert('Zadejte model zboží.'); return false; }
+            if (!dp.trim()) { alert('Zadejte datum přijetí reklamace.'); return false; }
+            if (!dz.trim()) { alert('Zadejte datum zakoupení – potřebné pro kontrolu záruky (2 roky).'); return false; }
+            if (!jeZarukaPlatna(dz)) { alert('Záruka vypršela. Zboží je starší než 2 roky – nelze přijmout reklamaci.'); return false; }
+        } else if (step === 3) {
+            if (!pz.trim()) { alert('Zadejte popis závady.'); return false; }
+        }
+        return true;
+    }
+
+    nextBtn.addEventListener('click', function() {
+        if (currentStep >= 4) return;
+        if (!validujKrok(currentStep)) return;
+        goTo(currentStep + 1);
+    });
+    prevBtn.addEventListener('click', function() { if (currentStep > 1) goTo(currentStep - 1); });
+    steps.forEach(function(s) {
+        s.addEventListener('click', function() {
+            var targetStep = parseInt(this.dataset.step);
+            if (targetStep <= currentStep) { goTo(targetStep); return; }
+            for (var k = 1; k < targetStep; k++) {
+                if (!validujKrok(k)) { alert('Nejprve vyplňte povinná pole v předchozích krocích.'); return; }
+            }
+            goTo(targetStep);
+        });
+    });
+
+    document.getElementById('reklamaceWizardForm').addEventListener('submit', function(e) {
+        var form = this;
+        var zakaznik = (form.querySelector('input[name="zakaznik"]') || {}).value || '';
+        var telefon = (form.querySelector('input[name="telefon"]') || {}).value || '';
+        var znacka = (form.querySelector('input[name="znacka"]') || {}).value || '';
+        var model = (form.querySelector('input[name="model"]') || {}).value || '';
+        var dz = (form.querySelector('input[name="datum_zakoupeni"]') || document.getElementById('datumZakoupeni') || {}).value || '';
+        var popis = (form.querySelector('textarea[name="popis_zavady"]') || {}).value || '';
+        if (!zakaznik.trim()) { e.preventDefault(); goTo(1); alert('Zadejte jméno zákazníka.'); return false; }
+        if (!/^\d{9}$/.test((telefon || '').replace(/\s/g, ''))) { e.preventDefault(); goTo(1); alert('Zadejte platné telefonní číslo (9 číslic).'); return false; }
+        if (!znacka.trim()) { e.preventDefault(); goTo(2); alert('Zadejte značku zboží.'); return false; }
+        if (!model.trim()) { e.preventDefault(); goTo(2); alert('Zadejte model zboží.'); return false; }
+        if (!dz.trim()) { e.preventDefault(); goTo(2); alert('Zadejte datum zakoupení – potřebné pro kontrolu záruky (2 roky).'); return false; }
+        if (!jeZarukaPlatna(dz)) { e.preventDefault(); goTo(2); alert('Záruka vypršela. Zboží je starší než 2 roky – nelze přijmout reklamaci.'); return false; }
+        if (!popis.trim()) { e.preventDefault(); goTo(3); alert('Zadejte popis závady.'); return false; }
+    });
+    document.getElementById('reklamaceWizardForm').addEventListener('input', function() { updateSummary(); updateZarukaInfo(); });
+    document.getElementById('reklamaceWizardForm').addEventListener('change', function() {
+        updateSummary();
+        updateZarukaInfo();
+        var stavSel = document.querySelector('#reklamaceWizardForm select[name="stav"]');
+        var wrap = document.getElementById('slevaProcentWrap');
+        if (stavSel && wrap) wrap.style.display = (stavSel.value === 'Zamítnuto') ? 'block' : 'none';
+    });
+    var stavSel = document.querySelector('#reklamaceWizardForm select[name="stav"]');
+    if (stavSel && stavSel.value === 'Zamítnuto') document.getElementById('slevaProcentWrap').style.display = 'block';
+
+    // Bulk archive – zobrazení toolbaru při výběru
+    var rBulkBar = document.getElementById('reklamace-bulk-bar');
+    var rBulkCount = document.getElementById('reklamace-bulk-count');
+    var rChecks = document.querySelectorAll('.reklamace-check');
+    var rBulkClear = document.getElementById('reklamaceBulkClear');
+    function updateReklamaceBulkBar() {
+        var checked = document.querySelectorAll('.reklamace-check:checked');
+        if (rBulkBar) rBulkBar.style.display = checked.length ? 'flex' : 'none';
+        if (rBulkCount) rBulkCount.textContent = checked.length;
+    }
+    rChecks.forEach(function(cb) { cb.addEventListener('change', updateReklamaceBulkBar); });
+    if (rBulkClear) rBulkClear.addEventListener('click', function() {
+        rChecks.forEach(function(cb) { cb.checked = false; });
+        updateReklamaceBulkBar();
+    });
+
+    // Vlastní dropdown „Stav“ – jedno otevřené menu, bez Popperu, stabilní pozice
+    var openDropdown = null;
+    function closeReklDropdown() {
+        if (openDropdown) {
+            var menu = openDropdown.querySelector('[data-rekl-dropdown-menu]');
+            var btn = openDropdown.querySelector('[data-rekl-dropdown-toggle]');
+            if (menu) menu.hidden = true;
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+            openDropdown = null;
+        }
+    }
+    function toggleReklDropdown(container) {
+        var menu = container.querySelector('[data-rekl-dropdown-menu]');
+        var btn = container.querySelector('[data-rekl-dropdown-toggle]');
+        if (!menu || !btn) return;
+        var isOpen = !menu.hidden;
+        closeReklDropdown();
+        if (!isOpen) {
+            menu.hidden = false;
+            btn.setAttribute('aria-expanded', 'true');
+            openDropdown = container;
+        }
+    }
+    document.querySelectorAll('[data-rekl-dropdown]').forEach(function(container) {
+        var btn = container.querySelector('[data-rekl-dropdown-toggle]');
+        var menu = container.querySelector('[data-rekl-dropdown-menu]');
+        if (!btn || !menu) return;
+        container.addEventListener('click', function(e) { e.stopPropagation(); });
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            toggleReklDropdown(container);
+        });
+        container.querySelectorAll('.rekl-dropdown-item-form').forEach(function(form) {
+            form.addEventListener('submit', function() { closeReklDropdown(); });
+        });
+    });
+    document.addEventListener('click', function() { closeReklDropdown(); });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeReklDropdown();
+    });
+});
+</script>
+
+<section class="reklamace-table-section mb-4">
+    <div class="reklamace-table-header">
+        <h2 class="reklamace-table-title">Seznam reklamací <span class="reklamace-count">{{ reklamace|length }}</span></h2>
+        <a class="btn btn-outline-secondary btn-sm rekl-btn-pill" href="{{ url_for('reklamace_export_csv', pobocka_id=pobocka.id) }}{% if request.query_string %}?{{ request.query_string.decode('utf-8') }}{% endif %}"><i class="fas fa-download me-1"></i>Export CSV</a>
+    </div>
+    <div id="reklamace-bulk-bar" class="reklamace-bulk-bar" style="display: none;">
+        <form method="POST" action="{{ url_for('reklamace_bulk_archive', pobocka_id=pobocka.id) }}{% if request.query_string %}?{{ request.query_string.decode('utf-8') }}{% endif %}" class="d-inline-flex align-items-center gap-2 flex-wrap" id="reklamaceBulkForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <span class="reklamace-bulk-label"><span id="reklamace-bulk-count">0</span> vybraných</span>
+            <button type="submit" class="btn btn-warning btn-sm rounded-pill">Archivovat vybrané</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" id="reklamaceBulkClear">Zrušit</button>
+        </form>
+    </div>
+    <div class="card card-apple reklamace-card">
+        {% if reklamace %}
+        <div class="table-responsive reklamace-table-responsive">
+            <table class="table table-hover reklamace-table mb-0">
+                <thead>
+                    <tr>
+                        <th class="reklamace-th reklamace-th-check"><span class="visually-hidden">Vybrat</span></th>
+                        <th class="reklamace-th reklamace-th-id">#</th>
+                        <th class="reklamace-th reklamace-th-zak">Zákazník</th>
+                        <th class="reklamace-th reklamace-th-zbozi">Zboží</th>
+                        <th class="reklamace-th reklamace-th-datum">Přijetí</th>
+                        <th class="reklamace-th reklamace-th-stav">Stav</th>
+                        <th class="reklamace-th reklamace-th-zavolano text-center">Zavoláno</th>
+                        <th class="reklamace-th reklamace-th-akce text-end">Akce</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in reklamace %}
+                    <tr class="reklamace-row">
+                        <td class="reklamace-td reklamace-td-check">
+                            {% if r.stav in ['Výměna kus za kus', 'Zamítnuto'] and not r.archived %}
+                            <input type="checkbox" class="form-check-input reklamace-check" name="ids" value="{{ r.id }}" form="reklamaceBulkForm" aria-label="Vybrat #{{ r.id }}">
+                            {% endif %}
+                        </td>
+                        <td class="reklamace-td reklamace-td-id"><span class="reklamace-id">#{{ r.id }}</span></td>
+                        <td class="reklamace-td reklamace-td-zak">
+                            <span class="reklamace-zakaznik">{{ r.zakaznik }}</span>
+                            {% if r.telefon %}<span class="reklamace-tel">{{ r.telefon }}</span>{% endif %}
+                        </td>
+                        <td class="reklamace-td reklamace-td-zbozi">
+                            <span class="reklamace-zbozi">{{ r.znacka }}{% if r.model %} {{ r.model }}{% endif %}</span>{% if r.barva %}<span class="reklamace-barva">{{ r.barva }}</span>{% endif %}
+                        </td>
+                        <td class="reklamace-td reklamace-td-datum">{{ r.datum_prijmu | cesky_datum }}</td>
+                        <td class="reklamace-td reklamace-td-stav">{{ stav_reklamace_badge(r) }}</td>
+                        <td class="reklamace-td reklamace-td-zavolano text-center">
+                            {% if r.zavolano_zakaznikovi %}<span class="text-success">ano</span>{% else %}<span class="text-muted">ne</span>{% endif %}
+                        </td>
+                        <td class="reklamace-td reklamace-td-akce text-end reklamace-akce-cell">
+                            <div class="reklamace-akce-btns">
+                                <a href="{{ url_for('reklamace_edit', reklamace_id=r.id) }}" class="btn-akce-link" title="Upravit"><i class="fas fa-edit"></i></a>
+                                <a href="{{ url_for('reklamace_print', reklamace_id=r.id) }}" class="btn-akce-link" target="_blank" title="Reklamační formulář (PDF)"><i class="fas fa-file-pdf"></i></a>
+                                {% if r.stav in ['Výměna kus za kus', 'Zamítnuto'] %}
+                                <a href="{{ url_for('reklamace_protokol', reklamace_id=r.id) }}" class="btn-akce-link btn-protokol" target="_blank" title="Protokol pro zákazníka"><i class="fas fa-file-signature"></i></a>
+                                {% endif %}
+                                <div class="reklamace-dropdown" data-rekl-dropdown>
+                                    <button class="btn btn-sm btn-outline-secondary rounded-pill reklamace-dropdown-btn" type="button" data-rekl-dropdown-toggle aria-expanded="false">Stav <i class="fas fa-chevron-down ms-1" style="font-size: 0.65rem;"></i></button>
+                                    <div class="reklamace-dropdown-menu" data-rekl-dropdown-menu hidden>
+                                        {% if r.stav == 'Čeká' %}
+                                        <form method="POST" action="{{ url_for('reklamace_change_status', reklamace_id=r.id) }}" class="rekl-dropdown-item-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="vymena"><button type="submit" class="rekl-dropdown-item text-success"><i class="fas fa-check-circle me-2"></i>Prošlo – výměna</button></form>
+                                        <form method="POST" action="{{ url_for('reklamace_change_status', reklamace_id=r.id) }}" class="rekl-dropdown-item-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="poslano_usti"><button type="submit" class="rekl-dropdown-item"><i class="fas fa-truck me-2"></i>Posláno do Ústí</button></form>
+                                        <form method="POST" action="{{ url_for('reklamace_change_status', reklamace_id=r.id) }}" class="rekl-dropdown-item-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="zamitnuto"><button type="submit" class="rekl-dropdown-item text-danger"><i class="fas fa-times-circle me-2"></i>Zamítnout</button></form>
+                                        {% elif r.stav == 'Posláno do Ústí' %}
+                                        <form method="POST" action="{{ url_for('reklamace_change_status', reklamace_id=r.id) }}" class="rekl-dropdown-item-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="vymena"><button type="submit" class="rekl-dropdown-item text-success"><i class="fas fa-check-circle me-2"></i>Prošlo – výměna</button></form>
+                                        <form method="POST" action="{{ url_for('reklamace_change_status', reklamace_id=r.id) }}" class="rekl-dropdown-item-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="zamitnuto"><button type="submit" class="rekl-dropdown-item text-danger"><i class="fas fa-times-circle me-2"></i>Zamítnout</button></form>
+                                        {% endif %}
+                                        {% if r.stav in ['Výměna kus za kus', 'Zamítnuto'] and not r.archived %}
+                                        <div class="rekl-dropdown-divider"></div>
+                                        <form method="POST" action="{{ url_for('reklamace_archive', reklamace_id=r.id) }}" class="rekl-dropdown-item-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="rekl-dropdown-item text-warning"><i class="fas fa-archive me-2"></i>Archivovat</button></form>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="reklamace-empty">
+            <div class="rekl-empty-icon-inline"><i class="fas fa-inbox"></i></div>
+            <p class="mb-0">Žádné reklamace. Přidejte první přes průvodce nahoře.</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<a href="{{ url_for('reklamace_index') }}" class="btn btn-outline-secondary rekl-btn-pill">
+    <i class="fas fa-arrow-left me-2"></i>Zpět na přehled reklamací
+</a>
+{% endblock %}

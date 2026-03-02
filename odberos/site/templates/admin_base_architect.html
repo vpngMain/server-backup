@@ -1,0 +1,195 @@
+{% extends 'base.html' %}
+{% block title %}Admin – Přehled{% endblock %}
+
+{% block content %}
+<style>
+/* —— Admin ArchitectUI pimped —— */
+.admin-architect-layout { display: flex; flex-wrap: wrap; margin: 0 -1rem; min-height: 60vh; gap: 0; }
+.admin-architect-sidebar {
+    width: 272px; min-width: 272px; flex-shrink: 0;
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-hover) 100%);
+    border: 1px solid var(--border); border-radius: 20px;
+    padding: 1.5rem 0; margin: 0 1rem 1.5rem 0; height: fit-content; position: sticky; top: 1rem;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 0 0 1px rgba(99,102,241,0.04);
+    transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+.admin-architect-sidebar:hover { box-shadow: 0 12px 32px rgba(0,0,0,0.08), 0 0 0 1px rgba(99,102,241,0.08); }
+[data-theme="dark"] .admin-architect-sidebar {
+    background: linear-gradient(180deg, var(--surface) 0%, rgba(30,30,36,0.98) 100%);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(129,140,248,0.08);
+}
+.admin-architect-sidebar .architect-brand {
+    font-size: 1.2rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text);
+    padding: 0 1.35rem 1.1rem; border-bottom: 1px solid var(--border); margin-bottom: 0.85rem;
+    display: flex; align-items: center; gap: 0.6rem;
+    background: linear-gradient(135deg, rgba(99,102,241,0.08) 0%, transparent 50%);
+    margin: -1px -1px 0 -1px; padding: 1rem 1.35rem 1.1rem; border-radius: 20px 20px 0 0; border: 1px solid var(--border); border-bottom: none;
+}
+.admin-architect-sidebar .architect-brand i {
+    color: var(--accent-solid); font-size: 1.1rem;
+    filter: drop-shadow(0 0 8px rgba(99,102,241,0.35));
+}
+.admin-architect-sidebar .nav-section { padding: 0 0.65rem; }
+.admin-architect-sidebar .nav-section-title {
+    font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-secondary); padding: 1rem 0.75rem 0.4rem; opacity: 0.9;
+}
+.admin-architect-sidebar .architect-nav-link {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 1.1rem; margin-bottom: 3px;
+    border-radius: 12px; color: var(--text-secondary); text-decoration: none; font-size: 0.9375rem; font-weight: 500;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+.admin-architect-sidebar .architect-nav-link:hover {
+    background: var(--surface-hover); color: var(--text);
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.admin-architect-sidebar .architect-nav-link.active {
+    background: linear-gradient(135deg, rgba(99,102,241,0.18) 0%, rgba(124,58,237,0.1) 100%);
+    color: var(--accent-solid); font-weight: 600;
+    box-shadow: inset 3px 0 0 var(--accent-solid);
+}
+.admin-architect-sidebar .architect-nav-link i { width: 1.25rem; text-align: center; opacity: 0.95; font-size: 1rem; }
+
+.admin-architect-main { flex: 1; min-width: 0; }
+@media (max-width: 768px) {
+    .admin-architect-layout { flex-direction: column; }
+    .admin-architect-sidebar { width: 100%; position: static; margin-bottom: 1rem; }
+}
+
+/* Stat cards – pimped */
+.architect-stat-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 1.35rem;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1); height: 100%; position: relative; overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.architect-stat-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent-solid), #a855f7); opacity: 0; transition: opacity 0.3s;
+    border-radius: 18px 18px 0 0;
+}
+.architect-stat-card:hover {
+    box-shadow: 0 12px 32px rgba(0,0,0,0.1), 0 0 0 1px rgba(99,102,241,0.12);
+    border-color: rgba(99,102,241,0.25); transform: translateY(-4px);
+}
+.architect-stat-card:hover::before { opacity: 1; }
+.architect-stat-card .architect-stat-icon {
+    width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem; margin-bottom: 0.85rem; transition: transform 0.3s ease;
+}
+.architect-stat-card:hover .architect-stat-icon { transform: scale(1.08); }
+.architect-stat-card .architect-stat-icon.bg-primary {
+    background: linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(124,58,237,0.15) 100%);
+    color: var(--accent-solid); box-shadow: 0 4px 12px rgba(99,102,241,0.2);
+}
+.architect-stat-card .architect-stat-icon.bg-success {
+    background: linear-gradient(135deg, rgba(34,197,94,0.2) 0%, rgba(22,163,74,0.15) 100%);
+    color: #16a34a; box-shadow: 0 4px 12px rgba(34,197,94,0.2);
+}
+.architect-stat-card .architect-stat-icon.bg-info {
+    background: linear-gradient(135deg, rgba(59,130,246,0.2) 0%, rgba(37,99,235,0.15) 100%);
+    color: #2563eb; box-shadow: 0 4px 12px rgba(59,130,246,0.2);
+}
+.architect-stat-card .architect-stat-icon.bg-warning {
+    background: linear-gradient(135deg, rgba(245,158,11,0.2) 0%, rgba(217,119,6,0.15) 100%);
+    color: #d97706; box-shadow: 0 4px 12px rgba(245,158,11,0.2);
+}
+.architect-stat-card .architect-stat-value {
+    font-size: 1.9rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text); line-height: 1.2;
+    background: linear-gradient(135deg, var(--text) 0%, var(--text-secondary) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+[data-theme="dark"] .architect-stat-card .architect-stat-value { background: none; -webkit-text-fill-color: var(--text); }
+.architect-stat-card .architect-stat-label { font-size: 0.8125rem; color: var(--text-secondary); margin-top: 0.3rem; font-weight: 500; }
+
+/* Section cards – pimped */
+.architect-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 18px; margin-bottom: 1.35rem; overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04); transition: box-shadow 0.3s ease, border-color 0.3s;
+}
+.architect-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,0.08); border-color: rgba(99,102,241,0.08); }
+.architect-card-header {
+    font-size: 0.9375rem; font-weight: 700; padding: 1.1rem 1.35rem; background: linear-gradient(180deg, var(--surface-hover) 0%, var(--surface) 100%);
+    border-bottom: 1px solid var(--border); color: var(--text); display: flex; align-items: center; justify-content: space-between;
+    letter-spacing: -0.02em;
+}
+.architect-card-body { padding: 1.1rem 1.35rem; }
+.architect-card-body.p-0 { padding: 0; }
+.architect-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+.architect-table th {
+    text-align: left; padding: 0.8rem 1.35rem; font-weight: 600; font-size: 0.6875rem; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-secondary); background: var(--surface-hover); border-bottom: 1px solid var(--border);
+}
+.architect-table td { padding: 0.9rem 1.35rem; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; transition: background 0.2s; }
+.architect-table tbody tr { position: relative; transition: background 0.2s, box-shadow 0.2s; }
+.architect-table tbody tr:hover { background: var(--surface-hover); box-shadow: inset 3px 0 0 rgba(99,102,241,0.4); }
+.architect-table tbody tr:last-child td { border-bottom: none; }
+</style>
+
+<div class="admin-architect-layout">
+    <aside class="admin-architect-sidebar">
+        <div class="architect-brand">
+            <i class="fas fa-cube"></i>
+            <span>Architect</span>
+        </div>
+        <nav class="nav-section">
+            <div class="nav-section-title">Menu</div>
+            <a href="{{ url_for('admin_dashboard') }}" class="architect-nav-link active">
+                <i class="fas fa-chart-pie"></i> Analytics
+            </a>
+            <a href="{{ url_for('index') }}" class="architect-nav-link"><i class="fas fa-plus-circle"></i> Nový odběr</a>
+            <a href="{{ url_for('reklamace_index') }}" class="architect-nav-link"><i class="fas fa-tools"></i> Reklamace</a>
+        </nav>
+        <nav class="nav-section">
+            <div class="nav-section-title">Nástroje</div>
+            <a href="{{ url_for('admin_statistiky') }}" class="architect-nav-link"><i class="fas fa-chart-bar"></i> Statistiky</a>
+            <a href="{{ url_for('admin_reklamace_archiv') }}" class="architect-nav-link"><i class="fas fa-archive"></i> Archiv reklamací</a>
+            <a href="{{ url_for('admin_export_excel') }}" class="architect-nav-link"><i class="fas fa-file-excel"></i> Export Excel</a>
+            <a href="{{ url_for('admin_export_all') }}" class="architect-nav-link"><i class="fas fa-file-csv"></i> Export CSV</a>
+        </nav>
+        <nav class="nav-section">
+            <div class="nav-section-title">Účet</div>
+            <a href="{{ url_for('index') }}" class="architect-nav-link"><i class="fas fa-home"></i> Zpět na odběry</a>
+            <a href="{{ url_for('logout') }}" class="architect-nav-link"><i class="fas fa-sign-out-alt"></i> Odhlásit</a>
+        </nav>
+    </aside>
+    <div class="admin-architect-main">
+        <!-- Top bar – viz ArchitectUI: logo vlevo, uživatel vpravo -->
+        <header class="admin-topbar">
+            <div class="admin-topbar-left">
+                <span class="admin-topbar-logo"><i class="fas fa-chart-line me-2"></i>Analytics</span>
+            </div>
+            <div class="admin-topbar-right">
+                <span class="admin-topbar-search-hint text-secondary small me-3 d-none d-md-inline"><kbd class="kbd-hint">⌘K</kbd> vyhledávání</span>
+                <div class="admin-topbar-user">
+                    <span class="admin-topbar-avatar"><i class="fas fa-user"></i></span>
+                    <div class="admin-topbar-user-text">
+                        <strong>{{ current_user.jmeno or current_user.username }}</strong>
+                        <span class="d-block small text-secondary">{% if current_user.role == 'admin' %}Admin{% else %}Uživatel{% endif %}</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+        {% block admin_content %}{% endblock %}
+    </div>
+</div>
+<style>
+.admin-topbar {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;
+    padding: 0.75rem 0 1rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+}
+.admin-topbar-logo { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.03em; color: var(--text); }
+.admin-topbar-logo i { color: var(--accent-solid); }
+.admin-topbar-right { display: flex; align-items: center; }
+.admin-topbar-user {
+    display: flex; align-items: center; gap: 0.65rem; padding: 0.4rem 0.75rem; border-radius: 12px;
+    background: var(--surface-hover); border: 1px solid var(--border);
+}
+.admin-topbar-avatar {
+    width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent-solid), #a855f7);
+    color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+}
+.admin-topbar-user-text strong { display: block; font-size: 0.9rem; }
+</style>
+{% endblock %}

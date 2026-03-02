@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Admin – Uživatelé{% endblock %}
+{% block content %}
+<h2>Účty uživatelů</h2>
+<p class="hint">Uživatel = přihlašovací účet. Uživatel s rolí „branch“ musí být přiřazen k alespoň jedné pobočce; může jich mít více a při objednávání si vybere jednu.</p>
+<form method="post" action="{{ url_for('admin_users') }}" class="form-inline" id="form-create-user" onsubmit="return validateBranchForm(this);">
+    <input type="hidden" name="action" value="create">
+    <div class="form-group">
+        <label for="username">Uživatelské jméno</label>
+        <input type="text" id="username" name="username" required>
+    </div>
+    <div class="form-group">
+        <label for="password">Heslo</label>
+        <input type="text" id="password" name="password" required placeholder="Viditelné při zadání">
+    </div>
+    <div class="form-group">
+        <label for="role">Role</label>
+        <select id="role" name="role">
+            <option value="branch">branch</option>
+            <option value="warehouse">warehouse</option>
+            <option value="admin">admin</option>
+        </select>
+    </div>
+    <div class="form-group" id="branch-group">
+        <span class="label">Pobočky (může být více)</span>
+        <div class="branch-checkboxes">
+            {% for b in branches %}
+            <label class="branch-checkbox"><input type="checkbox" name="branch_ids" value="{{ b.id }}"> {{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</label>
+            {% endfor %}
+        </div>
+        <p class="hint">Uživatel musí být přiřazen k alespoň jedné pobočce.</p>
+    </div>
+    <button type="submit" class="btn btn-primary">Přidat uživatele</button>
+</form>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Účet</th>
+            <th>Role</th>
+            <th>Pobočka</th>
+            <th>Akce</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.username }}</td>
+            <td>{{ u.role }}</td>
+            <td>{{ u.branch_names_display() if u.role == 'branch' else '—' }}</td>
+            <td>
+                {% if u.id == edit_user_id %}
+                <a href="{{ url_for('admin_users') }}" class="btn btn-sm">Zrušit úpravu</a>
+                {% else %}
+                <a href="{{ url_for('admin_users') }}?edit={{ u.id }}" class="btn btn-sm">Upravit</a>
+                <form method="post" action="{{ url_for('admin_user_delete', user_id=u.id) }}" class="inline-form" onsubmit="return confirm('Opravdu smazat tohoto uživatele?');">
+                    <button type="submit" class="btn btn-sm">Smazat</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% if u.id == edit_user_id %}
+        <tr class="edit-row">
+            <td colspan="4">
+                <form method="post" action="{{ url_for('admin_user_edit', user_id=u.id) }}" class="form-inline form-edit-user" onsubmit="return validateBranchForm(this);">
+                    <div class="form-group">
+                        <label>Uživatelské jméno</label>
+                        <input type="text" name="username" value="{{ u.username }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select name="role">
+                            <option value="branch" {{ 'selected' if u.role == 'branch' }}>branch</option>
+                            <option value="warehouse" {{ 'selected' if u.role == 'warehouse' }}>warehouse</option>
+                            <option value="admin" {{ 'selected' if u.role == 'admin' }}>admin</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <span class="label">Pobočky (může být více)</span>
+                        <div class="branch-checkboxes">
+                            {% set user_branch_ids = u.get_branch_ids() %}
+                            {% for b in branches %}
+                            <label class="branch-checkbox"><input type="checkbox" name="branch_ids" value="{{ b.id }}" {{ 'checked' if b.id in user_branch_ids else '' }}> {{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Nové heslo (prázdné = beze změny)</label>
+                        <input type="text" name="new_password" placeholder="Viditelné pro admina">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Uložit</button>
+                </form>
+            </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+<script>
+document.getElementById('role').addEventListener('change', function() {
+    document.getElementById('branch-group').style.display = this.value === 'branch' ? 'block' : 'none';
+});
+document.getElementById('branch-group').style.display = document.getElementById('role').value === 'branch' ? 'block' : 'none';
+
+function validateBranchForm(form) {
+    var roleSelect = form.querySelector('select[name="role"]');
+    if (!roleSelect || roleSelect.value !== 'branch') return true;
+    var checked = form.querySelectorAll('input[name="branch_ids"]:checked');
+    if (checked.length === 0) {
+        alert('Uživatel s rolí branch musí být přiřazen k alespoň jedné pobočce.');
+        return false;
+    }
+    return true;
+}
+</script>
+{% endblock %}

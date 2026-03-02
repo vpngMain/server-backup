@@ -1,0 +1,3 @@
+# Pouze pro nasazení s PostgreSQL (Render, Neon).
+# Lokálně na Windows stačí: pip install -r requirements.txt (SQLite).
+psycopg2-binary==2.9.9

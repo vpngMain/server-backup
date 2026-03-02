@@ -1,0 +1,30 @@
+# Systemd unit – Odběry (Waitress)
+# Instalace: sudo cp odberos.service /etc/systemd/system/
+#            sudo systemctl daemon-reload && sudo systemctl enable --now odberos
+# Env: vytvořte /opt/odberos/site/odberos.env s SECRET_KEY, FLASK_ENV, ALLOW_HTTP_SESSION, PORT
+# Uživatel: buď vytvořte "odberos" (useradd -r odberos) a chown adresář, nebo změňte User= na vaše jméno
+
+[Unit]
+Description=Odberos - Odběry a reklamace (Waitress)
+After=network.target
+
+[Service]
+Type=simple
+User=odberos
+Group=odberos
+WorkingDirectory=/opt/odberos/site
+
+# Načtení proměnných (vytvořte soubor a nastavte SECRET_KEY)
+EnvironmentFile=/opt/odberos/site/odberos.env
+
+# Spuštění přes venv
+ExecStart=/opt/odberos/site/.venv/bin/python run_waitress.py
+Restart=always
+RestartSec=5
+
+# Omezení (volitelné)
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

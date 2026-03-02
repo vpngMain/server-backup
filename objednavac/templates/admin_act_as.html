@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Působit jako pobočka / sklad{% endblock %}
+{% block content %}
+<h2>Působit jako pobočka nebo sklad</h2>
+<p class="hint">Všechny akce v režimu pobočky nebo skladu se zapisují do audit logu s poznámkou „admin jako …“.</p>
+
+{% if acting_as_role %}
+<div class="flash flash-info" role="alert">
+    Aktuálně působíte jako <strong>{{ acting_as_role }}</strong>{% if acting_as_branch %}: {{ acting_as_branch.name }}{% endif %}.
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('admin_act_as') }}" class="card-section">
+    <h3>Působit jako pobočka</h3>
+    <p>Zobrazí se vám přehled a objednávky zvolené pobočky jako běžnému uživateli pobočky.</p>
+    <div class="form-group">
+        <label for="branch_id">Pobočka</label>
+        <select name="branch_id" id="branch_id" required>
+            <option value="">— vyberte —</option>
+            {% for b in branches %}
+            <option value="{{ b.id }}">{{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <input type="hidden" name="action" value="branch">
+    <button type="submit" class="btn btn-primary">Působit jako tato pobočka</button>
+</form>
+
+<form method="post" action="{{ url_for('admin_act_as') }}" class="card-section">
+    <input type="hidden" name="action" value="warehouse">
+    <h3>Působit jako sklad</h3>
+    <p>Zobrazí se vám přehled skladu a objednávky jako běžnému uživateli skladu.</p>
+    <button type="submit" class="btn btn-primary">Působit jako sklad</button>
+</form>
+
+{% if acting_as_role %}
+<form method="post" action="{{ url_for('admin_act_as') }}" class="card-section">
+    <input type="hidden" name="action" value="end">
+    <button type="submit" class="btn btn-secondary">Ukončit režim a vrátit se do adminu</button>
+</form>
+{% endif %}
+{% endblock %}

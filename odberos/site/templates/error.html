@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+
+{% block title %}Chyba {{ error_code }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5 py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card card-apple shadow-lg">
+                <div class="card-body text-center p-4 p-md-5">
+                    <h1 class="display-1 fw-bold text-danger mb-3" style="letter-spacing: -0.04em;">{{ error_code }}</h1>
+                    <h2 class="h4 fw-semibold mb-4" style="letter-spacing: -0.02em;">{{ error_message }}</h2>
+                    <p class="text-secondary mb-4" style="max-width: 28rem; margin-left: auto; margin-right: auto;">
+                        {% if error_code == 404 %}
+                            Stránka, kterou hledáte, neexistuje nebo byla přesunuta.
+                        {% elif error_code == 500 %}
+                            Došlo k vnitřní chybě serveru. Zkuste to prosím později.
+                        {% elif error_code == 403 %}
+                            Nemáte oprávnění k přístupu k této stránce.
+                        {% elif error_code == 400 %}
+                            Neplatný požadavek (např. vypršela přihlášená session). Obnovte stránku (F5) a zkuste znovu.
+                        {% else %}
+                            Došlo k neočekávané chybě.
+                        {% endif %}
+                    </p>
+                    <a href="{{ url_for('index') }}" class="btn btn-primary rounded-pill px-4">
+                        <i class="fas fa-home me-2"></i>Zpět na hlavní stránku
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

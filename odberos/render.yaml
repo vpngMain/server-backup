@@ -1,0 +1,27 @@
+# Render Blueprint – Odběry a reklamace
+# Databáze: Neon PostgreSQL (zdarma) – viz RENDER_DEPLOYMENT.md
+#
+# DŮLEŽITÉ: Repozitář musí mít app.py, requirements.txt, run_waitress.py v KOŘENI.
+# Pokud máte složku site/, nastavte v Render Dashboard: Root Directory = site
+
+services:
+  - type: web
+    name: odberos
+    runtime: python
+    region: frankfurt
+    # rootDir: site  # Odkomentujte, pokud máte složku site/ v repozitáři
+
+    buildCommand: pip install -r requirements.txt && pip install -r requirements-postgres.txt
+    startCommand: python run_waitress.py
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: FLASK_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+        # Nastavte v Render Dashboard: Neon connection string
+      - key: SECRET_KEY
+        generateValue: true
+        # Nebo nastavte ručně v Dashboard

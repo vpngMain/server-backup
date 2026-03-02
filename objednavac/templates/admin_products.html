@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Admin – Produkty{% endblock %}
+{% block content %}
+<h2>Produkty</h2>
+<p class="hint">Produkty se mění pouze přes Import. Počet: {{ products|length }}</p>
+<div class="products-filters">
+    <div class="search-form">
+        <label for="admin-live-search">Vyhledávání (název, sku)</label>
+        <input type="search" id="admin-live-search" placeholder="Napište pro filtrování…" value="{{ search_q or '' }}" autocomplete="off">
+    </div>
+    {% if groups %}
+    <div class="form-group form-group-inline">
+        <label for="filter-group">Skupina</label>
+        <select id="filter-group" class="filter-group-select" onchange="applyUrlFilters();">
+            <option value="">Všechny skupiny</option>
+            {% for g in groups %}
+            <option value="{{ g }}" {{ 'selected' if group_filter == g else '' }}>{{ g }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    {% if brands %}
+    <div class="form-group form-group-inline">
+        <label for="filter-brand">Značka</label>
+        <select id="filter-brand" class="filter-group-select" onchange="applyUrlFilters();">
+            <option value="">Všechny značky</option>
+            {% for b in brands %}
+            <option value="{{ b }}" {{ 'selected' if brand_filter == b else '' }}>{{ b }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    {% if categories %}
+    <div class="form-group form-group-inline">
+        <label for="filter-category">Síla nikotinu</label>
+        <select id="filter-category" class="filter-group-select" onchange="applyUrlFilters();">
+            <option value="">Vše</option>
+            {% for c in categories %}
+            <option value="{{ c }}" {{ 'selected' if category_filter == c else '' }}>{{ c }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    <div class="form-group form-group-inline">
+        <label for="filter-internal">Interní</label>
+        <select id="filter-internal" class="filter-group-select" onchange="applyUrlFilters();">
+            <option value="" {{ 'selected' if internal_filter != '0' and internal_filter != '1' else '' }}>Vše</option>
+            <option value="0" {{ 'selected' if internal_filter == '0' else '' }}>Jen běžné</option>
+            <option value="1" {{ 'selected' if internal_filter == '1' else '' }}>Jen interní</option>
+        </select>
+    </div>
+</div>
+{% if products %}
+<div class="products-grid" id="admin-products-grid">
+    {% for p in products %}
+    {% set cat = p.name | product_category %}
+    <article class="product-card" id="product-{{ p.id }}">
+        <div class="product-card-inner">
+            <div class="product-card-header">
+                <h3 class="product-card-title">{{ p.name }}</h3>
+                {% if cat %}<span class="product-card-category product-category-{{ cat }}">{{ cat }}</span>{% endif %}
+            </div>
+            <dl class="product-card-meta-list">
+                <dt>Skupina</dt><dd>{{ p.group_name or '—' }}</dd>
+                <dt>Jednotka</dt><dd>{{ p.unit or 'ks' }}</dd>
+                {% if p.sku %}
+                <dt>SKU</dt><dd class="td-sku">{{ p.sku }}</dd>
+                {% endif %}
+                {% if p.pc %}
+                <dt>pc</dt><dd>{{ p.pc }}</dd>
+                {% endif %}
+                <dt>Interní</dt><dd>{{ 'Ano' if p.is_internal else 'Ne' }}</dd>
+            </dl>
+            <form method="post" action="{{ url_for('admin_product_set_internal', product_id=p.id) }}" class="product-card-form">
+                <input type="hidden" name="internal" value="{{ '0' if p.is_internal else '1' }}">
+                <button type="submit" class="btn btn-sm {{ 'btn-primary' if p.is_internal else '' }}">{{ 'Zrušit interní' if p.is_internal else 'Označit jako interní' }}</button>
+            </form>
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<p>Žádné produkty{% if search_q or group_filter or brand_filter or category_filter or internal_filter %} nevyhovují filtrům. <a href="{{ url_for('admin_products') }}">Zobrazit vše</a>{% else %}. Použijte <a href="{{ url_for('admin_import') }}">Import</a>{% endif %}.</p>
+{% endif %}
+<script>
+(function() {
+    function applyUrlFilters() {
+        var q = (document.getElementById('admin-live-search') && document.getElementById('admin-live-search').value.trim()) || '';
+        var g = (document.getElementById('filter-group') && document.getElementById('filter-group').value) || '';
+        var b = (document.getElementById('filter-brand') && document.getElementById('filter-brand').value) || '';
+        var c = (document.getElementById('filter-category') && document.getElementById('filter-category').value) || '';
+        var i = (document.getElementById('filter-internal') && document.getElementById('filter-internal').value) || '';
+        var params = new URLSearchParams();
+        if (g) params.set('group', g);
+        if (b) params.set('brand', b);
+        if (c) params.set('category', c);
+        if (i) params.set('internal', i);
+        if (q) params.set('q', q);
+        window.location.href = '{{ url_for("admin_products") }}' + (params.toString() ? '?' + params.toString() : '');
+    }
+    window.applyUrlFilters = applyUrlFilters;
+})();
+(function() {
+    var input = document.getElementById('admin-live-search');
+    var grid = document.getElementById('admin-products-grid');
+    if (!input || !grid) return;
+    var cards = grid.querySelectorAll('.product-card');
+    function filter() {
+        var q = (input.value || '').trim().toLowerCase();
+        for (var i = 0; i < cards.length; i++) {
+            var card = cards[i];
+            var name = (card.querySelector('.product-card-title') && card.querySelector('.product-card-title').textContent) || '';
+            var meta = (card.querySelector('.product-card-meta-list') && card.querySelector('.product-card-meta-list').textContent) || '';
+            var show = !q || name.toLowerCase().indexOf(q) !== -1 || meta.toLowerCase().indexOf(q) !== -1;
+            card.style.display = show ? '' : 'none';
+        }
+    }
+    var urlSyncTimer;
+    input.addEventListener('input', function() {
+        filter();
+        clearTimeout(urlSyncTimer);
+        urlSyncTimer = setTimeout(function() {
+            var params = new URLSearchParams(window.location.search);
+            if (input.value.trim()) params.set('q', input.value.trim()); else params.delete('q');
+            history.replaceState(null, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
+        }, 400);
+    });
+    input.addEventListener('keyup', filter);
+    filter();
+})();
+</script>
+{% endblock %}

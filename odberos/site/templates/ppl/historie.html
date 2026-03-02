@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% block title %}PPL – {{ pobocka.nazev }} · Historie{% endblock %}
+{% block content %}
+<header class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb breadcrumb-apple">
+            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Odběry</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('ppl_index') }}">PPL sklad</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('ppl_branch', pobocka_id=pobocka.id) }}">{{ pobocka.nazev }}</a></li>
+            <li class="breadcrumb-item active">Historie</li>
+        </ol>
+    </nav>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <h1 class="page-title mb-0">Historie · {{ pobocka.nazev }}</h1>
+        <a href="{{ url_for('ppl_branch', pobocka_id=pobocka.id) }}" class="btn btn-outline-primary btn-sm rounded-pill" title="Zpět na seznam zásilek" aria-label="Zpět na zásilky">Zpět na zásilky</a>
+    </div>
+</header>
+<div class="page-section">
+    <div id="historyFilters" class="mb-3 row g-2 align-items-end" style="display: none;">
+        <div class="col-auto">
+            <label for="historyActionFilter" class="form-label mb-0 small">Typ akce</label>
+            <select id="historyActionFilter" class="form-select form-select-sm ppl-touch-target" aria-label="Filtr podle typu akce">
+                <option value="">Všechny</option>
+                <option value="ADD">Přidáno</option>
+                <option value="DELETE">Smazáno</option>
+                <option value="VYDANO">Vydáno</option>
+                <option value="UPDATE_NOTES">Poznámky</option>
+                <option value="INVENTURA_FINISH">Inventura ukončena</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label for="historyDateFilter" class="form-label mb-0 small">Datum</label>
+            <input type="date" id="historyDateFilter" class="form-control form-control-sm ppl-touch-target" aria-label="Filtr podle data">
+        </div>
+        <div class="col-auto">
+            <button type="button" id="historyFilterReset" class="btn btn-outline-secondary btn-sm rounded-pill" title="Zrušit filtry">Zrušit filtry</button>
+        </div>
+    </div>
+    <div class="card card-apple card-apple-static overflow-hidden">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Akce</th>
+                        <th>Číslo zásilky</th>
+                        <th>Umístění</th>
+                        <th>Poznámky</th>
+                        <th>Čas</th>
+                    </tr>
+                </thead>
+                <tbody id="historyList"></tbody>
+            </table>
+        </div>
+    </div>
+    <div id="historyEmpty" class="card card-apple text-center py-5" style="display: none;">
+        <p class="mb-0 text-muted">Žádná historie.</p>
+        <a href="{{ url_for('ppl_branch', pobocka_id=pobocka.id) }}" class="btn btn-outline-primary rounded-pill mt-3 ppl-cta" title="Zpět na zásilky">Zpět na zásilky</a>
+    </div>
+</div>
+<script>
+(function() {
+    var pobockaId = {{ pobocka.id }};
+    var allHistory = [];
+    var actionLabels = { 'ADD': 'Přidáno', 'DELETE': 'Smazáno', 'VYDANO': 'Vydáno', 'UPDATE_NOTES': 'Poznámky', 'INVENTURA_FINISH': 'Inventura ukončena' };
+    function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function cell(val, empty) { return val ? esc(val) : '<span class="text-muted">' + (empty || '—') + '</span>'; }
+    function renderHistory(list) {
+        var tbody = document.getElementById('historyList');
+        if (!list.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center py-4">Žádný záznam nevyhovuje filtrům.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = list.map(function(h) {
+            var action = (h.action || '').trim();
+            var label = actionLabels[action] || action;
+            var badge = action === 'INVENTURA_FINISH' ? 'bg-warning text-dark' : (action === 'ADD' ? 'bg-success' : (action === 'DELETE' ? 'bg-danger' : (action === 'VYDANO' ? 'bg-info' : 'bg-secondary')));
+            return '<tr><td><span class="badge ' + badge + '">' + esc(label) + '</span></td><td>' + cell(h.parcel_code) + '</td><td>' + cell(h.shelf) + '</td><td class="text-break">' + cell(h.notes) + '</td><td class="text-nowrap text-muted" style="font-size:0.875rem">' + cell(h.timestamp, '') + '</td></tr>';
+        }).join('');
+    }
+    function applyFilters() {
+        var actionVal = (document.getElementById('historyActionFilter').value || '').trim();
+        var dateVal = (document.getElementById('historyDateFilter').value || '').trim();
+        var filtered = allHistory;
+        if (actionVal) filtered = filtered.filter(function(h) { return (h.action || '').trim() === actionVal; });
+        if (dateVal) filtered = filtered.filter(function(h) { var t = (h.timestamp || '').slice(0, 10); return t === dateVal; });
+        renderHistory(filtered);
+    }
+    document.getElementById('historyActionFilter').addEventListener('change', applyFilters);
+    document.getElementById('historyDateFilter').addEventListener('change', applyFilters);
+    document.getElementById('historyFilterReset').addEventListener('click', function() {
+        document.getElementById('historyActionFilter').value = '';
+        document.getElementById('historyDateFilter').value = '';
+        applyFilters();
+    });
+    fetch('/ppl/' + pobockaId + '/api/history', { headers: { 'Accept': 'application/json' } })
+        .then(function(r) { if (!r.ok) throw new Error('API'); return r.json(); })
+        .then(function(data) {
+            if (!Array.isArray(data) || !data.length) {
+                document.getElementById('historyEmpty').style.display = 'block';
+                return;
+            }
+            allHistory = data;
+            document.getElementById('historyFilters').style.display = '';
+            applyFilters();
+        })
+        .catch(function() {
+            document.getElementById('historyList').innerHTML = '<tr><td colspan="5" class="text-danger text-center py-4">Chyba načtení. Zkuste to znovu.</td></tr>';
+        });
+})();
+</script>
+<style>@media (max-width: 767.98px) { .ppl-touch-target { min-height: 44px; } .ppl-cta { min-height: 44px; } }</style>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{% if order_type_filter == 'internal' %}Interní objednávky{% else %}Moje objednávky{% endif %}{% endblock %}
+{% block content %}
+<h2>{% if order_type_filter == 'internal' %}Interní objednávky{% else %}Moje objednávky{% endif %}</h2>
+<p class="hint">
+    {% if order_type_filter == 'internal' %}
+    <a href="{{ url_for('branch_orders') }}">Přepnout na běžné objednávky</a>
+    {% else %}
+    <a href="{{ url_for('branch_orders', type='internal') }}">Přepnout na interní objednávky</a>
+    {% endif %}
+</p>
+{% if orders %}
+<div class="order-list">
+    {% for o in orders %}
+    <a href="{{ url_for('branch_order_detail', order_id=o.id) }}" class="order-card order-card-link">
+        <span class="order-card-id">Objednávka {{ o.id }}{% if o.created_by_warehouse_id %} <span class="badge-warehouse" title="Vytvořeno skladem">sklad</span>{% endif %}</span>
+        <span class="order-card-meta">{{ o.created_at | format_datetime }}</span>
+        <span class="status-badge status-{{ o.status }}">{{ status_cz(o.status) }}</span>
+        <span class="order-card-invoice" title="Stav faktury">{% if o.invoice_ok == true %}✅ Cajk{% elif o.invoice_ok == false %}❌ Chyba{% else %}—{% endif %}</span>
+        <span class="order-card-count">{{ o.items|length }} položek</span>
+        <span class="order-card-arrow" aria-hidden="true">→</span>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<p>Zatím žádné objednávky.</p>
+{% endif %}
+{% endblock %}

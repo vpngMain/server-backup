@@ -1,0 +1,5 @@
+# E2E testy – Selenium + pytest
+# Instalace: pip install -r requirements-test.txt
+# Selenium 4.6+ obsahuje Selenium Manager – automaticky stáhne ChromeDriver pro vaši verzi Chrome/Chromium
+pytest==8.3.3
+selenium>=4.15.0

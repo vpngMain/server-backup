@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Admin – Import{% endblock %}
+{% block content %}
+<h2>Import</h2>
+
+<section class="card-section" style="margin-bottom: 2rem;">
+    <h3>Import produktů</h3>
+    <p class="hint">Soubor s hlavičkou. CSV nebo XLS/XLSX. Očekávané sloupce: <strong>název_skupiny</strong> | <strong>název</strong> | <strong>ks</strong> (jednotka) | <strong>pc</strong>. Volitelně <strong>sku</strong>.</p>
+    <form method="post" action="{{ url_for('admin_import') }}" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="file">Soubor</label>
+            <input type="file" id="file" name="file" accept=".csv,.xls,.xlsx" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Importovat produkty</button>
+    </form>
+</section>
+
+<section class="card-section" style="margin-bottom: 2rem;">
+    <h3>Import interních produktů</h3>
+    <p class="hint">CSV se stejnou hlavičkou jako běžné produkty: <strong>název_skupiny</strong> | <strong>název</strong> | <strong>ks</strong> | <strong>pc</strong>. Volitelně <strong>sku</strong>. Data jdou do samostatné tabulky interních produktů (kancelář). <a href="{{ url_for('admin_internal_products') }}">Přejít na přehled interních produktů</a>.</p>
+    <form method="post" action="{{ url_for('admin_import_internal') }}" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="file_internal">Soubor CSV</label>
+            <input type="file" id="file_internal" name="file" accept=".csv" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Importovat interní produkty</button>
+    </form>
+</section>
+
+<section class="card-section" style="margin-bottom: 2rem;">
+    <h3>Import objednávek</h3>
+    <p class="hint">CSV s hlavičkou. Sloupce: <strong>branch_code</strong> (kód pobočky), <strong>product_id</strong> (ID produktu), <strong>quantity</strong> (množství). Řádky se stejným branch_code tvoří jednu objednávku. Pobočka musí existovat. Validace: pobočka, produkt, množství &gt; 0.</p>
+    <form method="post" action="{{ url_for('admin_import_orders') }}" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="file_orders">Soubor CSV</label>
+            <input type="file" id="file_orders" name="file" accept=".csv" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Importovat objednávky</button>
+    </form>
+</section>
+
+<section class="card-section">
+    <h3>Import výdejek</h3>
+    <p class="hint">CSV s hlavičkou. Sloupce: <strong>order_id</strong>, <strong>order_item_id</strong>, <strong>shipped_quantity</strong>. Aktualizuje odeslané množství u položek objednávky. Validace: objednávka a položka musí existovat.</p>
+    <form method="post" action="{{ url_for('admin_import_vydejky') }}" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="file_vydejky">Soubor CSV</label>
+            <input type="file" id="file_vydejky" name="file" accept=".csv" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Importovat výdejky</button>
+    </form>
+</section>
+{% endblock %}

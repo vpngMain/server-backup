@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="cs" id="html-theme">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="application-name" content="Objednávač">
+    <title>{% block title %}Objednávač{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script>
+    (function(){var k='darkMode';var v=localStorage.getItem(k);if(v==='1')document.documentElement.classList.add('dark-mode');})();
+    </script>
+</head>
+<body class="{% if current_user and current_user.role == 'admin' %}layout-admin{% endif %}{% if current_user and current_user.username == 'Viktorinka' %} theme-viktorinka{% endif %}" id="body-el">
+    {% if current_user and current_user.username == 'Viktorinka' %}
+    <div class="viktorinka-decorations" aria-hidden="true">
+        <span class="v-heart v-h1">♥</span><span class="v-heart v-h2">♥</span><span class="v-heart v-h3">♥</span>
+        <span class="v-heart v-h4">♥</span><span class="v-heart v-h5">♥</span><span class="v-heart v-h6">♥</span>
+        <span class="v-sparkle v-s1">✦</span><span class="v-sparkle v-s2">✧</span><span class="v-sparkle v-s3">✦</span>
+        <span class="v-sparkle v-s4">✧</span><span class="v-sparkle v-s5">✦</span><span class="v-sparkle v-s6">✧</span>
+    </div>
+    {% endif %}
+    {% if current_user and current_user.role == 'admin' %}
+    <div class="admin-sidebar-overlay" id="admin-sidebar-overlay" aria-hidden="true"></div>
+    <aside class="admin-sidebar" id="admin-sidebar" aria-label="Hlavní navigace">
+        <div class="admin-sidebar-header">
+            <a href="{{ url_for('admin_dashboard') }}" class="admin-sidebar-brand">Objednávač</a>
+            <button type="button" class="admin-sidebar-close" id="admin-sidebar-close" aria-label="Zavřít menu">
+                <span aria-hidden="true">×</span>
+            </button>
+        </div>
+        <nav class="admin-nav">
+            <span class="admin-nav-section">Menu</span>
+            <a href="{{ url_for('admin_dashboard') }}" class="admin-nav-item {% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📊</span>
+                <span>Přehled</span>
+            </a>
+            <a href="{{ url_for('admin_orders') }}" class="admin-nav-item {% if request.endpoint == 'admin_orders' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📋</span>
+                <span>Objednávky</span>
+            </a>
+            <a href="{{ url_for('admin_products') }}" class="admin-nav-item {% if request.endpoint == 'admin_products' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📦</span>
+                <span>Produkty</span>
+            </a>
+            <a href="{{ url_for('admin_internal_products') }}" class="admin-nav-item {% if request.endpoint == 'admin_internal_products' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📋</span>
+                <span>Interní produkty</span>
+            </a>
+            <a href="{{ url_for('admin_users') }}" class="admin-nav-item {% if request.endpoint == 'admin_users' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">👥</span>
+                <span>Uživatelé</span>
+            </a>
+            <a href="{{ url_for('admin_branches') }}" class="admin-nav-item {% if request.endpoint == 'admin_branches' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">🏢</span>
+                <span>Pobočky</span>
+            </a>
+            <a href="{{ url_for('admin_import') }}" class="admin-nav-item {% if request.endpoint == 'admin_import' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📥</span>
+                <span>Import</span>
+            </a>
+            <a href="{{ url_for('admin_act_as') }}" class="admin-nav-item {% if request.endpoint == 'admin_act_as' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">👤</span>
+                <span>Působit jako…</span>
+            </a>
+            <span class="admin-nav-section admin-nav-section-end">Účet</span>
+            <a href="{{ url_for('logout') }}" class="admin-nav-item">
+                <span class="admin-nav-icon" aria-hidden="true">🚪</span>
+                <span>Odhlásit</span>
+            </a>
+            <div class="admin-sidebar-theme">
+                <button type="button" id="dark-mode-toggle" class="theme-toggle theme-toggle-sidebar" aria-label="Přepnout režim">
+                    <span id="theme-icon">🌙</span>
+                    <span id="theme-label">Tmavý režim</span>
+                </button>
+            </div>
+        </nav>
+    </aside>
+    <div class="admin-main">
+        <header class="admin-topbar">
+            <button type="button" class="admin-menu-toggle" id="admin-menu-toggle" aria-label="Otevřít menu" aria-expanded="false">
+                <span class="admin-menu-toggle-icon" aria-hidden="true"></span>
+            </button>
+            <span class="admin-user">{{ current_user.username }} <span class="admin-role">admin</span></span>
+        </header>
+    {% else %}
+    <header class="header">
+        <a href="{% if current_user %}{% if current_user.role == 'branch' or (current_user.role == 'admin' and acting_as_role == 'branch') %}{{ url_for('branch_dashboard') }}{% elif current_user.role == 'admin' and not acting_as_role %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}{{ url_for('warehouse_dashboard') }}{% else %}{{ url_for('warehouse_orders') }}{% endif %}{% else %}{{ url_for('login') }}{% endif %}" class="logo">Objednávač</a>
+        {% if current_user %}
+        <nav>
+            {% if current_user.role == 'branch' or (current_user.role == 'admin' and acting_as_role == 'branch') %}
+            <a href="{{ url_for('branch_dashboard') }}">Přehled</a>
+            <a href="{{ url_for('index') }}">Produkty</a>
+            <a href="{{ url_for('internal_products') }}">Interní produkty</a>
+            <a href="{{ url_for('cart_view') }}">Košík</a>
+            <a href="{{ url_for('branch_orders') }}">Moje objednávky</a>
+            <a href="{{ url_for('branch_orders', type='internal') }}">Interní objednávky</a>
+            {% elif current_user.role == 'admin' and not acting_as_role %}
+            <a href="{{ url_for('admin_dashboard') }}">Přehled</a>
+            <a href="{{ url_for('admin_orders') }}">Objednávky</a>
+            <a href="{{ url_for('admin_products') }}">Produkty</a>
+            <a href="{{ url_for('admin_users') }}">Uživatelé</a>
+            <a href="{{ url_for('admin_branches') }}">Pobočky</a>
+            <a href="{{ url_for('admin_import') }}">Import</a>
+            <a href="{{ url_for('admin_internal_products') }}">Interní produkty</a>
+            <a href="{{ url_for('admin_act_as') }}">Působit jako…</a>
+            {% elif current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}
+            <a href="{{ url_for('warehouse_dashboard') }}">Přehled</a>
+            <a href="{{ url_for('warehouse_orders') }}">Objednávky</a>
+            {% endif %}
+            <a href="{{ url_for('logout') }}">Odhlásit</a>
+            <button type="button" id="dark-mode-toggle" class="theme-toggle" aria-label="Přepnout režim">
+                <span id="theme-icon">🌙</span>
+                <span id="theme-label">Tmavý režim</span>
+            </button>
+        </nav>
+        <span class="user-info">
+            {{ current_user.username }} ({{ current_user.role }}{% if acting_as_role %} – působí jako {{ acting_as_role }}{% endif %})
+            {% if acting_as_role %}
+            {% if acting_as_branch %} – {{ acting_as_branch.name }}{% endif %}
+            <a href="{{ url_for('admin_act_as') }}" class="act-as-end">Ukončit režim</a>
+            {% elif current_user.role == 'branch' and current_branch %} – pobočka: {{ current_branch.name }}
+            {% if user_branches and user_branches|length > 1 %}
+            <form method="post" action="{{ url_for('branch_switch') }}" class="branch-switch-form">
+                <select name="branch_id" onchange="this.form.submit()" class="branch-switch-select" aria-label="Zvolit pobočku">
+                    {% for b in user_branches %}
+                    <option value="{{ b.id }}" {{ 'selected' if b.id == current_branch.id else '' }}>{{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            {% endif %}
+            {% endif %}
+        </span>
+        {% endif %}
+    </header>
+    {% endif %}
+    <main class="main{% if current_user and current_user.role == 'admin' %} main-admin{% endif %}">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <ul class="flash">
+            {% for category, msg in messages %}
+            <li class="flash-{{ category }}">{{ msg }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% endwith %}
+        {% if current_user and current_user.role == 'branch' and not current_user.has_any_branch() %}
+        <div class="flash-branch-warning" role="alert">
+            Uživatel musí být přiřazen k alespoň jedné pobočce, aby mohl objednávat. Kontaktujte administrátora.
+        </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+    {% if current_user and current_user.role == 'admin' %}
+    </div>
+    {% endif %}
+    <script>
+    (function() {
+        var key = 'darkMode';
+        var html = document.documentElement;
+        var btn = document.getElementById('dark-mode-toggle');
+        var icon = document.getElementById('theme-icon');
+        var label = document.getElementById('theme-label');
+        function apply(v) {
+            if (v === '1') {
+                html.classList.add('dark-mode');
+                if (icon) icon.textContent = '☀';
+                if (label) label.textContent = 'Světlý režim';
+                if (btn) btn.title = 'Přepnout na světlý režim';
+            } else {
+                html.classList.remove('dark-mode');
+                if (icon) icon.textContent = '🌙';
+                if (label) label.textContent = 'Tmavý režim';
+                if (btn) btn.title = 'Přepnout na tmavý režim';
+            }
+        }
+        apply(localStorage.getItem(key) || '0');
+        if (btn) btn.addEventListener('click', function() {
+            var next = html.classList.contains('dark-mode') ? '0' : '1';
+            localStorage.setItem(key, next);
+            apply(next);
+        });
+    })();
+    (function() {
+        var body = document.getElementById('body-el');
+        var sidebar = document.getElementById('admin-sidebar');
+        var overlay = document.getElementById('admin-sidebar-overlay');
+        var toggle = document.getElementById('admin-menu-toggle');
+        var closeBtn = document.getElementById('admin-sidebar-close');
+        if (!body || !sidebar || !overlay) return;
+        function openSidebar() {
+            body.classList.add('admin-sidebar-open');
+            if (overlay) overlay.setAttribute('aria-hidden', 'false');
+            if (toggle) toggle.setAttribute('aria-expanded', 'true');
+            document.documentElement.style.overflow = 'hidden';
+        }
+        function closeSidebar() {
+            body.classList.remove('admin-sidebar-open');
+            if (overlay) overlay.setAttribute('aria-hidden', 'true');
+            if (toggle) toggle.setAttribute('aria-expanded', 'false');
+            document.documentElement.style.overflow = '';
+        }
+        if (toggle) toggle.addEventListener('click', openSidebar);
+        if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+        if (overlay) overlay.addEventListener('click', closeSidebar);
+        sidebar.querySelectorAll('.admin-nav-item').forEach(function(link) {
+            link.addEventListener('click', closeSidebar);
+        });
+    })();
+    </script>
+</body>
+</html>

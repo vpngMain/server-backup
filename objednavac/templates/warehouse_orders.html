@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Sklad – Objednávky{% endblock %}
+{% block content %}
+<h2>Příchozí objednávky</h2>
+<p class="hint">
+    <a href="{{ url_for('warehouse_order_new') }}" class="btn btn-primary">Vytvořit objednávku pro pobočku</a>
+    {% if status_filter %}
+    <span class="admin-orders-filter">Zobrazeny jen: <strong>{{ status_cz(status_filter) }}</strong> <a href="{{ url_for('warehouse_orders') }}">Zrušit filtr</a></span>
+    {% endif %}
+</p>
+{% if orders %}
+<div class="order-list">
+    {% for o in orders %}
+    <a href="{{ url_for('warehouse_order_detail', order_id=o.id) }}" class="order-card order-card-link">
+        <span class="order-card-id">Objednávka {{ o.id }}{% if o.created_by_warehouse_id %} <span class="badge-warehouse" title="Vytvořeno skladem">sklad</span>{% endif %}</span>
+        <span class="order-card-meta">{{ o.branch.name if o.branch else '—' }}{% if o.branch and o.branch.code %} ({{ o.branch.code }}){% endif %}</span>
+        <span class="order-card-meta">{{ o.created_at | format_datetime }}</span>
+        <span class="status-badge status-{{ o.status }}">{{ status_cz(o.status) }}</span>
+        <span class="order-card-invoice" title="Stav faktury">{% if o.invoice_ok == true %}✅ Cajk{% elif o.invoice_ok == false %}❌ Chyba{% else %}—{% endif %}</span>
+        <span class="order-card-count">{{ o.items|length }} položek</span>
+        <span class="order-card-arrow" aria-hidden="true">→</span>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<p>Žádné objednávky.</p>
+{% endif %}
+{% endblock %}

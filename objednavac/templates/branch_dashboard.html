@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Přehled – {{ branch.name }}{% endblock %}
+{% block content %}
+<div class="admin-dashboard">
+    <header class="dashboard-hero">
+        <div class="dashboard-hero-content">
+            <h1 class="dashboard-hero-title">Přehled pobočky {{ branch.name }}{% if branch.code %} ({{ branch.code }}){% endif %}</h1>
+            <p class="dashboard-hero-desc">Souhrn objednávek vaší pobočky. Níže statistiky podle stavu a poslední objednávky.</p>
+            <div class="dashboard-hero-actions">
+                <a href="{{ url_for('index') }}" class="btn btn-primary btn-hero">Produkty a objednávka</a>
+                <a href="{{ url_for('cart_view') }}" class="btn btn-hero" style="background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.5);">Košík</a>
+            </div>
+        </div>
+        <div class="dashboard-hero-visual" aria-hidden="true">
+            <span class="dashboard-hero-icon">🏪</span>
+        </div>
+    </header>
+
+    {% set pending = status_counts.get('pending', 0) %}
+    {% if pending > 0 %}
+    <div class="dashboard-alert dashboard-alert-attention" role="alert">
+        <span class="dashboard-alert-icon" aria-hidden="true">⏳</span>
+        <div class="dashboard-alert-body">
+            <strong>{{ pending }} {{ 'objednávka čeká' if pending == 1 else ('objednávky čekají' if pending < 5 else 'objednávek čeká') }} na vyřízení skladem.</strong>
+            <a href="{{ url_for('branch_orders') }}" class="dashboard-alert-link">Moje objednávky →</a>
+        </div>
+    </div>
+    {% endif %}
+
+    <section class="dashboard-section" aria-labelledby="stats-heading">
+        <h2 id="stats-heading" class="dashboard-section-title">Statistiky objednávek (vaše pobočka)</h2>
+        {% set total = total_orders or 1 %}
+        <div class="dashboard-stats-grid">
+            <a href="{{ url_for('branch_orders') }}" class="dashboard-stat-card dashboard-stat-total">
+                <span class="dashboard-stat-icon" aria-hidden="true">📋</span>
+                <div class="dashboard-stat-content">
+                    <span class="dashboard-stat-value">{{ total_orders }}</span>
+                    <span class="dashboard-stat-label">Celkem objednávek</span>
+                </div>
+            </a>
+            <a href="{{ url_for('branch_orders') }}" class="dashboard-stat-card dashboard-stat-pending {% if pending > 0 %}dashboard-stat-highlight{% endif %}">
+                <span class="dashboard-stat-icon" aria-hidden="true">⏳</span>
+                <div class="dashboard-stat-content">
+                    <span class="dashboard-stat-value">{{ status_counts.get('pending', 0) }}</span>
+                    <span class="dashboard-stat-label">Čeká</span>
+                    {% if total_orders %}<span class="dashboard-stat-sublabel">{{ ((status_counts.get('pending', 0) / total) * 100) | int }} % z celku</span>{% endif %}
+                </div>
+            </a>
+            <a href="{{ url_for('branch_orders') }}" class="dashboard-stat-card dashboard-stat-partially">
+                <span class="dashboard-stat-icon" aria-hidden="true">↗</span>
+                <div class="dashboard-stat-content">
+                    <span class="dashboard-stat-value">{{ status_counts.get('partially_shipped', 0) }}</span>
+                    <span class="dashboard-stat-label">Částečně odesláno</span>
+                    {% if total_orders %}<span class="dashboard-stat-sublabel">{{ ((status_counts.get('partially_shipped', 0) / total) * 100) | int }} %</span>{% endif %}
+                </div>
+            </a>
+            <a href="{{ url_for('branch_orders') }}" class="dashboard-stat-card dashboard-stat-shipped">
+                <span class="dashboard-stat-icon" aria-hidden="true">🚚</span>
+                <div class="dashboard-stat-content">
+                    <span class="dashboard-stat-value">{{ status_counts.get('shipped', 0) }}</span>
+                    <span class="dashboard-stat-label">Odesláno</span>
+                    {% if total_orders %}<span class="dashboard-stat-sublabel">{{ ((status_counts.get('shipped', 0) / total) * 100) | int }} %</span>{% endif %}
+                </div>
+            </a>
+        </div>
+        {% if total_orders %}
+        <div class="dashboard-progress" aria-hidden="true">
+            <span class="dashboard-progress-segment dashboard-progress-pending" style="width: {{ (status_counts.get('pending', 0) / total) * 100 }}%"></span>
+            <span class="dashboard-progress-segment dashboard-progress-partially" style="width: {{ (status_counts.get('partially_shipped', 0) / total) * 100 }}%"></span>
+            <span class="dashboard-progress-segment dashboard-progress-shipped" style="width: {{ (status_counts.get('shipped', 0) / total) * 100 }}%"></span>
+        </div>
+        {% endif %}
+    </section>
+
+    {% if last_order and last_order_unavailable %}
+    <section class="dashboard-section" aria-labelledby="unavailable-heading">
+        <h2 id="unavailable-heading" class="dashboard-section-title"><span class="unavailable-section-icon" aria-hidden="true">⚠</span> Co nemá sklad (z poslední objednávky #{{ last_order.id }})</h2>
+        <div class="dashboard-card unavailable-card">
+            <div class="dashboard-card-body">
+                <p class="unavailable-desc">Následující položky z vaší poslední objednávky sklad označil jako „Nemám na skladě“.</p>
+                <div class="dashboard-cards-grid dashboard-cards-unavailable">
+                    {% for i in last_order_unavailable %}
+                    <article class="dashboard-item-card">
+                        <div class="dashboard-item-card-body">
+                            <h3 class="dashboard-item-card-title">{{ i.display_name() }}</h3>
+                            <p class="dashboard-item-card-meta">Objednáno: <strong>{{ i.ordered_quantity | format_qty }}</strong> {{ i.product.unit if i.product and i.product.unit else (i.internal_product.unit if i.internal_product and i.internal_product.unit else 'ks') }}</p>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                <p class="unavailable-actions"><a href="{{ url_for('branch_order_detail', order_id=last_order.id) }}" class="btn btn-sm btn-unavailable-link">Detail objednávky #{{ last_order.id }}</a></p>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="dashboard-section" aria-labelledby="orders-heading">
+        <h2 id="orders-heading" class="dashboard-section-title">
+            Poslední objednávky
+            <a href="{{ url_for('branch_orders') }}" class="dashboard-section-link">Zobrazit vše</a>
+        </h2>
+        <div class="dashboard-card">
+            <div class="dashboard-card-body">
+                {% if recent_orders %}
+                <div class="dashboard-cards-grid dashboard-cards-orders dashboard-cards-orders-center">
+                    {% for o in recent_orders %}
+                    <article class="dashboard-item-card dashboard-order-card">
+                        <div class="dashboard-item-card-body">
+                            <h3 class="dashboard-item-card-title">#{{ o.id }}</h3>
+                            <p class="dashboard-item-card-meta">{{ o.created_at | format_datetime }}</p>
+                            <p><span class="status-badge status-{{ o.status }}">{{ status_cz(o.status) }}</span></p>
+                            <p><span class="invoice-badge invoice-{{ 'ok' if o.invoice_ok == true else ('error' if o.invoice_ok == false else 'none') }}">{% if o.invoice_ok == true %}✅ Cajk{% elif o.invoice_ok == false %}❌ Chyba{% else %}—{% endif %}</span></p>
+                            <a href="{{ url_for('branch_order_detail', order_id=o.id) }}" class="btn btn-sm">Detail</a>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="dashboard-empty">Zatím žádné objednávky. <a href="{{ url_for('index') }}">Přejít na produkty a sestavit objednávku</a>.</p>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}

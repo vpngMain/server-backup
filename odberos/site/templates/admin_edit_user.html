@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block title %}Editovat uživatele{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 fade-in">
+    <h1 class="mb-0"><i class="fas fa-user-edit"></i> Editovat uživatele</h1>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left"></i> Zpět
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card card-apple shadow-sm fade-in">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="card-title mb-0"><i class="fas fa-user"></i> {{ user.jmeno or user.username }}</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.jmeno.label(class="form-label") }}
+                        {{ form.jmeno(class="form-control") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.pin.label(class="form-label") }}
+                        {{ form.pin(class="form-control", placeholder="4-10 číslic") }}
+                        <small class="text-muted">Nechte prázdné pro zachování současného PINu</small>
+                    </div>
+                    <div class="mb-3">
+                        {{ form.pobocky.label(class="form-label") }}
+                        <small class="text-muted d-block mb-1">Držte Ctrl/Cmd (Windows/Linux) nebo Cmd (Mac) pro výběr více poboček</small>
+                        {{ form.pobocky(class="form-select", multiple=True, size=5) }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.role.label(class="form-label") }}
+                        {{ form.role(class="form-select") }}
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-warning">
+                            <i class="fas fa-save"></i> Uložit změny
+                        </button>
+                        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times"></i> Zrušit
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

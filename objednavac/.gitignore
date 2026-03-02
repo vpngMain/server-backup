@@ -1,0 +1,25 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Pytest
+.pytest_cache/
+
+# Virtual environments
+venv/
+venv_flask/
+
+# Database
+*.db
+
+# Uploads
+uploads/
+
+# Gunicorn / runtime
+gunicorn.ctl
+
+# OS files
+.DS_Store
+Thumbs.db
+
+

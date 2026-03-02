@@ -1,0 +1,21 @@
+# Docker Compose – Odběry na vlastním serveru (Tailscale)
+# Použití: docker compose up -d
+# Env: vytvořte .env v tomto adresáři s SECRET_KEY, FLASK_ENV, ALLOW_HTTP_SESSION
+
+services:
+  odberos:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - SECRET_KEY=${SECRET_KEY:?Nastavte SECRET_KEY v .env}
+      - ALLOW_HTTP_SESSION=${ALLOW_HTTP_SESSION:-1}
+      - DATABASE_URL=sqlite:////data/odbery.db
+    volumes:
+      - odberos_data:/data
+    restart: unless-stopped
+
+volumes:
+  odberos_data:

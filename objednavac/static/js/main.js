@@ -1,0 +1,1 @@
+/* optional vanilla JS for warehouse ordering app */

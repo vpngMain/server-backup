@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html
+  lang="cs"
+  id="admin-html"
+  class="light-style layout-menu-fixed"
+  dir="ltr"
+  data-theme="theme-default"
+  data-assets-path="{{ url_for('static', filename='sneat/') }}"
+  data-template="vertical-menu-template-free"
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+    <title>{% block title %}Admin{% endblock %} | Odběry</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='sneat/img/favicon/favicon.ico') }}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='sneat/vendor/fonts/boxicons.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='sneat/vendor/css/core.css') }}" class="template-customizer-core-css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='sneat/vendor/css/theme-default.css') }}" class="template-customizer-theme-css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='sneat/css/demo.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='sneat/vendor/libs/perfect-scrollbar/perfect-scrollbar.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='sneat/vendor/libs/apex-charts/apex-charts.css') }}" />
+    <script src="{{ url_for('static', filename='sneat/vendor/js/helpers.js') }}"></script>
+    <script src="{{ url_for('static', filename='sneat/js/config.js') }}"></script>
+    <script>
+    (function(){var d=document.documentElement;try{var s=localStorage.getItem('adminDarkMode');if(s==='1'){d.classList.remove('light-style');d.classList.add('dark-style');}else{d.classList.remove('dark-style');d.classList.add('light-style');}}catch(e){d.classList.add('light-style');}})();
+    </script>
+    <style>
+    /* —— Admin dark mode (opravený) —— */
+    html.dark-style, html.dark-style body { background-color: #1a1a2e !important; }
+    html.dark-style .layout-wrapper { background-color: #1a1a2e !important; }
+    html.dark-style .layout-container { background-color: #1a1a2e !important; }
+    html.dark-style .layout-menu { background-color: #16213e !important; }
+    html.dark-style .layout-menu .menu-link { color: rgba(255,255,255,0.9) !important; }
+    html.dark-style .layout-menu .menu-link:hover { color: #fff !important; background: rgba(105,108,255,0.25) !important; }
+    html.dark-style .layout-menu .menu-item.active .menu-link { color: #fff !important; background: rgba(105,108,255,0.35) !important; }
+    html.dark-style .layout-menu .menu-header-text { color: rgba(255,255,255,0.45) !important; }
+    html.dark-style .app-brand .app-brand-text { color: #fff !important; }
+    html.dark-style .menu-inner-shadow { box-shadow: none !important; }
+    html.dark-style .layout-page { background-color: #1a1a2e !important; }
+    html.dark-style .bg-navbar-theme { background-color: #16213e !important; border-color: rgba(255,255,255,0.06) !important; }
+    html.dark-style .navbar .form-control { background-color: #0f3460 !important; border-color: rgba(255,255,255,0.1) !important; color: #eee !important; }
+    html.dark-style .content-wrapper { background-color: #1a1a2e !important; }
+    html.dark-style .content-backdrop { background-color: #1a1a2e !important; }
+    html.dark-style .container-xxl { color: #e4e4e7; }
+    html.dark-style .card { background-color: #16213e !important; border-color: rgba(255,255,255,0.08) !important; color: #e4e4e7 !important; }
+    html.dark-style .card-header { background-color: rgba(0,0,0,0.2) !important; border-color: rgba(255,255,255,0.08) !important; color: #f4f4f5 !important; }
+    html.dark-style .card-body, html.dark-style .accordion-body { background-color: #16213e !important; color: #e4e4e7 !important; }
+    html.dark-style .table { color: #e4e4e7 !important; }
+    html.dark-style .table thead th { border-color: rgba(255,255,255,0.12) !important; color: rgba(255,255,255,0.9) !important; background: rgba(0,0,0,0.2) !important; }
+    html.dark-style .table td, html.dark-style .table tbody th { border-color: rgba(255,255,255,0.06) !important; }
+    html.dark-style .table-hover tbody tr:hover { background-color: rgba(255,255,255,0.06) !important; }
+    html.dark-style .form-control, html.dark-style .form-select { background-color: #0f3460 !important; border-color: rgba(255,255,255,0.15) !important; color: #fff !important; }
+    html.dark-style .form-control:focus, html.dark-style .form-select:focus { background-color: #0f3460 !important; border-color: #696cff !important; color: #fff !important; box-shadow: 0 0 0 0.2rem rgba(105,108,255,0.35) !important; }
+    html.dark-style .form-control::placeholder { color: rgba(255,255,255,0.4); }
+    html.dark-style .form-label, html.dark-style label { color: rgba(255,255,255,0.9) !important; }
+    html.dark-style .text-muted { color: rgba(255,255,255,0.55) !important; }
+    html.dark-style .accordion-button { background-color: #16213e !important; color: #f4f4f5 !important; border-color: rgba(255,255,255,0.08) !important; }
+    html.dark-style .accordion-button:not(.collapsed) { background-color: rgba(105,108,255,0.25) !important; color: #fff !important; }
+    html.dark-style .accordion-button::after { filter: brightness(0) invert(1); opacity: 0.8; }
+    html.dark-style .accordion-item { background-color: #16213e !important; border-color: rgba(255,255,255,0.08) !important; }
+    html.dark-style .list-group-item { background-color: #16213e !important; border-color: rgba(255,255,255,0.06) !important; color: #e4e4e7 !important; }
+    html.dark-style .dropdown-menu { background-color: #16213e !important; border-color: rgba(255,255,255,0.12) !important; }
+    html.dark-style .dropdown-item { color: #e4e4e7 !important; }
+    html.dark-style .dropdown-item:hover { background-color: rgba(255,255,255,0.08) !important; color: #fff !important; }
+    html.dark-style .dropdown-divider { border-color: rgba(255,255,255,0.1) !important; }
+    html.dark-style h4, html.dark-style h5, html.dark-style .fw-bold { color: #f4f4f5 !important; }
+    html.dark-style p { color: #e4e4e7; }
+    html.dark-style .progress { background-color: rgba(255,255,255,0.12) !important; }
+    html.dark-style .table-light { background-color: rgba(0,0,0,0.25) !important; color: #e4e4e7 !important; }
+    html.dark-style code { background-color: rgba(0,0,0,0.3) !important; color: #93c5fd !important; }
+    html.dark-style .alert { border-color: rgba(255,255,255,0.1); }
+    html.dark-style .btn-outline-primary { border-color: #696cff; color: #a5b4fc; }
+    html.dark-style .btn-outline-primary:hover { background-color: rgba(105,108,255,0.3); border-color: #696cff; color: #fff; }
+    html.dark-style .btn-outline-danger:hover { background-color: rgba(255,62,29,0.25); color: #fff; }
+    html.dark-style .layout-overlay { background-color: rgba(0,0,0,0.5) !important; }
+    html.dark-style .nav-link { color: rgba(255,255,255,0.85) !important; }
+    html.dark-style a.text-primary { color: #a5b4fc !important; }
+    html.dark-style a.text-primary:hover { color: #c7d2fe !important; }
+    html.dark-style .avatar-initial { color: #fff !important; }
+    html.dark-style .bg-label-primary { background-color: rgba(105,108,255,0.25) !important; color: #a5b4fc !important; }
+    html.dark-style .bg-label-success { background-color: rgba(113,221,55,0.2) !important; color: #86efac !important; }
+    html.dark-style .bg-label-info { background-color: rgba(3,195,236,0.2) !important; color: #67e8f9 !important; }
+    html.dark-style .bg-label-warning { background-color: rgba(255,171,0,0.2) !important; color: #fde047 !important; }
+    html.dark-style .bg-label-danger { background-color: rgba(255,62,29,0.2) !important; color: #fca5a5 !important; }
+    html.dark-style .bg-label-secondary { background-color: rgba(133,146,163,0.2) !important; color: #cbd5e1 !important; }
+    /* —— Interaktivita: karty, přechody, smooth scroll —— */
+    .admin-card-interactive { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .admin-card-interactive:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+    html.dark-style .admin-card-interactive:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .admin-table-row { transition: background-color 0.15s ease; }
+    html { scroll-behavior: smooth; }
+    #admin-dark-mode-toggle { transition: transform 0.2s ease, opacity 0.2s ease; }
+    #admin-dark-mode-toggle:hover { transform: scale(1.08); opacity: 0.9; }
+    .admin-summary-card { cursor: default; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .admin-summary-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(105,108,255,0.15); }
+    html.dark-style .admin-summary-card:hover { box-shadow: 0 12px 28px rgba(105,108,255,0.25); }
+    .admin-nav-link-smooth { scroll-margin-top: 5rem; }
+    </style>
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <div class="layout-wrapper layout-content-navbar">
+      <div class="layout-container">
+        <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
+          <div class="app-brand demo">
+            <a href="{{ url_for('admin_dashboard') }}" class="app-brand-link">
+              <span class="app-brand-logo demo">
+                <svg width="25" viewBox="0 0 25 42" xmlns="http://www.w3.org/2000/svg"><defs><path d="M13.7918663,0.358365126 L3.39788168,7.44174259 C0.566865006,9.69408886 -0.379795268,12.4788597 0.557900856,15.7960551 C0.68998853,16.2305145 1.09562888,17.7872135 3.12357076,19.2293357 C3.8146334,19.7207684 5.32369333,20.3834223 7.65075054,21.2172976 L7.59773219,21.2525164 L2.63468769,24.5493413 C0.445452254,26.3002124 0.0884951797,28.5083815 1.56381646,31.1738486 C2.83770406,32.8170431 5.20850219,33.2640127 7.09180128,32.5391577 C8.347334,32.0559211 11.4559176,30.0011079 16.4175519,26.3747182 C18.0338572,24.4997857 18.6973423,22.4544883 18.4080071,20.2388261 C17.963753,17.5346866 16.1776345,15.5799961 13.0496516,14.3747546 L10.9194936,13.4715819 L18.6192054,7.984237 L13.7918663,0.358365126 Z" id="path-1"></path></defs><g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g transform="translate(-27.000000, -15.000000)"><g transform="translate(27.000000, 15.000000)"><use fill="#696cff" xlink:href="#path-1"></use></g></g></g></svg>
+              </span>
+              <span class="app-brand-text demo menu-text fw-bolder ms-2">Odběry</span>
+            </a>
+            <a href="javascript:void(0);" class="layout-menu-toggle menu-link text-large ms-auto d-block d-xl-none">
+              <i class="bx bx-chevron-left bx-sm align-middle"></i>
+            </a>
+          </div>
+          <div class="menu-inner-shadow"></div>
+          <ul class="menu-inner py-1">
+            <li class="menu-item {% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
+              <a href="{{ url_for('admin_dashboard') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-home-circle"></i>
+                <div data-i18n="Dashboard">Dashboard</div>
+              </a>
+            </li>
+            <li class="menu-item">
+              <a href="{{ url_for('index') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-plus-circle"></i>
+                <div data-i18n="Nový odběr">Nový odběr</div>
+              </a>
+            </li>
+            <li class="menu-item">
+              <a href="{{ url_for('reklamace_index') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-wrench"></i>
+                <div data-i18n="Reklamace">Reklamace</div>
+              </a>
+            </li>
+            <li class="menu-item">
+              <a href="{{ url_for('admin_statistiky') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-bar-chart-alt-2"></i>
+                <div data-i18n="Statistiky">Statistiky</div>
+              </a>
+            </li>
+            <li class="menu-header small text-uppercase"><span class="menu-header-text">Správa</span></li>
+            <li class="menu-item">
+              <a href="{{ url_for('admin_dashboard') }}?open=collapsePobocka#adminAccordionForms" class="menu-link admin-scroll-accordion" data-bs-target="collapsePobocka">
+                <i class="menu-icon tf-icons bx bx-building-house"></i>
+                <div data-i18n="Přidat pobočku">Přidat pobočku</div>
+              </a>
+            </li>
+            <li class="menu-item">
+              <a href="{{ url_for('admin_dashboard') }}?open=collapseUser#adminAccordionForms" class="menu-link admin-scroll-accordion" data-bs-target="collapseUser">
+                <i class="menu-icon tf-icons bx bx-user-plus"></i>
+                <div data-i18n="Přidat uživatele">Přidat uživatele</div>
+              </a>
+            </li>
+            <li class="menu-item">
+              <a href="{{ url_for('admin_dashboard') }}#adminUsersSection" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-group"></i>
+                <div data-i18n="Správa uživatelů">Správa uživatelů</div>
+              </a>
+            </li>
+            <li class="menu-item">
+              <a href="{{ url_for('admin_dashboard') }}#adminPobockySection" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-store"></i>
+                <div data-i18n="Správa poboček">Správa poboček</div>
+              </a>
+            </li>
+            <li class="menu-header small text-uppercase"><span class="menu-header-text">Nástroje</span></li>
+            <li class="menu-item">
+              <a href="{{ url_for('admin_reklamace_archiv') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-archive"></i>
+                <div data-i18n="Archiv">Archiv reklamací</div>
+              </a>
+            </li>
+            <li class="menu-item">
+              <a href="{{ url_for('admin_export_excel') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-file-blank"></i>
+                <div data-i18n="Excel">Export Excel</div>
+              </a>
+            </li>
+            <li class="menu-item">
+              <a href="{{ url_for('admin_export_all') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-spreadsheet"></i>
+                <div data-i18n="CSV">Export CSV</div>
+              </a>
+            </li>
+            <li class="menu-header small text-uppercase"><span class="menu-header-text">Rychlé odkazy</span></li>
+            <li class="menu-item">
+              <a href="{{ url_for('admin_dashboard') }}#adminHistorieSection" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-history"></i>
+                <div data-i18n="Historie akcí">Historie akcí</div>
+              </a>
+            </li>
+            <li class="menu-item">
+              <a href="{{ url_for('admin_dashboard') }}#adminOdberySection" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-list-ul"></i>
+                <div data-i18n="Přehled odběrů">Přehled odběrů</div>
+              </a>
+            </li>
+            <li class="menu-item">
+              <a href="{{ url_for('admin_dashboard') }}#adminReklamaceSection" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-error-circle"></i>
+                <div data-i18n="Reklamace po pobočkách">Reklamace po pobočkách</div>
+              </a>
+            </li>
+            <li class="menu-header small text-uppercase"><span class="menu-header-text">Účet</span></li>
+            <li class="menu-item">
+              <a href="{{ url_for('index') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-package"></i>
+                <div data-i18n="Odběry">Odběry</div>
+              </a>
+            </li>
+            <li class="menu-item">
+              <a href="{{ url_for('logout') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-log-out"></i>
+                <div data-i18n="Odhlásit">Odhlásit</div>
+              </a>
+            </li>
+          </ul>
+        </aside>
+
+        <div class="layout-page">
+          <nav class="layout-navbar container-xxl navbar navbar-expand-xl navbar-detached align-items-center bg-navbar-theme" id="layout-navbar">
+            <div class="layout-menu-toggle navbar-nav align-items-xl-center me-3 me-xl-0 d-xl-none">
+              <a class="nav-item nav-link px-0 me-xl-4" href="javascript:void(0)"><i class="bx bx-menu bx-sm"></i></a>
+            </div>
+            <div class="navbar-nav-right d-flex align-items-center" id="navbar-collapse">
+              <div class="navbar-nav align-items-center">
+                <div class="nav-item d-flex align-items-center">
+                  <i class="bx bx-search fs-4 lh-0"></i>
+                  <input type="text" class="form-control border-0 shadow-none ps-2" placeholder="Hledat..." aria-label="Hledat..." />
+                </div>
+              </div>
+              <ul class="navbar-nav flex-row align-items-center ms-auto">
+                <li class="nav-item me-2">
+                  <button type="button" class="btn btn-pills btn-icon rounded-pill bg-body border-0" id="admin-dark-mode-toggle" title="Přepnout světlý / tmavý režim" aria-label="Tmavý režim">
+                    <i class="bx bx-moon fs-4" id="admin-dark-mode-icon"></i>
+                  </button>
+                </li>
+                <li class="nav-item navbar-dropdown dropdown-user dropdown">
+                  <a class="nav-link dropdown-toggle hide-arrow" href="javascript:void(0);" data-bs-toggle="dropdown">
+                    <div class="avatar avatar-online">
+                      <span class="avatar-initial rounded-circle bg-label-primary"><i class="bx bx-user bx-sm"></i></span>
+                    </div>
+                  </a>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                      <a class="dropdown-item" href="#">
+                        <div class="d-flex">
+                          <div class="flex-shrink-0 me-3">
+                            <div class="avatar avatar-online">
+                              <span class="avatar-initial rounded-circle bg-label-primary"><i class="bx bx-user"></i></span>
+                            </div>
+                          </div>
+                          <div class="flex-grow-1">
+                            <span class="fw-semibold d-block">{{ current_user.jmeno or current_user.username }}</span>
+                            <small class="text-muted">{% if current_user.role == 'admin' %}Admin{% else %}Uživatel{% endif %}</small>
+                          </div>
+                        </div>
+                      </a>
+                    </li>
+                    <li><div class="dropdown-divider"></div></li>
+                    <li>
+                      <a class="dropdown-item" href="{{ url_for('index') }}">
+                        <i class="bx bx-package me-2"></i>
+                        <span class="align-middle">Odběry</span>
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="{{ url_for('admin_statistiky') }}">
+                        <i class="bx bx-bar-chart me-2"></i>
+                        <span class="align-middle">Statistiky</span>
+                      </a>
+                    </li>
+                    <li><div class="dropdown-divider"></div></li>
+                    <li>
+                      <a class="dropdown-item" href="{{ url_for('logout') }}">
+                        <i class="bx bx-power-off me-2"></i>
+                        <span class="align-middle">Odhlásit</span>
+                      </a>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+            </div>
+          </nav>
+
+          <div class="content-wrapper">
+            <div class="container-xxl flex-grow-1 container-p-y">
+              {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                  {% for category, msg in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category or 'info' }} alert-dismissible" role="alert">
+                      {{ msg }}
+                      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Zavřít"></button>
+                    </div>
+                  {% endfor %}
+                {% endif %}
+              {% endwith %}
+              {% block content %}{% endblock %}
+            </div>
+            <div class="content-backdrop fade"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="layout-overlay layout-menu-toggle"></div>
+
+    <script src="{{ url_for('static', filename='sneat/vendor/libs/jquery/jquery.js') }}"></script>
+    <script src="{{ url_for('static', filename='sneat/vendor/libs/popper/popper.js') }}"></script>
+    <script src="{{ url_for('static', filename='sneat/vendor/js/bootstrap.js') }}"></script>
+    <script src="{{ url_for('static', filename='sneat/vendor/libs/perfect-scrollbar/perfect-scrollbar.js') }}"></script>
+    <script src="{{ url_for('static', filename='sneat/vendor/js/menu.js') }}"></script>
+    <script src="{{ url_for('static', filename='sneat/vendor/libs/apex-charts/apexcharts.js') }}"></script>
+    <script src="{{ url_for('static', filename='sneat/js/main.js') }}"></script>
+    <script>
+    (function() {
+      var STORAGE_KEY = 'adminDarkMode';
+      var html = document.documentElement;
+      var btn = document.getElementById('admin-dark-mode-toggle');
+      var icon = document.getElementById('admin-dark-mode-icon');
+      function isDark() { return html.classList.contains('dark-style'); }
+      function setDark(dark) {
+        html.classList.remove('light-style', 'dark-style');
+        html.classList.add(dark ? 'dark-style' : 'light-style');
+        try { localStorage.setItem(STORAGE_KEY, dark ? '1' : '0'); } catch (e) {}
+        if (icon) {
+          icon.classList.remove('bx-moon', 'bx-sun');
+          icon.classList.add(dark ? 'bx-sun' : 'bx-moon');
+        }
+      }
+      function toggle() { setDark(!isDark()); }
+      if (btn) btn.addEventListener('click', toggle);
+      var saved = null;
+      try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) {}
+      setDark(saved === '1');
+    })();
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+      var darkBtn = document.getElementById('admin-dark-mode-toggle');
+      if (darkBtn) { darkBtn.setAttribute('title', 'Přepnout tmavý režim'); try { new bootstrap.Tooltip(darkBtn); } catch (e) {} }
+      document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) { try { new bootstrap.Tooltip(el); } catch (e) {} });
+    }
+    document.querySelectorAll('.admin-scroll-accordion').forEach(function(a) {
+      a.addEventListener('click', function(e) {
+        var targetId = this.getAttribute('data-bs-target');
+        var hash = this.getAttribute('href') || '';
+        if (hash.indexOf('#adminAccordionForms') !== -1 && targetId && window.location.pathname.indexOf('/admin/dashboard') !== -1) {
+          e.preventDefault();
+          var el = document.getElementById(targetId);
+          if (el) {
+            document.querySelector('#adminAccordionForms') && document.querySelector('#adminAccordionForms').scrollIntoView({ behavior: 'smooth' });
+            var coll = typeof bootstrap !== 'undefined' && bootstrap.Collapse ? new bootstrap.Collapse(el, { toggle: true }) : null;
+            if (coll) coll.show();
+          } else { window.location.href = this.getAttribute('href'); }
+        }
+      });
+    });
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) { if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) new bootstrap.Tooltip(el); });
+    </script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

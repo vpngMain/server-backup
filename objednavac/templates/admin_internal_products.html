@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Admin – Interní produkty{% endblock %}
+{% block content %}
+<h2>Interní produkty</h2>
+<p class="hint"><a href="{{ url_for('admin_products') }}">← Běžné produkty</a>. Samostatná tabulka a stránka. Pobočky je vidí v sekci „Interní produkty“. Počet: {{ products|length }}. <a href="{{ url_for('admin_import') }}">Import interních produktů (CSV)</a>.</p>
+{% if products %}
+<div class="table-wrapper">
+<table class="table">
+    <thead>
+        <tr>
+            <th>Skupina</th>
+            <th>Název</th>
+            <th>Jednotka</th>
+            <th>SKU (kód)</th>
+            <th>pc</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in products %}
+        <tr>
+            <td>{{ p.group_name or '—' }}</td>
+            <td>{{ p.name }}</td>
+            <td>{{ p.unit or 'ks' }}</td>
+            <td>{{ p.sku or '—' }}</td>
+            <td>{{ p.pc or '—' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p>Žádné interní produkty. Použijte <a href="{{ url_for('admin_import') }}">Import</a> (sekce „Import interních produktů“) a nahrajte CSV se sloupci název_skupiny, název, ks, pc, sku.</p>
+{% endif %}
+{% endblock %}

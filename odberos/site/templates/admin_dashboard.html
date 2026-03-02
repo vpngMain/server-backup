@@ -1,0 +1,174 @@
+{% extends admin_base|default('admin_base_sneat.html') %}
+{% block title %}Dashboard{% endblock %}
+
+{% block ta_page_title %}Analytics Dashboard{% endblock %}
+{% block ta_page_sub %}Přehled odběrů a reklamací za vybraný rok. <a href="{{ url_for('admin_statistiky') }}" class="text-decoration-none" style="color: #3C50E0;">Statistiky →</a>{% endblock %}
+
+{% block content %}
+{% include 'admin_dashboard_body.html' %}
+{% endblock %}
+
+{% block admin_content %}
+{% include 'admin_dashboard_body.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var openId = params.get('open');
+  if (openId && typeof bootstrap !== 'undefined' && bootstrap.Collapse) {
+    var el = document.getElementById(openId);
+    if (el) {
+      var accordion = document.getElementById('adminAccordionForms');
+      if (accordion) accordion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(function() { new bootstrap.Collapse(el, { toggle: true }).show(); }, 300);
+    }
+  }
+})();
+(function() {
+  var els = document.querySelectorAll('.admin-count');
+  if (!els.length) return;
+  var duration = 800;
+  var start = null;
+  function step(timestamp) {
+    if (!start) start = timestamp;
+    var progress = Math.min((timestamp - start) / duration, 1);
+    els.forEach(function(el) {
+      var target = parseInt(el.getAttribute('data-target'), 10) || 0;
+      var current = Math.floor(progress * target);
+      el.textContent = current;
+    });
+    if (progress < 1) requestAnimationFrame(step);
+    else els.forEach(function(el) { el.textContent = el.getAttribute('data-target'); });
+  }
+  requestAnimationFrame(step);
+})();
+if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) { new bootstrap.Tooltip(el); });
+}
+</script>
+<script>
+(function() {
+  var chartOdbery = {{ chart_odbery|tojson }};
+  var chartReklamace = {{ chart_reklamace|tojson }};
+  var labels = ['Led', 'Úno', 'Bře', 'Dub', 'Kvě', 'Čvn', 'Čvc', 'Srp', 'Zář', 'Říj', 'Lis', 'Pro'];
+  if (typeof ApexCharts === 'undefined') return;
+
+  var isDark = document.documentElement.classList.contains('dark-style');
+  var gridColor = isDark ? 'rgba(255,255,255,0.1)' : '#eceef1';
+  var labelColor = isDark ? 'rgba(255,255,255,0.7)' : '#697a8d';
+
+  var lineEl = document.getElementById('dashboardLineChart');
+  if (lineEl && chartOdbery && chartReklamace) {
+    var lineOpts = {
+      series: [
+        { name: 'Odběry', data: chartOdbery },
+        { name: 'Reklamace', data: chartReklamace }
+      ],
+      chart: { type: 'area', height: 280, toolbar: { show: false }, zoom: { enabled: false } },
+      colors: [typeof config !== 'undefined' ? config.colors.primary : '#696cff', typeof config !== 'undefined' ? config.colors.success : '#71dd37'],
+      dataLabels: { enabled: false },
+      stroke: { curve: 'smooth', width: 2 },
+      fill: { type: 'gradient', gradient: { opacityFrom: 0.4, opacityTo: 0.1 } },
+      legend: { position: 'top', horizontalAlign: 'left', labels: { colors: labelColor } },
+      xaxis: { categories: labels, labels: { style: { colors: labelColor } } },
+      yaxis: { min: 0, labels: { style: { colors: labelColor } } },
+      grid: { borderColor: gridColor, strokeDashArray: 3, padding: { top: 0, bottom: 0, left: 10, right: 10 } }
+    };
+    new ApexCharts(lineEl, lineOpts).render();
+  }
+
+  var barEl = document.getElementById('dashboardBarChart');
+  if (barEl && chartOdbery && chartReklamace) {
+    var barOpts = {
+      series: [
+        { name: 'Odběry', data: chartOdbery },
+        { name: 'Reklamace', data: chartReklamace }
+      ],
+      chart: { type: 'bar', height: 280, stacked: false, toolbar: { show: false } },
+      colors: [typeof config !== 'undefined' ? config.colors.primary : '#696cff', typeof config !== 'undefined' ? config.colors.success : '#71dd37'],
+      plotOptions: { bar: { horizontal: false, columnWidth: '55%', borderRadius: 6 } },
+      dataLabels: { enabled: false },
+      legend: { position: 'top', horizontalAlign: 'left', labels: { colors: labelColor } },
+      xaxis: { categories: labels, labels: { style: { colors: labelColor } } },
+      yaxis: { min: 0, labels: { style: { colors: labelColor } } },
+      grid: { borderColor: gridColor, strokeDashArray: 3 }
+    };
+    new ApexCharts(barEl, barOpts).render();
+  }
+})();
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var openId = params.get('open');
+  if (openId && typeof bootstrap !== 'undefined' && bootstrap.Collapse) {
+    var el = document.getElementById(openId);
+    if (el) {
+      var accordion = document.getElementById('adminAccordionForms');
+      if (accordion) accordion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(function() { new bootstrap.Collapse(el, { toggle: true }).show(); }, 300);
+    }
+  }
+})();
+(function() {
+  var els = document.querySelectorAll('.admin-count');
+  if (!els.length) return;
+  var duration = 800;
+  var start = null;
+  function step(timestamp) {
+    if (!start) start = timestamp;
+    var progress = Math.min((timestamp - start) / duration, 1);
+    els.forEach(function(el) {
+      var target = parseInt(el.getAttribute('data-target'), 10) || 0;
+      var current = Math.floor(progress * target);
+      el.textContent = current;
+    });
+    if (progress < 1) requestAnimationFrame(step);
+    else els.forEach(function(el) { el.textContent = el.getAttribute('data-target'); });
+  }
+  requestAnimationFrame(step);
+})();
+if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) { new bootstrap.Tooltip(el); });
+}
+var chartOdbery = {{ chart_odbery|tojson }};
+var chartReklamace = {{ chart_reklamace|tojson }};
+var labels = ['Led', 'Úno', 'Bře', 'Dub', 'Kvě', 'Čvn', 'Čvc', 'Srp', 'Zář', 'Říj', 'Lis', 'Pro'];
+if (typeof Chart !== 'undefined') {
+  var lineCtx = document.getElementById('dashboardLineChart');
+  if (lineCtx) {
+    new Chart(lineCtx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Odběry', data: chartOdbery, borderColor: '#3C50E0', backgroundColor: 'rgba(60,80,224,0.1)', fill: true, tension: 0.35 },
+          { label: 'Reklamace', data: chartReklamace, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)', fill: true, tension: 0.35 }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
+    });
+  }
+  var barCtx = document.getElementById('dashboardBarChart');
+  if (barCtx) {
+    new Chart(barCtx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Odběry', data: chartOdbery, backgroundColor: 'rgba(60,80,224,0.8)' },
+          { label: 'Reklamace', data: chartReklamace, backgroundColor: 'rgba(139,92,246,0.8)' }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
+    });
+  }
+}
+</script>
+{% endblock %}

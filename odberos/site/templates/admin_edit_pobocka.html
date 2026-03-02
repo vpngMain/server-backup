@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}Editovat pobočku{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 fade-in">
+    <h1 class="mb-0"><i class="fas fa-building"></i> Editovat pobočku</h1>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left"></i> Zpět
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card card-apple shadow-sm fade-in">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0"><i class="fas fa-building"></i> {{ pobocka.nazev }}</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info border-0 mb-4 py-3">
+                    <strong>Adresa kde se zboží vrací</strong> – Pro právně platný reklamační formulář PDF je nutné vyplnit <strong>Adresu</strong> a <strong>Název firmy</strong>. Tyto údaje se tisknou na reklamační formulář.
+                </div>
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.nazev.label(class="form-label fw-bold") }}
+                        {{ form.nazev(class="form-control") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.adresa.label(class="form-label fw-bold") }}
+                        {{ form.adresa(class="form-control", placeholder="Ulice, město, PSČ") }}
+                        <small class="form-text text-muted">Adresa pobočky – zobrazí se na reklamačním formuláři jako „Adresa kde se zboží vrací“</small>
+                    </div>
+                    <div class="mb-3">
+                        {{ form.firma.label(class="form-label fw-bold") }}
+                        {{ form.firma(class="form-control", placeholder="Název firmy / IČO") }}
+                        <small class="form-text text-muted">Název firmy pro právní účely – zobrazí se na reklamačním formuláři</small>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Uložit změny
+                        </button>
+                        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times"></i> Zrušit
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

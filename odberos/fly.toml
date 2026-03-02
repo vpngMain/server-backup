@@ -1,0 +1,32 @@
+# Fly.io konfigurace – Odběry a reklamace
+# Deploy: fly deploy
+# Secrets: fly secrets set SECRET_KEY="váš-tajný-klíč"
+
+app = "odberos"
+
+[build]
+
+[env]
+  PORT = "8080"
+  FLASK_ENV = "production"
+  # Databáze na persistentním volume (DŮLEŽITÉ – bez toho by se data ztratila při restartu)
+  DATABASE_URL = "sqlite:////data/odbery.db"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Persistentní volume pro SQLite – data přežijí restart
+# Před prvním deploy: fly volumes create odberos_data -r fra -s 1
+[mounts]
+  source = "odberos_data"
+  destination = "/data"

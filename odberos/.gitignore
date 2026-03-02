@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Databáze a logy (nechceme nahrát na GitHub)
+site/instance/*.db
+site/instance/*.db-shm
+site/instance/*.db-wal
+site/logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+venv/
+.env

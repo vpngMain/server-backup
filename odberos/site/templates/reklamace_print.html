@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reklamační formulář #{{ reklamace.id }}</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; background: #fff; }
+        .page { padding: 18mm 12mm; page-break-after: always; max-width: 210mm; }
+        .page:last-child { page-break-after: auto; }
+        .brand { text-align: center; margin-bottom: 6mm; }
+        .brand .title { font-size: 20px; font-weight: 700; letter-spacing: .5px; margin-top: 2mm; }
+        .field { border: 1px solid #000; padding: 4mm; margin-bottom: 3mm; min-height: 10mm; }
+        .label { font-size: 11px; font-weight: 700; margin-bottom: 1.5mm; text-transform: uppercase; letter-spacing: 0.5px; }
+        .value { font-size: 13px; white-space: pre-wrap; }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+        .small { font-size: 11px; line-height: 1.35; }
+        .copy-badge { font-size: 12px; font-weight: 700; margin-bottom: 4mm; }
+
+        .no-print { padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 1px solid #e2e8f0; }
+        .no-print .toolbar-title { font-size: 0.9375rem; font-weight: 700; color: #0f172a; }
+        .no-print .toolbar-title span { color: #6366f1; }
+        .no-print a { padding: 10px 18px; font-size: 14px; text-decoration: none; color: #6366f1; font-weight: 600; border-radius: 12px; border: 1px solid rgba(99,102,241,0.3); background: #fff; }
+        .no-print a:hover { background: #eef2ff; border-color: #6366f1; }
+        .no-print button { padding: 10px 20px; font-size: 15px; cursor: pointer; background: #6366f1; color: #fff; border: none; border-radius: 12px; font-weight: 600; }
+        .no-print button:hover { background: #4f46e5; }
+
+        @media print {
+            .no-print { display: none !important; }
+            body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .page { padding: 12mm 10mm; page-break-after: always; box-shadow: none; }
+            .page:last-child { page-break-after: auto; }
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print" role="toolbar" aria-label="Nástroje pro tisk">
+        <div class="toolbar-title"><span>Reklamační formulář</span> · #{{ reklamace.id }}</div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <a href="{{ url_for('reklamace_branch', pobocka_id=pobocka.id) }}">← Zpět na reklamace</a>
+            <button type="button" onclick="window.print()" aria-label="Tisknout formulář">🖨️ Tisknout PDF</button>
+        </div>
+    </div>
+
+    {% for badge in ['Kopie pro zákazníka', 'Kopie pro prodejnu'] %}
+    <div class="page">
+        <div class="brand">
+            <div style="font-weight:700;">VAPING</div>
+            <div class="title">REKLAMAČNÍ FORMULÁŘ</div>
+            <div class="copy-badge">{{ badge }}</div>
+        </div>
+
+        <div class="grid2">
+            <div class="field">
+                <div class="label">Datum</div>
+                <div class="value">{{ reklamace.datum_prijmu | cesky_datum }}</div>
+            </div>
+            <div class="field">
+                <div class="label">Přijmul</div>
+                <div class="value">{% if reklamace.prijal %}{{ reklamace.prijal }}{% else %}________________________{% endif %}</div>
+            </div>
+        </div>
+
+        <div class="field">
+            <div class="label">Adresa kde se zboží vrací</div>
+            <div class="value">{% if pobocka.firma %}{{ pobocka.firma }}
+{% endif %}{% if pobocka.adresa %}{{ pobocka.adresa }}
+{% endif %}{{ pobocka.nazev }}{% if not pobocka.adresa or not pobocka.firma %}
+
+<span style="color:#c00;font-size:10px;">⚠ Vyplňte adresu a firmu v Admin → Pobočky pro právní platnost.</span>{% endif %}</div>
+        </div>
+
+        <div class="field">
+            <div class="label">Zákazník</div>
+            <div class="value">Jméno a příjmení: {{ reklamace.zakaznik }}
+{% if reklamace.telefon %}Tel. číslo: {{ reklamace.telefon }}{% endif %}</div>
+        </div>
+
+        <div class="field">
+            <div class="label">Reklamované zboží</div>
+            <div class="value">Výrobce: {{ reklamace.znacka }}
+{% if reklamace.model %}Model: {{ reklamace.model }}{% endif %}
+{% if reklamace.barva %}Barva: {{ reklamace.barva }}{% endif %}
+{% if reklamace.datum_zakoupeni %}Datum zakoupení: {{ reklamace.datum_zakoupeni | cesky_datum }}{% endif %}</div>
+        </div>
+
+        <div class="field" style="min-height: 30mm;">
+            <div class="label">Zjištěná závada (popis zákazníka – dle jeho slov při převzetí)</div>
+            <div class="value">{{ reklamace.popis_zavady }}</div>
+        </div>
+
+        {% if reklamace.stav and reklamace.stav != 'Čeká' %}
+        <div class="field">
+            <div class="label">Výsledek reklamace</div>
+            <div class="value">{{ reklamace.stav }}{% if reklamace.stav == 'Zamítnuto' and reklamace.sleva_procent %} – sleva {{ reklamace.sleva_procent|int }}%{% endif %}</div>
+        </div>
+        {% endif %}
+
+        <div class="small" style="margin-top:4mm;">
+            <div><strong>Zákonná lhůta pro vyřízení reklamace</strong></div>
+            <div>Podle zákona č. 89/2012 Sb., občanský zákoník, máme na vyřízení reklamace zákonnou lhůtu 30 dnů od převzetí reklamovaného výrobku.</div>
+        </div>
+    </div>
+    {% endfor %}
+</body>
+</html>

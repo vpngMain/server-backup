@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+
+{% block title %}Přidat uživatele{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 fade-in">
+    <h1 class="mb-0"><i class="fas fa-user-plus"></i> Přidat uživatele</h1>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left"></i> Zpět
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-10 mx-auto">
+        <div class="card card-apple shadow-sm fade-in">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="card-title mb-0"><i class="fas fa-user-plus"></i> Nový uživatel</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="addUserForm">
+                    {{ user_form.hidden_tag() }}
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                {{ user_form.jmeno.label(class="form-label") }}
+                                {{ user_form.jmeno(class="form-control") }}
+                                {% if user_form.jmeno.errors %}
+                                    <div class="text-danger small">
+                                        {% for error in user_form.jmeno.errors %}
+                                            <div>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="mb-3">
+                                {{ user_form.pin.label(class="form-label") }}
+                                {{ user_form.pin(class="form-control", placeholder="4-10 číslic") }}
+                                {% if user_form.pin.errors %}
+                                    <div class="text-danger small">
+                                        {% for error in user_form.pin.errors %}
+                                            <div>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="mb-3">
+                                {{ user_form.role.label(class="form-label") }}
+                                {{ user_form.role(class="form-select") }}
+                                {% if user_form.role.errors %}
+                                    <div class="text-danger small">
+                                        {% for error in user_form.role.errors %}
+                                            <div>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Pobočky</label>
+                                <small class="text-muted d-block mb-2">Vyberte pobočky, ke kterým má uživatel přístup</small>
+                                <div class="border rounded p-3 pobocky-checkbox-box" style="max-height: 300px; overflow-y: auto; background-color: var(--card-bg);">
+                                    {% for pobocka in all_pobocky %}
+                                    <div class="form-check mb-2">
+                                        <input 
+                                            class="form-check-input" 
+                                            type="checkbox" 
+                                            name="pobocky" 
+                                            value="{{ pobocka.id }}" 
+                                            id="pobocka_{{ pobocka.id }}"
+                                        >
+                                        <label class="form-check-label" for="pobocka_{{ pobocka.id }}">
+                                            <i class="fas fa-building text-primary"></i> {{ pobocka.nazev }}
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                    {% if not all_pobocky %}
+                                    <p class="text-muted text-center py-3">Žádné pobočky k dispozici</p>
+                                    {% endif %}
+                                </div>
+                                <div class="mt-2">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectAllPobocky()">
+                                        <i class="fas fa-check-square"></i> Vybrat vše
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deselectAllPobocky()">
+                                        <i class="fas fa-square"></i> Zrušit vše
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-warning">
+                            <i class="fas fa-save"></i> Přidat uživatele
+                        </button>
+                        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times"></i> Zrušit
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function selectAllPobocky() {
+    document.querySelectorAll('input[name="pobocky"]').forEach(cb => cb.checked = true);
+}
+
+function deselectAllPobocky() {
+    document.querySelectorAll('input[name="pobocky"]').forEach(cb => cb.checked = false);
+}
+</script>
+{% endblock %}

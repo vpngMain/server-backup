@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Protokol o vyřízení reklamace #{{ reklamace.id }}</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; background: #fff; font-size: 13px; line-height: 1.35; }
+        .page { padding: 10mm 12mm; max-width: 210mm; min-height: 297mm; margin: 0 auto; }
+        .no-print { padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; background: linear-gradient(135deg, #f0f4ff 0%, #f8fafc 100%); border-bottom: 2px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+        .no-print .toolbar-title { font-size: 1rem; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 8px; }
+        .no-print .toolbar-title span { color: #6366f1; }
+        .no-print .toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .no-print a { padding: 10px 18px; font-size: 14px; text-decoration: none; color: #6366f1; font-weight: 600; border-radius: 10px; border: 1px solid rgba(99,102,241,0.3); background: #fff; display: inline-flex; align-items: center; gap: 6px; }
+        .no-print a:hover { background: #eef2ff; border-color: #6366f1; }
+        .no-print button { padding: 10px 20px; font-size: 15px; cursor: pointer; background: #6366f1; color: #fff; border: none; border-radius: 10px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+        .no-print button:hover { background: #4f46e5; }
+
+        .header { text-align: center; margin-bottom: 4mm; padding-bottom: 3mm; border-bottom: 2px solid #000; }
+        .header .brand { font-weight: 700; font-size: 14px; }
+        .header h1 { font-size: 16px; font-weight: 700; margin: 2px 0 1px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+        .header .sub { font-size: 11px; color: #333; }
+
+        .section { margin-bottom: 3mm; }
+        .section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1mm; color: #333; }
+        .section-content { font-size: 12px; white-space: pre-wrap; }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+        .box { border: 1px solid #000; padding: 3mm; min-height: 6mm; }
+        .highlight { background: #f5f5f5; padding: 3mm; border: 1px solid #ccc; font-weight: 600; }
+        .sign-line { margin-top: 5mm; padding-top: 2mm; border-top: 1px solid #000; font-size: 11px; }
+        .footer-note { font-size: 9px; color: #555; margin-top: 4mm; line-height: 1.35; }
+
+        @media print {
+            .no-print { display: none !important; }
+            body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .page { padding: 8mm 10mm; min-height: auto; box-shadow: none; }
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print" role="toolbar" aria-label="Nástroje pro tisk">
+        <div class="toolbar-title"><span>Protokol pro zákazníka</span> · Reklamace #{{ reklamace.id }}</div>
+        <div class="toolbar-actions">
+            <a href="{{ url_for('reklamace_branch', pobocka_id=pobocka.id) }}">← Zpět na reklamace</a>
+            <button type="button" onclick="window.print()" aria-label="Tisknout protokol">🖨️ Tisknout protokol</button>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="header">
+            <div class="brand">VAPING</div>
+            <h1>Protokol o vyřízení reklamace</h1>
+            <div class="sub">Závěrečné vyřízení – doklad pro zákazníka</div>
+        </div>
+
+        <div class="grid2 section">
+            <div class="box">
+                <div class="section-title">Evidenční číslo reklamace</div>
+                <div class="section-content">#{{ reklamace.id }}</div>
+            </div>
+            <div class="box">
+                <div class="section-title">Datum vyřízení</div>
+                <div class="section-content">{{ datum_vyrizeni_cz }}</div>
+            </div>
+        </div>
+
+        <div class="grid2 section">
+            <div class="box">
+                <div class="section-title">Datum přijetí reklamace</div>
+                <div class="section-content">{{ reklamace.datum_prijmu | cesky_datum }}</div>
+            </div>
+            <div class="box">
+                <div class="section-title">Prodejna / místo vyřízení</div>
+                <div class="section-content">{% if pobocka.firma %}{{ pobocka.firma }}{% endif %}{% if pobocka.firma and pobocka.adresa %} – {% endif %}{% if pobocka.adresa %}{{ pobocka.adresa }}{% endif %}{% if not pobocka.firma and not pobocka.adresa %}{{ pobocka.nazev }}{% endif %}</div>
+            </div>
+        </div>
+
+        <div class="section box">
+            <div class="section-title">Zákazník</div>
+            <div class="section-content">Jméno a příjmení: {{ reklamace.zakaznik }}{% if reklamace.telefon %}
+
+Telefon: {{ reklamace.telefon }}{% endif %}</div>
+        </div>
+
+        <div class="section box">
+            <div class="section-title">Reklamované zboží</div>
+            <div class="section-content">Výrobce / značka: {{ reklamace.znacka }}{% if reklamace.model %}
+Model: {{ reklamace.model }}{% endif %}{% if reklamace.barva %}
+Barva: {{ reklamace.barva }}{% endif %}{% if reklamace.datum_zakoupeni %}
+Datum zakoupení: {{ reklamace.datum_zakoupeni | cesky_datum }}{% endif %}</div>
+        </div>
+
+        <div class="section box">
+            <div class="section-title">Zjištěná závada (popis zákazníka)</div>
+            <div class="section-content">{{ reklamace.popis_zavady }}</div>
+        </div>
+
+        <div class="section box">
+            <div class="section-title">Zjištěná závada ze strany nás</div>
+            <div class="section-content">{{ reklamace.zjistena_zavada_nas or '—' }}</div>
+        </div>
+
+        <div class="section highlight">
+            <div class="section-title">Závěrečný stav reklamace</div>
+            <div class="section-content">{% if reklamace.stav == 'Výměna kus za kus' %}Reklamace uznána – výměna zboží (kus za kus){% elif reklamace.stav == 'Zamítnuto' %}Reklamace zamítnuta{% if reklamace.sleva_procent %} – poskytnuta sleva {{ reklamace.sleva_procent|int }} % na nákup{% endif %}{% else %}{{ reklamace.stav }}{% endif %}</div>
+        </div>
+
+        {% if reklamace.reseni %}
+        <div class="section box">
+            <div class="section-title">Popis řešení / způsob vyřízení</div>
+            <div class="section-content">{{ reklamace.reseni }}</div>
+        </div>
+        {% endif %}
+
+        <div class="sign-line">
+            <strong>Podpis zákazníka (převzetí protokolu):</strong> _______________________________________
+        </div>
+
+        <div class="footer-note">
+            <strong>Zákonná lhůta:</strong> Podle zákona č. 89/2012 Sb., občanský zákoník, má prodávající na vyřízení reklamace lhůtu 30 dnů od jejího převzetí. Tento protokol je dokladem o závěrečném vyřízení reklamace.
+        </div>
+    </div>
+</body>
+</html>

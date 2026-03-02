@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Košík{% endblock %}
+{% block content %}
+<h2>Košík</h2>
+<p class="branch-cart-info">Košík pro pobočku: <strong>{{ current_branch.name if current_branch else '—' }}</strong></p>
+{% if order_type == 'internal' %}
+<p class="hint">Tato objednávka bude odeslána jako <strong>interní</strong>. <a href="{{ url_for('internal_products') }}">Interní produkty</a> · <a href="{{ url_for('index') }}">Běžné produkty</a>.</p>
+{% endif %}
+{% if items %}
+<form id="cart-update-form" method="post" action="{{ url_for('cart_update') }}">
+</form>
+<div class="table-wrapper">
+    <table class="table table-cart">
+        <thead>
+            <tr>
+                <th>Produkt</th>
+                <th>ks</th>
+                <th>Množství (ks)</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr class="{{ 'row-custom' if item.is_custom else '' }}">
+                {% if item.is_custom %}
+                <td>
+                    <input form="cart-update-form" type="text" name="custom_{{ item.custom_index }}_name" value="{{ item.custom_name }}" class="input-branch-note" placeholder="Název produktu">
+                </td>
+                <td>—</td>
+                <td>
+                    <input form="cart-update-form" type="number" name="custom_{{ item.custom_index }}_qty" value="{{ item.quantity | format_qty }}" min="0.01" step="any" class="input-qty" placeholder="ks">
+                </td>
+                <td>
+                    <form method="post" action="{{ url_for('cart_remove_custom', index=item.custom_index) }}" class="inline-form">
+                        <button type="submit" class="btn btn-sm">Odebrat</button>
+                    </form>
+                </td>
+                {% else %}
+                <td>{{ item.product.name }}</td>
+                <td>{{ item.product.unit or 'ks' }}</td>
+                <td>
+                    <input form="cart-update-form" type="number" name="qty_{{ item.product.id }}" value="{{ item.quantity | format_qty }}" min="0.01" step="any" class="input-qty" placeholder="ks">
+                </td>
+                <td>
+                    <form method="post" action="{{ url_for('cart_remove', product_id=item.product.id) }}" class="inline-form">
+                        <button type="submit" class="btn btn-sm">Odebrat</button>
+                    </form>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<button form="cart-update-form" type="submit" class="btn">Uložit změny</button>
+<form method="post" action="{{ url_for('order_submit') }}" class="submit-order">
+    <button type="submit" class="btn btn-primary">Odeslat objednávku</button>
+</form>
+{% else %}
+<p>Košík je prázdný. <a href="{{ url_for('index') }}">Přejít na produkty</a></p>
+{% endif %}
+{% endblock %}

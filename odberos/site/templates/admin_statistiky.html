@@ -1,0 +1,431 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin - Statistiky{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 fade-in">
+    <h1 class="mb-0">Detailní statistiky</h1>
+    <div>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">Zpět na dashboard</a>
+        <a href="{{ url_for('admin_export_all') }}" class="btn btn-outline-secondary btn-sm">Export Excel</a>
+    </div>
+</div>
+
+<!-- Filtry -->
+<div class="card mb-4 shadow-sm">
+    <div class="card-header" style="background: var(--table-header-bg); color: var(--table-header-text);">
+        <h5 class="card-title mb-0">Filtry</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Rok</label>
+                <select name="rok" class="form-select">
+                    {% for rok in range(current_year, current_year - 6, -1) %}
+                    <option value="{{ rok }}" {% if rok == selected_year %}selected{% endif %}>{{ rok }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Měsíc (volitelné)</label>
+                <select name="mesic" class="form-select">
+                    <option value="">Všechny měsíce</option>
+                    {% for mesic in range(1, 13) %}
+                    <option value="{{ mesic }}" {% if mesic == selected_month %}selected{% endif %}>
+                        {{ ['Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen', 'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'][mesic-1] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Pobočka (volitelné)</label>
+                <select name="pobocka" class="form-select">
+                    <option value="">Všechny pobočky</option>
+                    {% for pobocka in pobocky %}
+                    <option value="{{ pobocka.id }}" {% if pobocka.id == selected_pobocka %}selected{% endif %}>{{ pobocka.nazev }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">Filtrovat</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Celkové statistiky -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header" style="background: var(--table-header-bg); color: var(--table-header-text);">
+                <h5 class="card-title mb-0">Odběry – Celkem</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-6 mb-3">
+                        <h3 class="text-primary mb-0">{{ celkove_stats.odbery.celkem }}</h3>
+                        <small class="text-muted">Celkem odběrů</small>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <h3 class="text-success mb-0">{{ "{:,.0f}".format(celkove_stats.odbery.castka|default(0)) }} Kč</h3>
+                        <small class="text-muted">Celkem vydáno</small>
+                    </div>
+                    <div class="col-4 mb-2">
+                        <strong class="text-primary">{{ celkove_stats.odbery.aktivni }}</strong>
+                        <br><small class="text-muted">Aktivní</small>
+                    </div>
+                    <div class="col-4 mb-2">
+                        <strong class="text-success">{{ celkove_stats.odbery.vydano }}</strong>
+                        <br><small class="text-muted">Vydáno</small>
+                    </div>
+                    <div class="col-4 mb-2">
+                        <strong class="text-warning">{{ celkove_stats.odbery.nevyzvednuto }}</strong>
+                        <br><small class="text-muted">Nevyzvednuto</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header" style="background: var(--table-header-bg); color: var(--table-header-text);">
+                <h5 class="card-title mb-0">Reklamace – Celkem</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-12 mb-3">
+                        <h3 class="text-warning mb-0">{{ celkove_stats.reklamace.celkem }}</h3>
+                        <small class="text-muted">Celkem reklamací</small>
+                    </div>
+                    <div class="col-3 mb-2">
+                        <strong class="text-info">{{ celkove_stats.reklamace.ceka }}</strong>
+                        <br><small class="text-muted">Čeká</small>
+                    </div>
+                    <div class="col-3 mb-2">
+                        <strong class="text-success">{{ celkove_stats.reklamace.vymena }}</strong>
+                        <br><small class="text-muted">Výměna</small>
+                    </div>
+                    <div class="col-3 mb-2">
+                        <strong class="text-primary">{{ celkove_stats.reklamace.poslano }}</strong>
+                        <br><small class="text-muted">Posláno</small>
+                    </div>
+                    <div class="col-3 mb-2">
+                        <strong class="text-danger">{{ celkove_stats.reklamace.zamitnuto }}</strong>
+                        <br><small class="text-muted">Zamítnuto</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Měsíční přehled -->
+<div class="card mb-4 shadow-sm">
+    <div class="card-header" style="background: var(--table-header-bg); color: var(--table-header-text);">
+        <h5 class="card-title mb-0">Měsíční přehled ({{ selected_year }})</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead class="table-info">
+                    <tr>
+                        <th>Měsíc</th>
+                        <th class="text-center">Odběry</th>
+                        <th class="text-center">Aktivní</th>
+                        <th class="text-center">Vydáno</th>
+                        <th class="text-end">Částka (Kč)</th>
+                        <th class="text-center">Reklamace</th>
+                        <th class="text-center">Čeká</th>
+                        <th class="text-center">Vyřízené</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set mesice = ['Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen', 'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'] %}
+                    {% for mesic in range(1, 13) %}
+                    <tr>
+                        <td><strong>{{ mesice[mesic-1] }}</strong></td>
+                        <td class="text-center">{{ mesicni_odbery[mesic].celkem }}</td>
+                        <td class="text-center"><span class="badge bg-primary rounded-pill">{{ mesicni_odbery[mesic].aktivni }}</span></td>
+                        <td class="text-center"><span class="badge bg-success rounded-pill">{{ mesicni_odbery[mesic].vydano }}</span></td>
+                        <td class="text-end"><strong>{{ "{:,.0f}".format(mesicni_odbery[mesic].castka) }}</strong></td>
+                        <td class="text-center">{{ mesicni_reklamace[mesic].celkem }}</td>
+                        <td class="text-center"><span class="badge bg-info text-dark rounded-pill">{{ mesicni_reklamace[mesic].ceka }}</span></td>
+                        <td class="text-center"><span class="badge bg-success rounded-pill">{{ mesicni_reklamace[mesic].vymena + mesicni_reklamace[mesic].poslano }}</span></td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="table-secondary fw-bold">
+                        <td><strong>CELKEM</strong></td>
+                        <td class="text-center">{{ celkove_stats.odbery.celkem }}</td>
+                        <td class="text-center">{{ celkove_stats.odbery.aktivni }}</td>
+                        <td class="text-center">{{ celkove_stats.odbery.vydano }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(celkove_stats.odbery.castka|default(0)) }}</td>
+                        <td class="text-center">{{ celkove_stats.reklamace.celkem|default(0) }}</td>
+                        <td class="text-center">{{ celkove_stats.reklamace.ceka|default(0) }}</td>
+                        <td class="text-center">{{ (celkove_stats.reklamace.vymena|default(0)) + (celkove_stats.reklamace.poslano|default(0)) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Statistiky podle poboček -->
+<div class="card mb-4 shadow-sm">
+    <div class="card-header" style="background: var(--table-header-bg); color: var(--table-header-text);">
+        <h5 class="card-title mb-0">Statistiky podle poboček</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped">
+                <thead class="table-success">
+                    <tr>
+                        <th>Pobočka</th>
+                        <th class="text-center" colspan="4">Odběry</th>
+                        <th class="text-center" colspan="5">Reklamace</th>
+                    </tr>
+                    <tr>
+                        <th></th>
+                        <th class="text-center">Celkem</th>
+                        <th class="text-center">Aktivní</th>
+                        <th class="text-center">Vydáno</th>
+                        <th class="text-end">Částka (Kč)</th>
+                        <th class="text-center">Celkem</th>
+                        <th class="text-center">Čeká</th>
+                        <th class="text-center">Výměna</th>
+                        <th class="text-center">Posláno</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pob in pobocky_stats %}
+                    <tr>
+                        <td><strong>{{ pob.nazev }}</strong></td>
+                        <td class="text-center">{{ pob.odbery.celkem }}</td>
+                        <td class="text-center"><span class="badge bg-primary rounded-pill">{{ pob.odbery.aktivni }}</span></td>
+                        <td class="text-center"><span class="badge bg-success rounded-pill">{{ pob.odbery.vydano }}</span></td>
+                        <td class="text-end"><strong>{{ "{:,.0f}".format(pob.odbery.castka|default(0)) }}</strong></td>
+                        <td class="text-center">{{ pob.reklamace.celkem|default(0) }}</td>
+                        <td class="text-center"><span class="badge bg-info text-dark rounded-pill">{{ pob.reklamace.ceka|default(0) }}</span></td>
+                        <td class="text-center"><span class="badge bg-success rounded-pill">{{ pob.reklamace.vymena|default(0) }}</span></td>
+                        <td class="text-center"><span class="badge bg-primary rounded-pill">{{ pob.reklamace.poslano|default(0) }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Top zákazníci a značky -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header" style="background: var(--table-header-bg); color: var(--table-header-text);">
+                <h5 class="card-title mb-0">👥 Top 10 zákazníků</h5>
+            </div>
+            <div class="card-body">
+                {% if top_zakaznici %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Jméno</th>
+                                <th class="text-center">Počet</th>
+                                <th class="text-end">Celkem (Kč)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for zakaznik in top_zakaznici %}
+                            <tr>
+                                <td><strong>{{ loop.index }}</strong></td>
+                                <td>{{ zakaznik[0] }}</td>
+                                <td class="text-center"><span class="badge bg-primary rounded-pill">{{ zakaznik[1] }}</span></td>
+                                <td class="text-end"><strong>{{ "{:,.0f}".format(zakaznik[2] or 0) }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center">Žádná data</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header" style="background: var(--table-header-bg); color: var(--table-header-text);">
+                <h5 class="card-title mb-0">🏷️ Top 10 značek reklamací</h5>
+            </div>
+            <div class="card-body">
+                {% if top_znacky %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Značka</th>
+                                <th class="text-center">Počet</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for znacka in top_znacky %}
+                            <tr>
+                                <td><strong>{{ loop.index }}</strong></td>
+                                <td>{{ znacka[0] }}</td>
+                                <td class="text-center"><span class="badge bg-warning text-dark rounded-pill">{{ znacka[1] }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center">Žádná data</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Grafy -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header" style="background: var(--table-header-bg); color: var(--table-header-text);">
+                <h5 class="card-title mb-0">Graf odběrů</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="odberyChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header" style="background: var(--table-header-bg); color: var(--table-header-text);">
+                <h5 class="card-title mb-0">Graf reklamací</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="reklamaceChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Data pro grafy
+    const mesice = ['Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen', 'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'];
+    const odberyData = [
+        {% for mesic in range(1, 13) %}
+        {{ mesicni_odbery[mesic].celkem }}{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+    const odberyVydano = [
+        {% for mesic in range(1, 13) %}
+        {{ mesicni_odbery[mesic].vydano }}{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+    const reklamaceData = [
+        {% for mesic in range(1, 13) %}
+        {{ mesicni_reklamace[mesic].celkem }}{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+    const reklamaceCeka = [
+        {% for mesic in range(1, 13) %}
+        {{ mesicni_reklamace[mesic].ceka }}{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+
+    var isDark = document.body.getAttribute('data-theme') === 'dark';
+    var chartDefaults = {
+        gridColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
+        tickColor: isDark ? '#c4c8d4' : '#64748b',
+        legendColor: isDark ? '#c4c8d4' : '#64748b'
+    };
+
+    // Graf odběrů
+    const odberyCtx = document.getElementById('odberyChart');
+    if (odberyCtx) {
+        new Chart(odberyCtx, {
+            type: 'bar',
+            data: {
+                labels: mesice,
+                datasets: [{
+                    label: 'Celkem odběrů',
+                    data: odberyData,
+                    backgroundColor: 'rgba(74, 144, 226, 0.6)',
+                    borderColor: 'rgba(74, 144, 226, 1)',
+                    borderWidth: 2
+                }, {
+                    label: 'Vydáno',
+                    data: odberyVydano,
+                    backgroundColor: 'rgba(40, 167, 69, 0.6)',
+                    borderColor: 'rgba(40, 167, 69, 1)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: { color: chartDefaults.legendColor }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: chartDefaults.tickColor }, grid: { color: chartDefaults.gridColor } },
+                    y: { beginAtZero: true, ticks: { color: chartDefaults.tickColor }, grid: { color: chartDefaults.gridColor } }
+                }
+            }
+        });
+    }
+
+    // Graf reklamací
+    const reklamaceCtx = document.getElementById('reklamaceChart');
+    if (reklamaceCtx) {
+        new Chart(reklamaceCtx, {
+            type: 'line',
+            data: {
+                labels: mesice,
+                datasets: [{
+                    label: 'Celkem reklamací',
+                    data: reklamaceData,
+                    borderColor: 'rgba(255, 193, 7, 1)',
+                    backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                    tension: 0.4,
+                    fill: true
+                }, {
+                    label: 'Čeká',
+                    data: reklamaceCeka,
+                    borderColor: 'rgba(23, 162, 184, 1)',
+                    backgroundColor: 'rgba(23, 162, 184, 0.2)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: { color: chartDefaults.legendColor }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: chartDefaults.tickColor }, grid: { color: chartDefaults.gridColor } },
+                    y: { beginAtZero: true, ticks: { color: chartDefaults.tickColor }, grid: { color: chartDefaults.gridColor } }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

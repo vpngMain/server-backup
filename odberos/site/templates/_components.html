@@ -1,0 +1,50 @@
+{# Komponenty pro konzistentní UI – badge, toast, modál #}
+
+{% macro stav_odber_badge(stav) %}
+{% if stav == 'aktivní' %}
+<span class="badge bg-secondary rounded-pill">Aktivní</span>
+{% elif stav == 'vydáno' %}
+<span class="badge bg-success rounded-pill">Vydáno</span>
+{% elif stav == 'nevyzvednuto' %}
+<span class="badge bg-warning text-dark rounded-pill">Nevyzvednuto</span>
+{% elif stav == 'smazano' %}
+<span class="badge bg-dark rounded-pill">Smazáno</span>
+{% else %}
+<span class="badge bg-secondary rounded-pill">{{ stav }}</span>
+{% endif %}
+{% endmacro %}
+
+{% macro stav_reklamace_badge(r) %}
+{% if r.stav == 'Čeká' %}
+<span class="badge bg-secondary rounded-pill">Čeká</span>
+{% elif r.stav == 'Výměna kus za kus' %}
+<span class="badge bg-success rounded-pill">Prošlo – výměna</span>
+{% elif r.stav == 'Posláno do Ústí' %}
+<span class="badge bg-primary rounded-pill">Posláno do Ústí</span>
+{% elif r.stav == 'Zamítnuto' %}
+<span class="badge bg-danger rounded-pill">Zamítnuto{% if r.sleva_procent %} (sleva {{ r.sleva_procent|int }}%){% endif %}</span>
+{% else %}
+<span class="badge bg-secondary rounded-pill">{{ r.stav }}</span>
+{% endif %}
+{% endmacro %}
+
+{% macro confirm_modal(id, title, body, confirm_text, confirm_class, form_action, form_method='POST') %}
+<div class="modal fade" id="{{ id }}" tabindex="-1" aria-labelledby="{{ id }}Label" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="{{ id }}Label">{{ title }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zavřít"></button>
+            </div>
+            <div class="modal-body">{{ body }}</div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Zrušit</button>
+                <form action="{{ form_action }}" method="{{ form_method }}" class="d-inline" id="{{ id }}-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-{{ confirm_class }} rounded-pill">{{ confirm_text }}</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}

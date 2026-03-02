@@ -1,0 +1,437 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ pobocka.nazev }}{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb breadcrumb-apple">
+            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Odběry</a></li>
+            <li class="breadcrumb-item active">{{ pobocka.nazev }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <h1 class="page-title mb-0">{{ pobocka.nazev }}</h1>
+        <div class="toolbar-wrap">
+            <a href="#odber-form" class="btn btn-primary btn-sm rounded-pill" id="toolbar-novy-odber"><i class="fas fa-plus me-1"></i>Nový odběr</a>
+            <a href="{{ url_for('reklamace_branch', pobocka_id=pobocka.id) }}" class="btn btn-outline-primary btn-sm rounded-pill">Reklamace</a>
+            <a href="{{ url_for('ppl_branch', pobocka_id=pobocka.id) }}" class="btn btn-outline-primary btn-sm rounded-pill">PPL sklad</a>
+            <a href="{{ url_for('branch_export_csv', pobocka_id=pobocka.id) }}" class="btn btn-outline-secondary btn-sm rounded-pill">Export CSV</a>
+            {% if current_user.role == 'admin' %}<a href="{{ url_for('admin_reklamace_archiv') }}" class="btn btn-outline-secondary btn-sm rounded-pill">Archiv</a>{% endif %}
+        </div>
+    </div>
+</header>
+
+<div class="page-section">
+<div class="card card-apple mb-4">
+    <div class="card-body p-4">
+        <h2 class="card-title fw-semibold mb-3" style="font-size: 1.125rem;">Přehled odběrů</h2>
+        <p class="mb-1"><strong>Celkem aktivních odběrů:</strong> {{ prehled.celkem }}</p>
+        <p class="mb-1"><strong>V pořádku (≤7 dní):</strong> <span class="text-success">{{ prehled.zelene }}</span></p>
+        <p class="mb-0"><strong>Rozebrat (>7 dní):</strong> <span class="text-danger">{{ prehled.cervene }}</span></p>
+    </div>
+</div>
+</div>
+
+<div class="page-section" id="odber-form">
+<div class="card card-apple mb-0">
+    <div class="card-body p-4">
+        <h2 class="card-title fw-semibold mb-3" style="font-size: 1.125rem;">Přidat nový odběr</h2>
+        {% if validacni_chyba %}
+        <div class="alert alert-danger alert-dismissible fade show mb-3" role="alert">
+            <i class="fas fa-exclamation-circle me-2"></i>{{ validacni_chyba }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+        <form method="POST" id="odberForm">
+            {{ form.hidden_tag() }}
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    {{ form.jmeno.label(class="form-label") }} <span class="text-danger">*</span>
+                    {{ form.jmeno(class="form-control", required=True) }}
+                    {% if form.jmeno.errors %}<div class="text-danger small mt-1">{% for e in form.jmeno.errors %}{{ e }}{% endfor %}</div>{% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                    {{ form.datum.label(class="form-label") }}
+                    {{ form.datum(class="form-control", type="date") }}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    {{ form.telefon.label(class="form-label") }}
+                    <div class="input-group">
+                        <span class="input-group-text">+420</span>
+                        <input type="text" name="telefon" class="form-control" id="telefon" maxlength="9" placeholder="123456789 (volitelné)" value="{{ form.telefon.data or '' }}">
+                    </div>
+                    {% if form.telefon.errors %}<div class="text-danger small mt-1">{% for e in form.telefon.errors %}{{ e }}{% endfor %}</div>{% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                    {{ form.castka.label(class="form-label") }}
+                    {{ form.castka(class="form-control", type="number", step="0.01", min="0", id="castka") }}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    {{ form.placeno_predem.label(class="form-label") }}
+                    {{ form.placeno_predem(id="placeno_predem") }}
+                </div>
+                <div class="col-md-6 mb-3">
+                    {{ form.kdo_zadal.label(class="form-label") }}
+                    {{ form.kdo_zadal(class="form-select odber-zadal-select") }}
+                    <small class="text-muted d-block mt-1">Vyplněno podle přihlášeného uživatele</small>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 mb-3">
+                    {{ form.poznamky.label(class="form-label") }}
+                    {{ form.poznamky(class="form-control") }}
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 rounded-pill py-2" id="odberSubmitBtn">Přidat</button>
+        </form>
+    </div>
+</div>
+</div>
+
+<div class="page-section">
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <h2 class="mb-0 fw-semibold page-title" style="font-size: 1.25rem;">Aktivní odběry</h2>
+    <form method="GET" class="d-flex gap-2 align-items-center flex-wrap">
+        <input type="text" class="form-control form-control-sm rounded-pill" name="q" placeholder="Hledat jméno, telefon…" value="{{ filter_q or '' }}" style="min-width: 160px; max-width: 220px;" aria-label="Vyhledávat">
+        <button type="submit" class="btn btn-outline-primary btn-sm rounded-pill"><i class="fas fa-search me-1"></i>Hledat</button>
+        {% if filter_q %}
+        <a href="{{ url_for('branch', pobocka_id=pobocka.id) }}" class="btn btn-outline-secondary btn-sm rounded-pill">Vyčistit</a>
+        {% endif %}
+    </form>
+</div>
+<div id="bulk-actions-bar" class="card card-apple card-apple-static mb-2 p-2" style="display: none;">
+    <form method="POST" action="{{ url_for('branch_bulk_update', pobocka_id=pobocka.id) }}{% if filter_q %}?q={{ filter_q }}{% endif %}" class="d-flex align-items-center gap-2 flex-wrap" id="bulkForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="">
+        <span class="small text-secondary">Vybrané:</span>
+        <button type="button" class="btn btn-success btn-sm rounded-pill" title="Označit jako vydáno" data-bulk-action="vydano">
+            <i class="fas fa-check me-1"></i>Vydáno
+        </button>
+        <button type="button" class="btn btn-warning btn-sm rounded-pill" title="Označit jako nevyzvednuto" data-bulk-action="nevyzvednuto">
+            <i class="fas fa-clock me-1"></i>Nevyzvednuto
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" id="bulkClear">Zrušit výběr</button>
+    </form>
+</div>
+<div class="card card-apple card-apple-static overflow-hidden">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0" id="odbery-table">
+            <thead>
+                <tr>
+                    <th class="text-center" style="width: 40px;">
+                        <input type="checkbox" id="selectAll" class="form-check-input" aria-label="Vybrat všechny">
+                    </th>
+                    <th class="sortable" data-sort="jmeno">Jméno</th>
+                    <th class="sortable" data-sort="kdo_zadal">Zadal</th>
+                    <th class="sortable" data-sort="datum">Datum</th>
+                    <th>Telefon</th>
+                    <th>Částka</th>
+                    <th>Poznámky</th>
+                    <th>Akce</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for odber in odbery %}
+            <tr class="{{ odber.barva }}" data-id="{{ odber.id }}">
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input odber-check" name="ids" value="{{ odber.id }}" form="bulkForm" aria-label="Vybrat odběr {{ odber.jmeno }}">
+                </td>
+                <td>{{ odber.jmeno }}</td>
+                <td>{{ odber.kdo_zadal }}</td>
+                <td>{{ odber.datum | cesky_datum }}</td>
+                <td>
+                    {% set tel_display = odber.telefon | odber_telefon %}
+                    {% if tel_display == 'Nezadáno' %}
+                        Nezadáno
+                    {% else %}
+                        {{ tel_display[:4] }} {{ tel_display[4:7] }} {{ tel_display[7:10] }} {{ tel_display[10:] }}
+                    {% endif %}
+                </td>
+                <td>{% if odber.placeno_predem %}Placeno předem{% else %}{{ odber.castka|default(0) }} Kč{% endif %}</td>
+                <td>
+                    <span class="notes-text {% if not odber.poznamky %}empty{% endif %}" data-id="{{ odber.id }}">
+                        {{ odber.poznamky|default('Žádné poznámky') }}
+                    </span>
+                    <a href="#" class="edit-notes-btn" data-id="{{ odber.id }}">Upravit</a>
+                    <textarea class="form-control poznamky-text" data-id="{{ odber.id }}" rows="2" style="display: none;">{{ odber.poznamky|default('') }}</textarea>
+                </td>
+                <td>
+                    <div class="d-flex gap-1">
+                        <form action="{{ url_for('update', id=odber.id) }}" method="POST" class="action-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="action" value="vydano">
+                            <button type="submit" class="btn btn-success btn-sm rounded-pill">Vydáno</button>
+                        </form>
+                        <form action="{{ url_for('update', id=odber.id) }}" method="POST" class="action-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="action" value="nevyzvednuto">
+                            <button type="submit" class="btn btn-warning btn-sm rounded-pill">Nevyzvednuto</button>
+                        </form>
+                        <form action="{{ url_for('update', id=odber.id) }}" method="POST" class="action-form delete-form" data-name="{{ odber.jmeno }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="action" value="smazat">
+                            <button type="button" class="btn btn-danger btn-sm rounded-pill btn-delete" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">Smazat</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmDeleteLabel">Smazat odběr?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zavřít"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0">Opravdu chcete smazat odběr pro <strong id="deleteModalName">—</strong>? Tato akce je nevratná.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Zrušit</button>
+                <button type="button" class="btn btn-danger rounded-pill" id="confirmDeleteBtn">Smazat</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='main.js') }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Smooth scroll pro toolbar
+        document.querySelector('#toolbar-novy-odber')?.addEventListener('click', function(e) {
+            var el = document.getElementById('odber-form');
+            if (el) { e.preventDefault(); el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+        });
+        var odberForm = document.getElementById('odberForm');
+        var odberSubmitBtn = document.getElementById('odberSubmitBtn');
+        if (odberForm && odberSubmitBtn) {
+            odberForm.addEventListener('submit', function() {
+                odberSubmitBtn.disabled = true;
+                odberSubmitBtn.textContent = 'Ukládám…';
+            });
+        }
+        // Form functionality
+        const placenoPredem = document.querySelector('#placeno_predem');
+        const castka = document.querySelector('#castka');
+        if (placenoPredem && castka) {
+            placenoPredem.addEventListener('change', function() {
+                castka.disabled = this.checked;
+                if (this.checked) castka.value = '';
+            });
+            if (placenoPredem.checked) castka.disabled = true;
+        }
+
+        if (castka) castka.addEventListener('input', function() {
+            this.value = this.value.replace(/[^0-9.]/g, '');
+            const parts = this.value.split('.');
+            if (parts.length > 2) {
+                this.value = parts[0] + '.' + parts[1];
+            }
+        });
+
+        // Notes functionality
+        document.querySelectorAll('.edit-notes-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const id = this.dataset.id;
+                const notesText = document.querySelector(`.notes-text[data-id="${id}"]`);
+                const textarea = document.querySelector(`.poznamky-text[data-id="${id}"]`);
+                notesText.style.display = 'none';
+                this.style.display = 'none';
+                textarea.style.display = 'block';
+                textarea.focus();
+            });
+        });
+
+        var debounceTimers = {};
+        document.querySelectorAll('.poznamky-text').forEach(textarea => {
+            textarea.addEventListener('input', function() {
+                var id = this.dataset.id;
+                if (debounceTimers[id]) clearTimeout(debounceTimers[id]);
+                debounceTimers[id] = setTimeout(function() { saveNotes(textarea); delete debounceTimers[id]; }, 500);
+            });
+            textarea.addEventListener('blur', function() {
+                var id = this.dataset.id;
+                if (debounceTimers[id]) { clearTimeout(debounceTimers[id]); delete debounceTimers[id]; saveNotes(this); }
+            });
+            textarea.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    this.blur();
+                }
+            });
+        });
+
+        function saveNotes(textarea) {
+            const id = textarea.dataset.id;
+            const poznamky = textarea.value.trim();
+            const notesText = document.querySelector('.notes-text[data-id="' + id + '"]');
+            const editBtn = document.querySelector('.edit-notes-btn[data-id="' + id + '"]');
+            if (!notesText || !editBtn) return;
+            var prevText = notesText.textContent;
+            var prevEmpty = notesText.classList.contains('empty');
+            notesText.textContent = poznamky || 'Žádné poznámky';
+            notesText.classList.toggle('empty', !poznamky);
+            notesText.style.display = 'inline';
+            editBtn.style.display = 'inline';
+            textarea.style.display = 'none';
+            var savingSpan = document.createElement('span');
+            savingSpan.className = 'text-secondary small ms-1';
+            savingSpan.textContent = 'ukládám…';
+            notesText.parentNode.insertBefore(savingSpan, notesText.nextSibling);
+            var csrf = document.querySelector('meta[name="csrf-token"]');
+            $.ajax({
+                url: '/update_notes/' + id,
+                type: 'POST',
+                contentType: 'application/json',
+                headers: csrf ? { 'X-CSRFToken': csrf.getAttribute('content') } : {},
+                data: JSON.stringify({ poznamky: poznamky }),
+                success: function(data) {
+                    savingSpan.remove();
+                    if (data.status !== 'success') {
+                        notesText.textContent = prevText;
+                        notesText.classList.toggle('empty', prevEmpty);
+                        alert('Chyba: ' + (data.message || 'Neznámá chyba'));
+                        notesText.style.display = 'none';
+                        editBtn.style.display = 'none';
+                        textarea.style.display = 'block';
+                    } else {
+                        var container = document.getElementById('toast-container');
+                        if (container) {
+                            var toast = document.createElement('div');
+                            toast.className = 'toast-apple success';
+                            toast.textContent = 'Poznámky uloženy';
+                            container.appendChild(toast);
+                            setTimeout(function() { toast.remove(); }, 3000);
+                        }
+                    }
+                },
+                error: function(xhr) {
+                    savingSpan.remove();
+                    notesText.textContent = prevText;
+                    notesText.classList.toggle('empty', prevEmpty);
+                    notesText.style.display = 'none';
+                    editBtn.style.display = 'none';
+                    textarea.style.display = 'block';
+                    var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Neznámá chyba';
+                    alert('Chyba při ukládání: ' + msg);
+                }
+            });
+        }
+
+        // Potvrzovací modál pro smazání
+        var deleteFormToSubmit = null;
+        document.querySelectorAll('.btn-delete').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                var form = this.closest('.delete-form');
+                if (form) {
+                    deleteFormToSubmit = form;
+                    var name = form.dataset.name || 'tento odběr';
+                    document.getElementById('deleteModalName').textContent = name;
+                }
+            });
+        });
+        document.getElementById('confirmDeleteBtn')?.addEventListener('click', function() {
+            if (deleteFormToSubmit) {
+                var row = deleteFormToSubmit.closest('tr');
+                if (row) row.classList.add('removing');
+                var modal = bootstrap.Modal.getInstance(document.getElementById('confirmDeleteModal'));
+                if (modal) modal.hide();
+                deleteFormToSubmit.submit();
+                deleteFormToSubmit = null;
+            }
+        });
+
+        // Action forms (vydáno, nevyzvednuto) – animace
+        document.querySelectorAll('.action-form:not(.delete-form)').forEach(form => {
+            form.addEventListener('submit', function(e) {
+                var row = this.closest('tr');
+                if (row) row.classList.add('removing');
+                setTimeout(() => this.submit(), 300);
+            });
+        });
+
+        // Bulk actions
+        var selectAll = document.getElementById('selectAll');
+        var bulkBar = document.getElementById('bulk-actions-bar');
+        var bulkForm = document.getElementById('bulkForm');
+        var checkboxes = document.querySelectorAll('.odber-check');
+        function updateBulkBar() {
+            var checked = document.querySelectorAll('.odber-check:checked');
+            bulkBar.style.display = checked.length ? 'block' : 'none';
+            selectAll.checked = checked.length === checkboxes.length && checkboxes.length > 0;
+        }
+        selectAll?.addEventListener('change', function() {
+            checkboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
+            updateBulkBar();
+        });
+        checkboxes.forEach(function(cb) {
+            cb.addEventListener('change', updateBulkBar);
+        });
+        document.querySelectorAll('[data-bulk-action]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                bulkForm.querySelector('input[name="action"]').value = this.dataset.bulkAction;
+                bulkForm.submit();
+            });
+        });
+        document.getElementById('bulkClear')?.addEventListener('click', function() {
+            selectAll.checked = false;
+            checkboxes.forEach(function(cb) { cb.checked = false; });
+            updateBulkBar();
+        });
+
+        // Table sorting
+        const table = document.getElementById('odbery-table');
+        const headers = table.querySelectorAll('.sortable');
+        headers.forEach(header => {
+            header.addEventListener('click', () => {
+                const sortKey = header.dataset.sort;
+                const sortDirection = header.classList.contains('asc') ? 'desc' : 'asc';
+                
+                headers.forEach(h => {
+                    h.classList.remove('asc', 'desc');
+                });
+                header.classList.add(sortDirection);
+
+                const tbody = table.querySelector('tbody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+
+                rows.sort((a, b) => {
+                    let aValue, bValue;
+                    if (sortKey === 'datum') {
+                        aValue = new Date(a.cells[3].textContent.split('.').reverse().join('-'));
+                        bValue = new Date(b.cells[3].textContent.split('.').reverse().join('-'));
+                    } else {
+                        aValue = a.cells[sortKey === 'jmeno' ? 1 : 2].textContent.toLowerCase();
+                        bValue = b.cells[sortKey === 'jmeno' ? 1 : 2].textContent.toLowerCase();
+                    }
+                    if (sortDirection === 'asc') {
+                        return aValue > bValue ? 1 : -1;
+                    } else {
+                        return aValue < bValue ? 1 : -1;
+                    }
+                });
+
+                while (tbody.firstChild) {
+                    tbody.removeChild(tbody.firstChild);
+                }
+                rows.forEach(row => tbody.appendChild(row));
+            });
+        });
+    });
+</script>
+{% endblock %}
