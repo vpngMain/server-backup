@@ -55,9 +55,10 @@
     </div>
     <div id="stockEmpty" class="card card-apple text-center py-5" style="display: none;">
         <p class="mb-0 text-muted">Žádné zásilky ve skladu.</p>
-        <a href="{{ url_for('ppl_branch', pobocka_id=pobocka.id) }}" class="btn btn-primary rounded-pill mt-3 ppl-cta" title="Přidat první zásilku">Přidat první zásilku</a>
+        <p class="small text-muted mt-2 mb-0">Přehled bere data ze stejného skladu jako hlavní stránka PPL. Žádné externí API se nevyplňuje – zásilky přidáte formulářem „Přidat zásilku“ (číslo zásilky + umístění) na stránce skladu této pobočky.</p>
+        <a href="{{ url_for('ppl_branch', pobocka_id=pobocka.id) }}" class="btn btn-primary rounded-pill mt-3 ppl-cta" title="Přejít na sklad a přidat zásilku">Zpět na zásilky a přidat zásilku</a>
     </div>
-    <div id="stockContent" class="row g-3" style="display: none;"></div>
+    <div id="stockContent" class="ppl-shelves-grid" style="display: none;"></div>
 </div>
 
 <script>
@@ -65,16 +66,34 @@
     var pobockaId = {{ pobocka.id }};
     var trackBase = 'https://www.ppl.cz/vyhledat-zasilku?shipmentId=';
     var allShelves = [];
+    var csrfEl = document.querySelector('meta[name="csrf-token"]');
+    var csrfHeader = csrfEl ? csrfEl.getAttribute('content') : '';
     function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
     function trackUrl(code) { return trackBase + encodeURIComponent(code); }
+    function removeParcelFromData(parcelId) {
+        var id = parseInt(parcelId, 10);
+        allShelves = allShelves.map(function(sh) {
+            return { shelf: sh.shelf, count: sh.count, parcels: (sh.parcels || []).filter(function(p) { return p.id !== id; }) };
+        }).filter(function(sh) { return (sh.parcels || []).length > 0; });
+        var total = allShelves.reduce(function(sum, sh) { return sum + (sh.parcels || []).length; }, 0);
+        document.getElementById('stockTotalCount').textContent = total;
+        document.getElementById('stockTotalLabel').textContent = total === 1 ? '1 zásilka' : (total < 5 ? total + ' zásilky' : total + ' zásilek');
+        document.getElementById('stockShelfCount').textContent = allShelves.length;
+        if (total === 0) {
+            document.getElementById('stockContent').style.display = 'none';
+            document.getElementById('stockEmpty').style.display = 'block';
+            document.getElementById('stockFilterWrap').style.display = 'none';
+            document.getElementById('stockSummary').style.display = 'none';
+        }
+    }
     function renderCards(shelves) {
         var q = (document.getElementById('stockSearch').value || '').toLowerCase().trim();
         var filtered = shelves;
         if (q) {
             filtered = shelves.map(function(sh) {
                 var parcels = (sh.parcels || []).filter(function(p) {
-                    var code = (p.parcel_code || '').toLowerCase();
-                    var last4 = (p.last_four || '').toLowerCase();
+                    var code = (p.parcel_code || p.parcelCode || '').toString().toLowerCase();
+                    var last4 = (p.last_four || '').toString().toLowerCase();
                     var shelf = (sh.shelf || '').toLowerCase();
                     return code.indexOf(q) >= 0 || last4.indexOf(q) >= 0 || shelf.indexOf(q) >= 0;
                 });
@@ -84,67 +103,160 @@
         var html = '';
         filtered.forEach(function(sh) {
             var shelfName = esc(sh.shelf) || '—';
-            var count = sh.count || 0;
             var parcels = sh.parcels || [];
-            html += '<div class="col-12 col-md-6 col-xl-4">' +
-                '<div class="card card-apple h-100 ppl-stock-card">' +
-                '<div class="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3">' +
-                '<span class="fw-semibold">' + shelfName + '</span>' +
-                '<span class="badge bg-primary rounded-pill">' + count + '</span>' +
-                '</div>' +
-                '<div class="card-body py-2 px-3">' +
-                '<ul class="list-unstyled mb-0 ppl-stock-list">';
+            html += '<div class="ppl-umisteni-wrapper card card-apple ppl-stock-card">' +
+                '<h2 class="ppl-umisteni-nadpis h6 mb-0 py-2 px-3 bg-light border-bottom">Umístění: ' + shelfName + '</h2>' +
+                '<div class="card-body py-3 px-3">' +
+                '<div class="ppl-parcel-grid">';
             parcels.forEach(function(p) {
-                var code = p.parcel_code || '';
+                var pid = p.id;
+                var code = (p.parcel_code || p.parcelCode || '').toString().trim();
+                var last4 = (p.last_four || '').toString().trim() || '—';
                 var link = trackUrl(code);
-                html += '<li class="py-1 d-flex align-items-center gap-2">' +
-                    '<a href="' + link + '" target="_blank" rel="noopener" class="text-decoration-none fw-medium" title="Sledovat zásilku ' + esc(code) + '">' + esc(code) + '</a>' +
-                    (p.last_four ? '<span class="text-muted small">(' + esc(p.last_four) + ')</span>' : '') +
-                    '<a href="' + link + '" target="_blank" rel="noopener" class="btn btn-sm btn-link p-0 ms-1" title="Sledovat na PPL">📦</a>' +
-                    '</li>';
+                html += '<div class="ppl-parcel-card card card-apple text-center" role="button" tabindex="0" data-parcel-id="' + pid + '" data-parcel-code="' + esc(code) + '" title="Kliknutím označíte balík jako smazaný">' +
+                    '<span class="ppl-parcel-num">' + esc(last4) + '</span>' +
+                    '<a href="' + link + '" target="_blank" rel="noopener" class="ppl-parcel-track" onclick="event.stopPropagation()" title="Sledovat na PPL">PPL</a></div>';
             });
-            html += '</ul></div></div></div>';
+            html += '</div></div></div>';
         });
-        document.getElementById('stockContent').innerHTML = html || '<div class="col-12"><p class="text-muted text-center py-4 mb-0">Žádné umístění nevyhovuje hledání.</p></div>';
+        document.getElementById('stockContent').innerHTML = html || '<p class="text-muted text-center py-4 mb-0" style="grid-column: 1 / -1;">Žádné umístění nevyhovuje hledání.</p>';
     }
     document.getElementById('stockSearch').addEventListener('input', function() {
         if (allShelves.length) renderCards(allShelves);
     });
-    fetch('/ppl/' + pobockaId + '/api/stock', { headers: { 'Accept': 'application/json' } })
-        .then(function(r) { if (!r.ok) throw new Error('API'); return r.json(); })
-        .then(function(data) {
+    document.getElementById('stockContent').addEventListener('click', function(e) {
+        var card = e.target.closest('.ppl-parcel-card');
+        if (!card || e.target.closest('.ppl-parcel-track')) return;
+        e.preventDefault();
+        var id = card.getAttribute('data-parcel-id');
+        var code = card.getAttribute('data-parcel-code') || '';
+        if (!confirm('Opravdu chcete označit tento balík jako smazaný?')) return;
+        fetch('/ppl/' + pobockaId + '/api/parcels/' + id + '/mark-delete', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfHeader, 'Content-Type': 'application/json' }
+        })
+        .then(function(r) {
+            if (r.ok) {
+                removeParcelFromData(id);
+                renderCards(allShelves);
+            }
+        });
+    });
+    document.getElementById('stockContent').addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var card = e.target.closest('.ppl-parcel-card');
+        if (!card) return;
+        e.preventDefault();
+        card.click();
+    });
+    function shelfSortKey(s) {
+        if (!s) return [0, ''];
+        var m = String(s).trim().match(/^([A-Za-z]*)(\d*)$/);
+        var a = (m && m[1]) ? m[1].toUpperCase() : '';
+        var n = (m && m[2]) || '0';
+        return [a, n === '' ? 0 : (parseInt(n, 10) || 0)];
+    }
+    function groupByShelf(parcels) {
+        var byShelf = {};
+        parcels.forEach(function(p) {
+            var shelf = (p.shelf || '').toString().trim() || '—';
+            if (!byShelf[shelf]) byShelf[shelf] = [];
+            byShelf[shelf].push({ id: p.id, parcel_code: p.parcel_code || '', last_four: p.last_four || '' });
+        });
+        var keys = Object.keys(byShelf).sort(function(a, b) {
+            var ka = shelfSortKey(a), kb = shelfSortKey(b);
+            if (ka[0] !== kb[0]) return ka[0] < kb[0] ? -1 : 1;
+            return ka[1] - kb[1];
+        });
+        return keys.map(function(s) { return { shelf: s, count: byShelf[s].length, parcels: byShelf[s] }; });
+    }
+    fetch('/ppl/' + pobockaId + '/api/parcels?t=' + Date.now(), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r) {
+            if (!r.ok) throw new Error(r.status === 403 ? 'Přístup odepřen.' : 'API ' + r.status);
+            return r.json();
+        })
+        .then(function(parcels) {
             document.getElementById('stockLoading').style.display = 'none';
-            var shelves = data.shelves || [];
-            var total = data.total || 0;
-            if (!shelves.length || total === 0) {
+            if (!Array.isArray(parcels) || parcels.length === 0) {
                 document.getElementById('stockEmpty').style.display = 'block';
                 return;
             }
+            var shelves = groupByShelf(parcels);
+            var total = parcels.length;
             allShelves = shelves;
             document.getElementById('stockFilterWrap').style.display = 'block';
             document.getElementById('stockSummary').style.display = '';
             document.getElementById('stockTotalCount').textContent = total;
             document.getElementById('stockTotalLabel').textContent = total === 1 ? '1 zásilka' : (total < 5 ? total + ' zásilky' : total + ' zásilek');
             document.getElementById('stockShelfCount').textContent = shelves.length;
-            document.getElementById('stockContent').style.display = 'flex';
+            document.getElementById('stockContent').style.display = 'grid';
             renderCards(shelves);
         })
-        .catch(function() {
+        .catch(function(err) {
             document.getElementById('stockLoading').style.display = 'none';
-            document.getElementById('stockContent').innerHTML = '<div class="col-12"><div class="alert alert-danger">Chyba načtení. Zkuste to znovu.</div></div>';
+            var msg = (err && err.message) ? err.message : 'Chyba načtení. Zkuste to znovu.';
+            document.getElementById('stockContent').innerHTML = '<div class="col-12"><div class="alert alert-danger">' + (msg.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</div></div>';
             document.getElementById('stockContent').style.display = 'block';
         });
 })();
 </script>
 <style>
-.ppl-stock-card { border-radius: 12px; border: 1px solid var(--border); }
-.ppl-stock-card .card-header { border-radius: 12px 12px 0 0; border-bottom: 1px solid var(--border); font-size: 0.9375rem; }
-.ppl-stock-list { font-size: 0.875rem; max-height: 220px; overflow-y: auto; }
-.ppl-stock-list li { border-bottom: 1px solid var(--border); }
-.ppl-stock-list li:last-child { border-bottom: none; }
-@media (max-width: 767.98px) {
+/* Grid polic (umístění) – stejná šířka každé card, responzivní */
+.ppl-shelves-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+}
+@media (min-width: 768px) {
+    .ppl-shelves-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1200px) {
+    .ppl-shelves-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.ppl-umisteni-wrapper { margin-bottom: 0; min-width: 0; }
+.ppl-stock-card { border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.06); height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.ppl-stock-card .card-body { flex: 1; min-height: 0; }
+.ppl-umisteni-nadpis { border-radius: 12px 12px 0 0; font-size: 0.9375rem; font-weight: 600; }
+/* Grid zásilek uvnitř police */
+.ppl-parcel-grid {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+    min-height: 2rem;
+}
+.ppl-parcel-card {
+    min-width: 0;
+    padding: 0.5rem 0.5rem;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    color: var(--text);
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    cursor: pointer;
+}
+.ppl-parcel-track { font-size: 0.65rem; opacity: 0.8; text-decoration: none; color: inherit; }
+.ppl-parcel-track:hover { text-decoration: underline; }
+.ppl-parcel-card:hover {
+    border-color: var(--primary, #0d6efd);
+    background: var(--surface-hover, rgba(13, 110, 253, 0.06));
+    color: var(--text);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+.ppl-parcel-num { font-size: 0.9375rem; font-weight: 600; letter-spacing: 0.02em; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 575.98px) {
+    .ppl-parcel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .ppl-touch-target { min-height: 44px; font-size: 1rem; }
     .ppl-cta { min-height: 44px; padding-left: 1.25rem; padding-right: 1.25rem; }
+    .ppl-parcel-card { padding: 0.5rem 0.4rem; }
+    .ppl-parcel-num { font-size: 0.875rem; }
+}
+@media (min-width: 576px) and (max-width: 991.98px) {
+    .ppl-parcel-grid { grid-template-columns: repeat(auto-fill, minmax(4rem, 1fr)); }
 }
 </style>
 {% endblock %}

@@ -3204,6 +3204,34 @@ def ppl_api_parcel_cancel_delete(pobocka_id, parcel_id):
         return jsonify({'error': 'Zásilka nenalezena nebo není označena ke smazání.'}), 404
 
 
+@app.route('/ppl/<int:pobocka_id>/api/parcels/<int:parcel_id>/mark-delete', methods=['POST'])
+@login_required
+def ppl_api_parcel_mark_delete(pobocka_id, parcel_id):
+    """Označí zásilku ke smazání (nastaví k_smazani_po)."""
+    if not current_user.can_access_pobocka(pobocka_id):
+        return jsonify({'error': 'Přístup odepřen.'}), 403
+    try:
+        conn = _ppl_conn()
+        row = conn.execute(
+            'SELECT id FROM parcels WHERE id = ? AND pobocka_id = ? AND released_at IS NULL',
+            (parcel_id, pobocka_id),
+        ).fetchone()
+        if not row:
+            conn.close()
+            return jsonify({'error': 'Zásilka nenalezena nebo již vydána.'}), 404
+        delete_on = date.today() + timedelta(days=PPL_INVENTURA_DAYS_UNTIL_DELETE)
+        conn.execute(
+            'UPDATE parcels SET k_smazani_po = ? WHERE id = ? AND pobocka_id = ?',
+            (delete_on.isoformat(), parcel_id, pobocka_id),
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({'message': 'Zásilka označena ke smazání.'}), 200
+    except Exception as e:
+        app.logger.warning('PPL mark-delete: %s', e)
+        return jsonify({'error': 'Chyba při označení.'}), 500
+
+
 @app.route('/ppl/<int:pobocka_id>/api/parcels', methods=['GET'])
 @login_required
 def ppl_api_get_parcels(pobocka_id):
@@ -3211,30 +3239,17 @@ def ppl_api_get_parcels(pobocka_id):
         return jsonify({'error': 'Přístup odepřen.'}), 403
     try:
         conn = _ppl_conn()
-        try:
-            conn.execute('DELETE FROM parcels WHERE pobocka_id = ? AND k_smazani_po IS NOT NULL AND date(k_smazani_po) <= date("now")', (pobocka_id,))
-            conn.commit()
-        except _sqlite3.OperationalError:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-        try:
-            cur = conn.execute('''
-                SELECT id, parcel_code, last_four_digits, shelf, notes, timestamp
-                FROM parcels
-                WHERE pobocka_id = ? AND released_at IS NULL
-                  AND (k_smazani_po IS NULL OR date(k_smazani_po) > date('now'))
-                ORDER BY timestamp DESC
-            ''', (pobocka_id,))
-        except _sqlite3.OperationalError:
-            cur = conn.execute(
-                'SELECT id, parcel_code, last_four_digits, shelf, notes, timestamp FROM parcels WHERE pobocka_id = ? ORDER BY timestamp DESC',
-                (pobocka_id,)
-            )
-        rows = cur.fetchall()
+        rows = _ppl_fetch_parcels_rows(conn, pobocka_id)
         conn.close()
-        return jsonify([{'id': r[0], 'parcel_code': r[1], 'last_four': r[2], 'shelf': r[3], 'notes': r[4] or '', 'timestamp': r[5]} for r in rows])
+        out = []
+        for r in rows:
+            if len(r) >= 6:
+                out.append({'id': r[0], 'parcel_code': r[1], 'last_four': r[2], 'shelf': r[3], 'notes': r[4] or '', 'timestamp': r[5]})
+            elif len(r) >= 4:
+                out.append({'id': r[0], 'parcel_code': r[1], 'last_four': r[2], 'shelf': r[3], 'notes': '', 'timestamp': None})
+            else:
+                out.append({'id': r[0], 'parcel_code': r[1], 'last_four': '', 'shelf': r[2], 'notes': '', 'timestamp': None})
+        return jsonify(out)
     except Exception as e:
         app.logger.warning('PPL GET parcels: %s', e)
         return jsonify([])
@@ -3324,33 +3339,49 @@ def ppl_api_delete_parcel(pobocka_id, parcel_id):
     return jsonify({'message': 'Zásilka smazána.'}), 200
 
 
+def _ppl_fetch_parcels_rows(conn, pobocka_id, order_by_shelf=False):
+    """Stejná data jako hlavní seznam zásilek: vyčistit prošlé ke smazání, pak SELECT. order_by_shelf=True pro přehled po umístění."""
+    try:
+        conn.execute('DELETE FROM parcels WHERE pobocka_id = ? AND k_smazani_po IS NOT NULL AND date(k_smazani_po) <= date("now")', (pobocka_id,))
+        conn.commit()
+    except _sqlite3.OperationalError:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    order = 'ORDER BY shelf, parcel_code' if order_by_shelf else 'ORDER BY timestamp DESC'
+    order_fallback = 'ORDER BY shelf, parcel_code' if order_by_shelf else 'ORDER BY parcel_code'
+    try:
+        cur = conn.execute(
+            'SELECT id, parcel_code, last_four_digits, shelf, notes, timestamp FROM parcels '
+            'WHERE pobocka_id = ? AND released_at IS NULL AND (k_smazani_po IS NULL OR date(k_smazani_po) > date(\'now\')) ' + order,
+            (pobocka_id,),
+        )
+        return cur.fetchall()
+    except _sqlite3.OperationalError:
+        try:
+            cur = conn.execute(
+                'SELECT id, parcel_code, last_four_digits, shelf, notes, timestamp FROM parcels WHERE pobocka_id = ? ' + order,
+                (pobocka_id,),
+            )
+            return cur.fetchall()
+        except _sqlite3.OperationalError:
+            cur = conn.execute(
+                'SELECT id, parcel_code, shelf FROM parcels WHERE pobocka_id = ? ' + order_fallback,
+                (pobocka_id,),
+            )
+            return cur.fetchall()
+
+
 @app.route('/ppl/<int:pobocka_id>/api/stock', methods=['GET'])
 @login_required
 def ppl_api_stock(pobocka_id):
-    """Přehled po umístěních: pro každé umístění vrátí seznam zásilek (parcel_code, last_four, id)."""
+    """Přehled po umístěních: stejná data jako hlavní seznam, seskupená podle shelf."""
     if not current_user.can_access_pobocka(pobocka_id):
         return jsonify({'error': 'Přístup odepřen.'}), 403
     try:
         conn = _ppl_conn()
-        try:
-            cur = conn.execute('''
-                SELECT id, parcel_code, last_four_digits, shelf FROM parcels
-                WHERE pobocka_id = ? AND (released_at IS NULL OR released_at = '')
-                  AND (k_smazani_po IS NULL OR date(k_smazani_po) > date('now'))
-                ORDER BY shelf, parcel_code
-            ''', (pobocka_id,))
-        except _sqlite3.OperationalError:
-            try:
-                cur = conn.execute(
-                    'SELECT id, parcel_code, last_four_digits, shelf FROM parcels WHERE pobocka_id = ? ORDER BY shelf, parcel_code',
-                    (pobocka_id,)
-                )
-            except _sqlite3.OperationalError:
-                cur = conn.execute(
-                    'SELECT id, parcel_code, shelf FROM parcels WHERE pobocka_id = ? ORDER BY shelf, parcel_code',
-                    (pobocka_id,)
-                )
-        rows = cur.fetchall()
+        rows = _ppl_fetch_parcels_rows(conn, pobocka_id, order_by_shelf=True)
         conn.close()
         by_shelf = {}
         for r in rows:

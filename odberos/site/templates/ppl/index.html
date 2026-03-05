@@ -13,16 +13,8 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
             <h1 class="page-title mb-0">Sklad PPL · {{ pobocka.nazev }}</h1>
             <div class="d-flex flex-wrap align-items-center gap-2">
-                {% if inventura_next_due %}
-                <div class="ppl-inventura-reminder {{ 'ppl-inventura-overdue' if today_iso >= inventura_next_due_iso else '' }}">
-                    <i class="fas fa-clipboard-check fa-sm me-1"></i>
-                    <span>Inventura {% if today_iso >= inventura_next_due_iso %}měla být do {{ inventura_next_due }}{% else %}do {{ inventura_next_due }}{% endif %}</span>
-                    <a href="{{ url_for('ppl_inventura', pobocka_id=pobocka.id) }}">Spustit</a>
-                </div>
-                {% endif %}
                 <div class="toolbar-wrap">
                     <a href="{{ url_for('ppl_sklad', pobocka_id=pobocka.id) }}" class="btn btn-outline-primary btn-sm rounded-pill" title="Přehled zásilek po umístěních" aria-label="Přehled po umístěních">Přehled po umístěních</a>
-                    <a href="{{ url_for('ppl_inventura', pobocka_id=pobocka.id) }}" class="btn btn-outline-warning btn-sm rounded-pill" title="Spustit inventuru" aria-label="Inventura">Inventura</a>
                     <a href="{{ url_for('ppl_historie', pobocka_id=pobocka.id) }}" class="btn btn-outline-secondary btn-sm rounded-pill" title="Historie akcí ve skladu" aria-label="Historie">Historie</a>
                     <a href="{{ url_for('branch', pobocka_id=pobocka.id) }}" class="btn btn-outline-secondary btn-sm rounded-pill" title="Odběry pobočky" aria-label="Odběry">Odběry</a>
                 </div>
@@ -371,9 +363,6 @@
 .ppl-page .table td { padding: 0.75rem 1rem; vertical-align: middle; }
 .ppl-notes-text[contenteditable="true"] { min-width: 80px; outline: none; }
 .ppl-notes-text[contenteditable="true"]:focus { background: var(--surface-hover); border-radius: 6px; }
-.ppl-inventura-reminder { font-size: 0.8125rem; color: var(--text-secondary); background: var(--surface-hover); border: 1px solid var(--border); border-radius: 8px; padding: 0.35rem 0.6rem; display: inline-flex; align-items: center; }
-.ppl-inventura-reminder a { margin-left: 0.35rem; white-space: nowrap; }
-.ppl-inventura-reminder.ppl-inventura-overdue { color: var(--danger, #dc3545); border-color: rgba(220,53,69,0.35); background: rgba(220,53,69,0.08); }
 .ppl-search-highlight { background: rgba(255, 193, 7, 0.45); border-radius: 2px; padding: 0 2px; font-weight: 600; }
 .ppl-last-four { color: var(--text-secondary); font-weight: 500; }
 .ppl-notes-saving { color: var(--primary, #0d6efd); font-weight: 500; }
