@@ -58,7 +58,8 @@ def _run_migrations():
 
 
 ROLES = ("admin", "branch", "warehouse")
-ORDER_STATUSES = ("pending", "shipped", "partially_shipped")
+# Workflow stavů objednávky (ERP inspirace: pending → partially_shipped → shipped)
+ORDER_STATUSES = ("pending", "partially_shipped", "shipped")
 STATUS_CZ = {
     "pending": "Čeká",
     "processed": "Zpracováno",  # jen pro zobrazení starých záznamů
@@ -381,6 +382,24 @@ def _get_branches_for_current_user():
     return Branch.query.filter(Branch.id.in_(ids)).order_by(Branch.name).all()
 
 
+def _get_branch_cart_count():
+    """Počet položek v košíku pobočky (součet množství) pro zobrazení v navbaru/sidebaru."""
+    if session.get("order_type") == "internal":
+        cart = session.get("cart_internal_by_branch", {}).get(str(get_current_branch_id() or ""), {})
+    else:
+        cart = session.get("cart_by_branch", {}).get(str(get_current_branch_id() or ""), {})
+    custom = session.get("cart_custom_by_branch", {}).get(str(get_current_branch_id() or ""), [])
+    total = sum(q for q in cart.values() if q and q > 0)
+    total += sum(c.get("quantity", 0) for c in custom if c.get("quantity", 0) > 0)
+    return total
+
+
+def _get_branch_cart_count_internal():
+    """Počet položek v interním košíku pobočky."""
+    cart = session.get("cart_internal_by_branch", {}).get(str(get_current_branch_id() or ""), {})
+    return sum(q for q in cart.values() if q and q > 0)
+
+
 @app.context_processor
 def inject_user():
     current = get_current_user()
@@ -391,6 +410,12 @@ def inject_user():
     branch_list = _get_branches_for_current_user() if (current and (current.role == "branch" or acting_as_role == "branch")) else []
     current_branch_id = get_current_branch_id() if current else None
     current_branch = Branch.query.get(current_branch_id) if current_branch_id else None
+    cart_count = 0
+    cart_count_internal = 0
+    if current and (current.role == "branch" or acting_as_role == "branch") and current_branch_id:
+        _load_branch_cart_from_db()
+        cart_count = _get_branch_cart_count()
+        cart_count_internal = _get_branch_cart_count_internal()
     return {
         "current_user": current,
         "status_cz": status_cz,
@@ -398,6 +423,8 @@ def inject_user():
         "user_branches": branch_list,
         "acting_as_role": acting_as_role,
         "acting_as_branch": acting_as_branch,
+        "cart_count": cart_count,
+        "cart_count_internal": cart_count_internal,
     }
 
 
@@ -447,12 +474,12 @@ def logout():
 
 
 def _load_branch_cart_from_db():
-    """Načte košík z DB do session – vždy (běžný i interní)."""
+    """Načte košík z DB do session – vždy (běžný i interní). Košík je sdílený na úroveň pobočky (všichni uživatelé pobočky vidí stejný košík)."""
     user = get_current_user()
     bid = get_current_branch_id()
     if not user or not bid:
         return
-    row = BranchCart.query.filter_by(user_id=user.id, branch_id=bid).first()
+    row = BranchCart.query.filter_by(branch_id=bid).order_by(BranchCart.user_id).first()
     cart_by_branch = session.get("cart_by_branch", {})
     cart_internal_by_branch = session.get("cart_internal_by_branch", {})
     notes_by_branch = session.get("cart_branch_notes", {})
@@ -496,7 +523,7 @@ def _save_branch_cart_to_db():
     cart_internal = cart_internal_by_branch.get(str(bid), {})
     notes = notes_by_branch.get(str(bid), {})
     custom = custom_by_branch.get(str(bid), [])
-    row = BranchCart.query.filter_by(user_id=user.id, branch_id=bid).first()
+    row = BranchCart.query.filter_by(branch_id=bid).order_by(BranchCart.user_id).first()
     if not row:
         row = BranchCart(user_id=user.id, branch_id=bid)
         db.session.add(row)
@@ -595,7 +622,7 @@ def branch_dashboard():
         .all()
     )
     status_counts = {s: c for s, c in by_status}
-    recent_orders = Order.query.filter_by(branch_id=bid).order_by(Order.created_at.desc()).limit(10).all()
+    recent_orders = Order.query.filter_by(branch_id=bid).order_by(Order.created_at.desc()).limit(4).all()
     last_order = Order.query.filter_by(branch_id=bid, order_type="normal").order_by(Order.created_at.desc()).first()
     last_order_unavailable = []
     if last_order:
@@ -659,12 +686,36 @@ def index():
     products_by_brand = sorted(by_brand.items(), key=lambda x: x[0])
     cart = _get_branch_cart()
     cart_notes = _get_branch_cart_notes()
+    waiting_by_product = {}
+    bid = get_current_branch_id()
+    if bid:
+        from sqlalchemy import func
+        rows = (
+            db.session.query(
+                OrderItem.product_id,
+                func.sum(OrderItem.ordered_quantity - func.coalesce(OrderItem.shipped_quantity, 0)),
+            )
+            .join(Order)
+            .filter(
+                Order.branch_id == bid,
+                Order.order_type == "normal",
+                Order.status.in_(["pending", "partially_shipped"]),
+                OrderItem.unavailable == False,
+                OrderItem.product_id.isnot(None),
+            )
+            .group_by(OrderItem.product_id)
+            .all()
+        )
+        for pid, qty in rows:
+            if pid and qty is not None and qty > 0:
+                waiting_by_product[pid] = float(qty)
     return render_template(
         "products.html",
         products=products,
         products_by_brand=products_by_brand,
         cart=cart,
         cart_notes=cart_notes,
+        waiting_by_product=waiting_by_product,
         user=user,
         search_q=q,
         groups=groups,
@@ -790,8 +841,41 @@ def cart_add():
         notes.pop(key, None)
     _set_branch_cart_notes(notes)
     if wants_json:
-        return jsonify({"ok": True, "cart_qty": cart[key], "message": f"Přidáno: {product.name}"})
+        total = sum((v for v in _get_branch_cart().values() if v and v > 0))
+        return jsonify({"ok": True, "cart_qty": cart[key], "cart_total": total, "message": f"Přidáno: {product.name}"})
     return _redirect_back_to_products(product_id=product_id)
+
+
+@app.route("/cart/set-quantity", methods=["POST"])
+@login_required
+@role_required("branch")
+def cart_set_quantity():
+    """Nastaví množství produktu v košíku (pro tlačítka +/- na kartách). Vrací JSON."""
+    product_id = request.form.get("product_id", type=int)
+    quantity = request.form.get("quantity", type=float)
+    wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    if not product_id:
+        if wants_json:
+            return jsonify({"ok": False, "error": "Chybí produkt."}), 400
+        return redirect(url_for("index"))
+    if quantity is None or quantity < 0:
+        quantity = 0
+    cart = _get_branch_cart()
+    key = str(product_id)
+    if quantity <= 0:
+        cart.pop(key, None)
+        notes = _get_branch_cart_notes()
+        notes.pop(key, None)
+        _set_branch_cart_notes(notes)
+        qty = 0
+    else:
+        cart[key] = quantity
+        qty = quantity
+    _set_branch_cart(cart)
+    if wants_json:
+        total = sum((v for v in _get_branch_cart().values() if v and v > 0))
+        return jsonify({"ok": True, "cart_qty": qty, "cart_total": total})
+    return redirect(request.referrer or url_for("index"))
 
 
 @app.route("/cart/add-internal", methods=["POST"])
@@ -828,6 +912,10 @@ def cart_add_internal():
 @login_required
 @role_required("branch")
 def cart_view():
+    if request.args.get("type") == "internal":
+        session["order_type"] = "internal"
+    elif request.args.get("type") == "normal":
+        session["order_type"] = "normal"
     user = get_current_user()
     cart = _get_branch_cart()
     cart_notes = _get_branch_cart_notes()
@@ -1021,6 +1109,48 @@ def order_submit():
     return redirect(url_for("branch_orders"))
 
 
+@app.route("/branch/move-unavailable-to-cart", methods=["POST"])
+@login_required
+@role_required("branch")
+def branch_move_unavailable_to_cart():
+    """Převede položky z poslední objednávky (které sklad neměl) do košíku. Uživatel objednávku vytvoří ručně z košíku."""
+    bid = get_current_branch_id()
+    if not bid:
+        flash("Nejprve zvolte pobočku.", "error")
+        return redirect(url_for("branch_dashboard"))
+    last_order = Order.query.filter_by(branch_id=bid, order_type="normal").order_by(Order.created_at.desc()).first()
+    if not last_order:
+        flash("Nemáte žádnou objednávku.", "error")
+        return redirect(url_for("branch_dashboard"))
+    unavailable_items = [i for i in last_order.items if i.unavailable]
+    if not unavailable_items:
+        flash("V poslední objednávce není žádné nedodané zboží k převodu.", "error")
+        return redirect(url_for("branch_dashboard"))
+    _load_branch_cart_from_db()
+    cart = _get_branch_cart()
+    notes = _get_branch_cart_notes()
+    custom = _get_branch_cart_custom()
+    cart_internal = session.get("cart_internal_by_branch", {}).get(str(bid), {})
+    for i in unavailable_items:
+        if i.internal_product_id:
+            key = str(i.internal_product_id)
+            cart_internal[key] = cart_internal.get(key, 0) + (i.ordered_quantity or 0)
+        elif i.product_id:
+            key = str(i.product_id)
+            cart[key] = cart.get(key, 0) + (i.ordered_quantity or 0)
+            if i.branch_note:
+                notes[key] = i.branch_note
+        elif i.custom_product_name:
+            custom.append({"name": i.custom_product_name, "quantity": i.ordered_quantity or 0})
+    _set_branch_cart(cart)
+    _set_branch_cart_notes(notes)
+    _set_branch_cart_custom(custom)
+    session.setdefault("cart_internal_by_branch", {})[str(bid)] = cart_internal
+    _save_branch_cart_to_db()
+    flash(f"Položky z nedodaného zboží ({len(unavailable_items)}) vloženy do košíku. Dokončete objednávku v Košíku.")
+    return redirect(url_for("cart_view"))
+
+
 @app.route("/orders")
 @login_required
 @role_required("branch")
@@ -1083,7 +1213,7 @@ def admin_dashboard():
         .limit(12)
         .all()
     )
-    recent_orders = Order.query.order_by(Order.created_at.desc()).limit(10).all()
+    recent_orders = Order.query.order_by(Order.created_at.desc()).limit(4).all()
     return render_template(
         "admin_dashboard.html",
         user=get_current_user(),
@@ -1101,31 +1231,47 @@ def admin_dashboard():
 def admin_act_as():
     """Přepnutí admina do režimu pobočky nebo skladu (vše s audit logem)."""
     if request.method == "POST":
-        action = request.form.get("action")
-        if action == "branch":
-            branch_id = request.form.get("branch_id", type=int)
-            branch = Branch.query.get(branch_id) if branch_id else None
-            if branch:
-                session["acting_as_role"] = "branch"
-                session["acting_as_branch_id"] = branch.id
-                audit_log("admin_act_as", None, None, f"Admin působí jako pobočka: {branch.name} (#{branch.id})")
-                flash(f"Režim: působíte jako pobočka {branch.name}. Všechny akce se zapisují do audit logu.")
-                return redirect(url_for("branch_dashboard"))
-            flash("Zvolte pobočku.", "error")
-        elif action == "warehouse":
-            session["acting_as_role"] = "warehouse"
-            session["acting_as_branch_id"] = None
-            audit_log("admin_act_as", None, None, "Admin působí jako sklad")
-            flash("Režim: působíte jako sklad. Všechny akce se zapisují do audit logu.")
-            return redirect(url_for("warehouse_dashboard"))
-        elif action == "end":
-            session.pop("acting_as_role", None)
-            session.pop("acting_as_branch_id", None)
-            audit_log("admin_act_as", None, None, "Admin ukončil režim pobočka/sklad")
-            flash("Režim ukončen.")
-            return redirect(url_for("admin_dashboard"))
+        try:
+            action = request.form.get("action")
+            if action == "branch":
+                branch_id = request.form.get("branch_id", type=int)
+                branch = Branch.query.get(branch_id) if branch_id else None
+                if branch:
+                    session["acting_as_role"] = "branch"
+                    session["acting_as_branch_id"] = branch.id
+                    audit_log("admin_act_as", None, None, f"Admin působí jako pobočka: {branch.name} (#{branch.id})")
+                    flash(f"Režim: působíte jako pobočka {branch.name}. Všechny akce se zapisují do audit logu.")
+                    return redirect(url_for("branch_dashboard"))
+                flash("Zvolte pobočku.", "error")
+            elif action == "warehouse":
+                session["acting_as_role"] = "warehouse"
+                session["acting_as_branch_id"] = None
+                audit_log("admin_act_as", None, None, "Admin působí jako sklad")
+                flash("Režim: působíte jako sklad. Všechny akce se zapisují do audit logu.")
+                return redirect(url_for("warehouse_dashboard"))
+            elif action == "end":
+                session.pop("acting_as_role", None)
+                session.pop("acting_as_branch_id", None)
+                audit_log("admin_act_as", None, None, "Admin ukončil režim pobočka/sklad")
+                flash("Režim ukončen.")
+                return redirect(url_for("admin_dashboard"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Přepnutí režimu se nezdařilo: {e}", "error")
+            return redirect(url_for("admin_act_as"))
     branches = Branch.query.order_by(Branch.name).all()
     return render_template("admin_act_as.html", branches=branches, user=get_current_user())
+
+
+@app.route("/admin/back")
+@login_required
+@role_required("admin")
+def admin_back():
+    """Vrátí admina z režimu „působí jako“ zpět na admin dashboard."""
+    session.pop("acting_as_role", None)
+    session.pop("acting_as_branch_id", None)
+    audit_log("admin_act_as", None, None, "Admin se vrátil do admin režimu")
+    return redirect(url_for("admin_dashboard"))
 
 
 @app.route("/admin/orders")
@@ -1167,6 +1313,24 @@ def admin_order_detail(order_id):
         shipped_qty=shipped_qty,
         order_audit_log=order_audit_log,
     )
+
+
+@app.route("/admin/orders/<int:order_id>/delete", methods=["POST"])
+@login_required
+@role_required("admin")
+def admin_order_delete(order_id):
+    order = Order.query.get_or_404(order_id)
+    if order.status != "pending":
+        flash("Lze mazat pouze objednávky se stavem „Čeká“.", "error")
+        return redirect(url_for("admin_order_detail", order_id=order_id))
+    oid = order.id
+    for item in order.items:
+        db.session.delete(item)
+    db.session.delete(order)
+    db.session.commit()
+    audit_log("order_deleted", "order", oid, f"Admin smazal objednávku #{oid}")
+    flash("Objednávka byla smazána.")
+    return redirect(url_for("admin_orders"))
 
 
 @app.route("/admin/users", methods=["GET", "POST"])
@@ -1376,6 +1540,8 @@ def admin_product_set_internal(product_id):
     product.is_internal = str(val).strip().lower() in ("1", "true", "yes", "on")
     db.session.commit()
     audit_log("product_updated", "product", product.id, f"is_internal={product.is_internal}")
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.accept_mimetypes.best == "application/json":
+        return jsonify({"ok": True, "is_internal": product.is_internal})
     flash("Produkt upraven (interní)." if product.is_internal else "Produkt upraven (běžný).")
     return redirect(request.referrer or url_for("admin_products"))
 
@@ -1794,7 +1960,7 @@ def warehouse_dashboard():
         .limit(12)
         .all()
     )
-    recent_orders = Order.query.order_by(Order.created_at.desc()).limit(10).all()
+    recent_orders = Order.query.order_by(Order.created_at.desc()).limit(4).all()
     return render_template(
         "warehouse_dashboard.html",
         user=get_current_user(),
@@ -1900,11 +2066,16 @@ def warehouse_order_detail(order_id):
 def warehouse_order_status(order_id):
     order = Order.query.get_or_404(order_id)
     status = request.form.get("status")
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if status in ORDER_STATUSES:
         order.status = status
         db.session.commit()
         audit_log("order_status", "order", order.id, f"Objednávka #{order_id} → {status}")
+        if is_ajax:
+            return jsonify({"ok": True, "order_status": order.status})
         flash("Stav objednávky změněn.")
+    elif is_ajax:
+        return jsonify({"ok": False}), 400
     return redirect(url_for("warehouse_order_detail", order_id=order_id))
 
 
@@ -1923,12 +2094,20 @@ def _update_order_status_from_items(order):
         order.status = "partially_shipped"
 
 
+def _order_totals(order):
+    """Vrátí (total_ordered, total_shipped) pro objednávku."""
+    total_o = sum((it.ordered_quantity or 0) for it in order.items)
+    total_s = sum((it.shipped_quantity or 0) for it in order.items)
+    return total_o, total_s
+
+
 @app.route("/warehouse/order/<int:order_id>/item/<int:item_id>/shipped", methods=["POST"])
 @login_required
 @role_required("warehouse", "admin")
 def warehouse_item_shipped(order_id, item_id):
     item = OrderItem.query.filter_by(id=item_id, order_id=order_id).first_or_404()
     shipped = request.form.get("shipped_quantity", type=float)
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if shipped is not None and shipped >= 0:
         item.shipped_quantity = shipped
         order = Order.query.get(order_id)
@@ -1936,7 +2115,18 @@ def warehouse_item_shipped(order_id, item_id):
         db.session.commit()
         audit_log("order_item_shipped", "order_item", item.id, f"Objednávka #{order_id}, odesláno {shipped}")
         audit_log("order_item_shipped", "order", order_id, f"Položka {item.display_name()}: odesláno {shipped}")
+        if is_ajax:
+            total_o, total_s = _order_totals(order)
+            return jsonify({
+                "ok": True,
+                "shipped_quantity": item.shipped_quantity,
+                "order_status": order.status,
+                "order_total_ordered": total_o,
+                "order_total_shipped": total_s,
+            })
         flash("Dodané množství upraveno.")
+    elif is_ajax:
+        return jsonify({"ok": False, "error": "Neplatné množství."}), 400
     return redirect(url_for("warehouse_order_detail", order_id=order_id))
 
 
@@ -1950,6 +2140,9 @@ def warehouse_item_unavailable(order_id, item_id):
     db.session.commit()
     audit_log("order_item_unavailable", "order_item", item.id, f"Objednávka #{order_id}, položka {item.display_name()}")
     audit_log("order_item_unavailable", "order", order_id, f"Položka {item.display_name()} – Nemám skladem")
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        total_o, total_s = _order_totals(Order.query.get(order_id))
+        return jsonify({"ok": True, "unavailable": True, "order_total_shipped": total_s, "order_total_ordered": total_o})
     flash("Položka označena jako „Nemám na skladě“.")
     return redirect(url_for("warehouse_order_detail", order_id=order_id))
 
@@ -1963,6 +2156,8 @@ def warehouse_item_available(order_id, item_id):
     db.session.commit()
     audit_log("order_item_available", "order_item", item.id, f"Objednávka #{order_id}, položka {item.display_name()}")
     audit_log("order_item_available", "order", order_id, f"Položka {item.display_name()} – Má skladem")
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True, "unavailable": False})
     flash("Položka znovu označena jako „Má skladem“.")
     return redirect(url_for("warehouse_order_detail", order_id=order_id))
 
@@ -1977,6 +2172,8 @@ def warehouse_item_note(order_id, item_id):
     db.session.commit()
     if note:
         audit_log("order_item_note", "order_item", item.id, f"Poznámka skladu k položce (objednávka #{order_id})")
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True, "warehouse_note": note or ""})
     flash("Poznámka skladu uložena." if note else "Poznámka skladu odebrána.")
     return redirect(url_for("warehouse_order_detail", order_id=order_id))
 
@@ -2007,8 +2204,19 @@ def _order_invoice_update(order_id):
 @login_required
 @role_required("warehouse", "admin")
 def warehouse_order_invoice(order_id):
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if not _order_invoice_update(order_id):
+        if is_ajax:
+            return jsonify({"ok": False, "error": "U stavu „Chyba“ je poznámka povinná."}), 400
         flash("U stavu „Chyba“ je poznámka povinná.", "error")
+        return redirect(url_for("warehouse_order_detail", order_id=order_id))
+    if is_ajax:
+        order = Order.query.get_or_404(order_id)
+        return jsonify({
+            "ok": True,
+            "invoice_ok": order.invoice_ok,
+            "invoice_note": order.invoice_note or "",
+        })
     return redirect(url_for("warehouse_order_detail", order_id=order_id))
 
 

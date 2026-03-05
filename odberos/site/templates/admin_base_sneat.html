@@ -144,27 +144,15 @@
             </li>
             <li class="menu-header small text-uppercase"><span class="menu-header-text">Správa</span></li>
             <li class="menu-item">
-              <a href="{{ url_for('admin_dashboard') }}?open=collapsePobocka#adminAccordionForms" class="menu-link admin-scroll-accordion" data-bs-target="collapsePobocka">
-                <i class="menu-icon tf-icons bx bx-building-house"></i>
-                <div data-i18n="Přidat pobočku">Přidat pobočku</div>
-              </a>
-            </li>
-            <li class="menu-item">
-              <a href="{{ url_for('admin_dashboard') }}?open=collapseUser#adminAccordionForms" class="menu-link admin-scroll-accordion" data-bs-target="collapseUser">
-                <i class="menu-icon tf-icons bx bx-user-plus"></i>
-                <div data-i18n="Přidat uživatele">Přidat uživatele</div>
-              </a>
-            </li>
-            <li class="menu-item">
-              <a href="{{ url_for('admin_dashboard') }}#adminUsersSection" class="menu-link">
+              <a href="{{ url_for('admin_users') }}" class="menu-link">
                 <i class="menu-icon tf-icons bx bx-group"></i>
-                <div data-i18n="Správa uživatelů">Správa uživatelů</div>
+                <div data-i18n="Uživatelé">Uživatelé</div>
               </a>
             </li>
             <li class="menu-item">
-              <a href="{{ url_for('admin_dashboard') }}#adminPobockySection" class="menu-link">
+              <a href="{{ url_for('admin_pobocky') }}" class="menu-link">
                 <i class="menu-icon tf-icons bx bx-store"></i>
-                <div data-i18n="Správa poboček">Správa poboček</div>
+                <div data-i18n="Pobočky">Pobočky</div>
               </a>
             </li>
             <li class="menu-header small text-uppercase"><span class="menu-header-text">Nástroje</span></li>

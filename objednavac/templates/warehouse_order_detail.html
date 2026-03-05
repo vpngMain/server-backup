@@ -1,15 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Sklad – Objednávka {{ order.id }}{% endblock %}
 {% block content %}
+<p class="order-detail-actions"><a href="{{ url_for('warehouse_orders') }}" class="btn btn-back">← Zpět na seznam</a></p>
 <h2>Objednávka {{ order.id }}{% if order.created_by_warehouse_id %} <span class="badge-warehouse" title="Vytvořeno skladem">sklad</span>{% endif %}</h2>
 <p class="order-detail-meta">
     <span>Pobočka: {{ order.branch.name if order.branch else '—' }}{% if order.branch and order.branch.code %} ({{ order.branch.code }}){% endif %}</span>
     <span>Datum: {{ order.created_at | format_datetime }}</span>
     {% if order.created_by_warehouse %}<span>Vytvořil sklad: <strong>{{ order.created_by_warehouse.username }}</strong></span>{% elif order.created_by %}<span>Vytvořil: <strong>{{ order.created_by.username }}</strong></span>{% endif %}
-    <span class="status-badge status-{{ order.status }}">{{ status_cz(order.status) }}</span>
-    <span><strong>Celkem kusů:</strong> {{ total_qty | format_qty }} objednáno, <strong>{{ shipped_qty | format_qty }}</strong> odesláno</span>
+    <span class="status-badge status-{{ order.status }} js-order-status-badge" id="js-order-status">{{ status_cz(order.status) }}</span>
+    <span><strong>Celkem kusů:</strong> <span class="js-order-total-ordered">{{ total_qty | format_qty }}</span> objednáno, <strong><span class="js-order-total-shipped">{{ shipped_qty | format_qty }}</span></strong> odesláno</span>
 </p>
-<form method="post" action="{{ url_for('warehouse_order_status', order_id=order.id) }}" class="form-inline">
+<form method="post" action="{{ url_for('warehouse_order_status', order_id=order.id) }}" class="form-inline js-warehouse-status-form">
     <div class="form-group">
         <label for="status">Stav</label>
         <select id="status" name="status">
@@ -33,7 +34,7 @@
                     <span class="invoice-status-value invoice-status-{{ 'ok' if order.invoice_ok == true else ('error' if order.invoice_ok == false else 'none') }}">{% if order.invoice_ok == true %}✅ Vše cajk{% elif order.invoice_ok == false %}❌ Nalezena chyba{% else %}— nevyplněno{% endif %}</span>
                 </div>
                 <div class="invoice-buttons-row">
-                    <form method="post" action="{{ url_for('warehouse_order_invoice', order_id=order.id) }}" class="invoice-form-cajk">
+                    <form method="post" action="{{ url_for('warehouse_order_invoice', order_id=order.id) }}" class="invoice-form-cajk js-warehouse-invoice-form">
                         <input type="hidden" name="invoice_ok" value="1">
                         <button type="submit" class="btn btn-sm {{ 'btn-primary' if order.invoice_ok == true else '' }}">✅ Vše cajk</button>
                     </form>
@@ -44,7 +45,7 @@
             <div class="invoice-part invoice-part-note">
                 <h4 class="invoice-part-title">Nalezena chyba</h4>
                 <p class="invoice-part-desc">Pokud je něco špatně, vyplňte popis a odešlete.</p>
-                <form method="post" action="{{ url_for('warehouse_order_invoice', order_id=order.id) }}" class="invoice-form-chyba">
+                <form method="post" action="{{ url_for('warehouse_order_invoice', order_id=order.id) }}" class="invoice-form-chyba js-warehouse-invoice-form">
                     <input type="hidden" name="invoice_ok" value="0">
                     <label for="invoice-note-wh-{{ order.id }}" class="invoice-note-label">Popis chyby</label>
                     <textarea id="invoice-note-wh-{{ order.id }}" name="invoice_note" required class="invoice-note-textarea" placeholder="Např. nesedí množství, špatná položka…" rows="3">{{ order.invoice_note or '' }}</textarea>
@@ -54,7 +55,7 @@
         </div>
     </section>
 </div>
-<div class="table-wrapper">
+<div class="table-wrapper" data-order-id="{{ order.id }}">
 <table class="table">
     <thead>
         <tr>
@@ -69,35 +70,36 @@
     </thead>
     <tbody>
         {% for i in order.items %}
-        <tr class="{% if i.unavailable %}item-unavailable{% elif (i.shipped_quantity or 0) >= (i.ordered_quantity or 0) and i.ordered_quantity %}item-shipped{% endif %}">
+        <tr class="js-warehouse-row {% if i.unavailable %}item-unavailable{% elif (i.shipped_quantity or 0) >= (i.ordered_quantity or 0) and i.ordered_quantity %}item-shipped{% endif %}" data-item-id="{{ i.id }}" data-ordered-qty="{{ i.ordered_quantity or 0 }}">
             <td>{{ i.display_name() }}{% if i.branch_note %} <span class="branch-note">({{ i.branch_note }})</span>{% endif %}</td>
             <td>{{ i.product.unit if i.product and i.product.unit else 'ks' }}</td>
             <td>{% if i.branch_note %}<span class="branch-note">{{ i.branch_note }}</span>{% else %}—{% endif %}</td>
             <td>{{ i.ordered_quantity | format_qty }}</td>
-            <td>
+            <td class="js-warehouse-shipped-cell">
                 {% if i.unavailable %}
                 <span class="badge badge-unavailable">Nemám</span>
                 {% else %}
-                <form method="post" action="{{ url_for('warehouse_item_shipped', order_id=order.id, item_id=i.id) }}" class="inline-form">
-                    <input type="number" name="shipped_quantity" value="{{ (i.shipped_quantity | format_qty) if i.shipped_quantity is not none else '' }}" min="0" step="any" class="input-qty" placeholder="0">
+                <form method="post" action="{{ url_for('warehouse_item_shipped', order_id=order.id, item_id=i.id) }}" class="inline-form warehouse-shipped-form js-warehouse-shipped-form">
+                    <input type="number" name="shipped_quantity" value="{{ (i.shipped_quantity | format_qty) if i.shipped_quantity is not none else '' }}" min="0" step="any" class="input-qty warehouse-shipped-qty" placeholder="0" data-item-id="{{ i.id }}">
+                    <button type="button" class="btn btn-sm btn-warehouse-mam" data-ordered="{{ i.ordered_quantity }}" title="Vyplnit objednané množství">Mám</button>
                     <button type="submit" class="btn btn-sm">Uložit</button>
                 </form>
                 {% endif %}
             </td>
             <td class="warehouse-note-cell">
-                <form method="post" action="{{ url_for('warehouse_item_note', order_id=order.id, item_id=i.id) }}" class="warehouse-note-form">
+                <form method="post" action="{{ url_for('warehouse_item_note', order_id=order.id, item_id=i.id) }}" class="warehouse-note-form js-warehouse-note-form">
                     <input type="text" name="warehouse_note" value="{{ i.warehouse_note or '' }}" placeholder="Poznámka k položce…" class="input-warehouse-note">
                     <button type="submit" class="btn btn-sm">Uložit</button>
                 </form>
             </td>
-            <td>
+            <td class="js-warehouse-action-cell">
                 {% if i.unavailable %}
-                <form method="post" action="{{ url_for('warehouse_item_available', order_id=order.id, item_id=i.id) }}" class="inline-form">
+                <form method="post" action="{{ url_for('warehouse_item_available', order_id=order.id, item_id=i.id) }}" class="inline-form js-warehouse-available-form">
                     <button type="submit" class="btn btn-sm">Má skladem</button>
                 </form>
                 <span class="badge badge-unavailable">Nemám</span>
                 {% else %}
-                <form method="post" action="{{ url_for('warehouse_item_unavailable', order_id=order.id, item_id=i.id) }}" class="inline-form">
+                <form method="post" action="{{ url_for('warehouse_item_unavailable', order_id=order.id, item_id=i.id) }}" class="inline-form js-warehouse-unavailable-form">
                     <button type="submit" class="btn btn-sm btn-warehouse-nemam">Nemám</button>
                 </form>
                 {% if (i.shipped_quantity or 0) >= (i.ordered_quantity or 0) and i.ordered_quantity %}<span class="badge badge-shipped">Odesláno</span>{% endif %}
@@ -108,7 +110,183 @@
     </tbody>
 </table>
 </div>
-<p style="margin-top: 1rem;"><a href="{{ url_for('warehouse_orders') }}" class="btn">Zpět na seznam</a></p>
+<script>
+(function() {
+    var statusLabels = { pending: 'Čeká', partially_shipped: 'Částečně odesláno', shipped: 'Odesláno' };
+    function fmtQty(n) { return n == null ? '' : (n === Math.floor(n) ? Math.floor(n) : n); }
+
+    document.querySelectorAll('.btn-warehouse-mam').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var form = btn.closest('.warehouse-shipped-form');
+            var input = form && form.querySelector('.warehouse-shipped-qty');
+            var ordered = btn.getAttribute('data-ordered');
+            if (input && ordered !== null && ordered !== '') {
+                var val = parseFloat(ordered);
+                input.value = (val === Math.floor(val)) ? Math.floor(val) : val;
+            }
+        });
+    });
+
+    var tableWrap = document.querySelector('.table-wrapper');
+    var orderId = tableWrap && tableWrap.getAttribute('data-order-id');
+    function bindRowForms(row) {
+        var shippedForm = row.querySelector('.js-warehouse-shipped-form');
+        var noteForm = row.querySelector('.js-warehouse-note-form');
+        var unavForm = row.querySelector('.js-warehouse-unavailable-form');
+        var avForm = row.querySelector('.js-warehouse-available-form');
+        if (shippedForm && !shippedForm.dataset.bound) {
+            shippedForm.dataset.bound = '1';
+            shippedForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                var row = this.closest('tr');
+                var btn = this.querySelector('button[type="submit"]');
+                var origText = btn && btn.textContent;
+                if (btn) btn.disabled = true;
+                if (btn) btn.textContent = '…';
+                var fd = new FormData(this);
+                fetch(this.action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (!data || !data.ok) return;
+                        var input = shippedForm.querySelector('.warehouse-shipped-qty');
+                        if (input) input.value = data.shipped_quantity != null ? fmtQty(data.shipped_quantity) : input.value;
+                        if (row) {
+                            row.classList.remove('item-shipped');
+                            var ordered = parseFloat(row.getAttribute('data-ordered-qty')) || 0;
+                            if (ordered && data.shipped_quantity != null && data.shipped_quantity >= ordered) row.classList.add('item-shipped');
+                        }
+                        var totalO = document.querySelector('.js-order-total-ordered');
+                        var totalS = document.querySelector('.js-order-total-shipped');
+                        if (totalO && data.order_total_ordered != null) totalO.textContent = fmtQty(data.order_total_ordered);
+                        if (totalS && data.order_total_shipped != null) totalS.textContent = fmtQty(data.order_total_shipped);
+                        var badge = document.querySelector('.js-order-status-badge');
+                        if (badge && data.order_status) {
+                            badge.textContent = statusLabels[data.order_status] || data.order_status;
+                            badge.className = 'status-badge js-order-status-badge status-' + data.order_status;
+                        }
+                        var statusSelect = document.getElementById('status');
+                        if (statusSelect && data.order_status) statusSelect.value = data.order_status;
+                    })
+                    .then(function() { if (btn) { btn.disabled = false; btn.textContent = origText || 'Uložit'; } });
+            });
+        }
+        if (noteForm && !noteForm.dataset.bound) {
+            noteForm.dataset.bound = '1';
+            noteForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                var btn = this.querySelector('button[type="submit"]');
+                var origText = btn && btn.textContent;
+                if (btn) btn.disabled = true;
+                if (btn) btn.textContent = '…';
+                var fd = new FormData(this);
+                fetch(this.action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {})
+                    .then(function() { if (btn) { btn.disabled = false; btn.textContent = origText || 'Uložit'; } });
+            });
+        }
+        if (unavForm && !unavForm.dataset.bound) {
+            unavForm.dataset.bound = '1';
+            unavForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                var row = this.closest('tr');
+                var itemId = row.getAttribute('data-item-id');
+                if (!orderId || !itemId) return;
+                var shippedCell = row.querySelector('.js-warehouse-shipped-cell');
+                var actionCell = row.querySelector('.js-warehouse-action-cell');
+                if (!shippedCell || !actionCell) return;
+                if (!row.dataset.originalShipped) {
+                    row.dataset.originalShipped = shippedCell.innerHTML;
+                    row.dataset.originalAction = actionCell.innerHTML;
+                }
+                var fd = new FormData(this);
+                fetch(this.action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (!data || !data.ok) return;
+                        shippedCell.innerHTML = '<span class="badge badge-unavailable">Nemám</span>';
+                        actionCell.innerHTML = '<form method="post" action="/warehouse/order/' + orderId + '/item/' + itemId + '/available" class="inline-form js-warehouse-available-form"><button type="submit" class="btn btn-sm">Má skladem</button></form><span class="badge badge-unavailable">Nemám</span>';
+                        row.classList.add('item-unavailable');
+                        var totalS = document.querySelector('.js-order-total-shipped');
+                        var totalO = document.querySelector('.js-order-total-ordered');
+                        if (data.order_total_shipped != null && totalS) totalS.textContent = fmtQty(data.order_total_shipped);
+                        if (data.order_total_ordered != null && totalO) totalO.textContent = fmtQty(data.order_total_ordered);
+                        tableWrap.querySelectorAll('tr').forEach(function(r) { bindRowForms(r); });
+                    });
+            });
+        }
+        if (avForm && !avForm.dataset.bound) {
+            avForm.dataset.bound = '1';
+            avForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                var row = this.closest('tr');
+                var shippedCell = row.querySelector('.js-warehouse-shipped-cell');
+                var actionCell = row.querySelector('.js-warehouse-action-cell');
+                if (!row.dataset.originalShipped || !shippedCell || !actionCell) return;
+                var fd = new FormData(this);
+                fetch(this.action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (!data || !data.ok) return;
+                        shippedCell.innerHTML = row.dataset.originalShipped;
+                        actionCell.innerHTML = row.dataset.originalAction;
+                        row.classList.remove('item-unavailable');
+                        tableWrap.querySelectorAll('tr').forEach(function(r) { bindRowForms(r); });
+                    });
+            });
+        }
+    }
+    document.querySelectorAll('.js-warehouse-row').forEach(function(row) { bindRowForms(row); });
+
+    document.querySelectorAll('.js-warehouse-status-form').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var fd = new FormData(form);
+            var btn = form.querySelector('button[type="submit"]');
+            if (btn) btn.disabled = true;
+            fetch(form.action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data && data.ok && data.order_status) {
+                        var badge = document.querySelector('.js-order-status-badge');
+                        if (badge) {
+                            badge.textContent = statusLabels[data.order_status] || data.order_status;
+                            badge.className = 'status-badge js-order-status-badge status-' + data.order_status;
+                        }
+                        var sel = document.getElementById('status');
+                        if (sel) sel.value = data.order_status;
+                    }
+                })
+                .then(function() { if (btn) btn.disabled = false; });
+        });
+    });
+
+    document.querySelectorAll('.js-warehouse-invoice-form').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var fd = new FormData(form);
+            var btn = form.querySelector('button[type="submit"]');
+            if (btn) btn.disabled = true;
+            fetch(form.action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data || !data.ok) return;
+                    var valEl = document.querySelector('.invoice-status-value');
+                    if (valEl) {
+                        valEl.className = 'invoice-status-value invoice-status-' + (data.invoice_ok ? 'ok' : 'error');
+                        valEl.textContent = data.invoice_ok ? '✅ Vše cajk' : '❌ Nalezena chyba';
+                    }
+                    document.querySelectorAll('.invoice-form-cajk button, .invoice-form-chyba button').forEach(function(b) {
+                        b.classList.remove('btn-primary');
+                        if (data.invoice_ok && b.closest('.invoice-form-cajk')) b.classList.add('btn-primary');
+                        if (!data.invoice_ok && b.closest('.invoice-form-chyba')) b.classList.add('btn-primary');
+                    });
+                })
+                .then(function() { if (btn) btn.disabled = false; });
+        });
+    });
+})();
+</script>
 {% if order_audit_log %}
 <details class="order-audit-log order-audit-log-dropdown">
     <summary class="order-audit-log-summary">Audit log ({{ order_audit_log|length }})</summary>

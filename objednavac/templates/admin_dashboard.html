@@ -85,29 +85,6 @@
         </div>
     </section>
 
-    <section class="dashboard-section" aria-labelledby="products-heading">
-        <h2 id="products-heading" class="dashboard-section-title">Nejčastěji objednávané produkty</h2>
-        <div class="dashboard-card">
-            <div class="dashboard-card-body">
-                {% if top_products %}
-                <div class="dashboard-cards-grid dashboard-cards-top-products">
-                    {% for p in top_products %}
-                    <article class="dashboard-item-card">
-                        <div class="dashboard-item-card-body">
-                            <h3 class="dashboard-item-card-title">{{ p.name }}</h3>
-                            <p class="dashboard-item-card-meta">Jednotka: {{ p.unit or 'ks' }}</p>
-                            <p class="dashboard-item-card-value"><strong>{{ p.total | format_qty }}</strong> objednáno</p>
-                        </div>
-                    </article>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <p class="dashboard-empty">Zatím žádná data. Po odeslání objednávek se zde zobrazí nejčastěji objednávané položky.</p>
-                {% endif %}
-            </div>
-        </div>
-    </section>
-
     <section class="dashboard-section" aria-labelledby="orders-heading">
         <h2 id="orders-heading" class="dashboard-section-title">
             Poslední objednávky
@@ -131,6 +108,29 @@
                 </div>
                 {% else %}
                 <p class="dashboard-empty">Zatím žádné objednávky.</p>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <section class="dashboard-section" aria-labelledby="products-heading">
+        <h2 id="products-heading" class="dashboard-section-title">Nejčastěji objednávané produkty</h2>
+        <div class="dashboard-card">
+            <div class="dashboard-card-body">
+                {% if top_products %}
+                <div class="dashboard-cards-grid dashboard-cards-top-products">
+                    {% for p in top_products %}
+                    <article class="dashboard-item-card">
+                        <div class="dashboard-item-card-body">
+                            <h3 class="dashboard-item-card-title">{{ p.name }}</h3>
+                            <p class="dashboard-item-card-meta">Jednotka: {{ p.unit or 'ks' }}</p>
+                            <p class="dashboard-item-card-value"><strong>{{ p.total | format_qty }}</strong> objednáno</p>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="dashboard-empty">Zatím žádná data. Po odeslání objednávek se zde zobrazí nejčastěji objednávané položky.</p>
                 {% endif %}
             </div>
         </div>

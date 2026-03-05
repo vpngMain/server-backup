@@ -72,28 +72,6 @@
         {% endif %}
     </section>
 
-    {% if last_order and last_order_unavailable %}
-    <section class="dashboard-section" aria-labelledby="unavailable-heading">
-        <h2 id="unavailable-heading" class="dashboard-section-title"><span class="unavailable-section-icon" aria-hidden="true">⚠</span> Co nemá sklad (z poslední objednávky #{{ last_order.id }})</h2>
-        <div class="dashboard-card unavailable-card">
-            <div class="dashboard-card-body">
-                <p class="unavailable-desc">Následující položky z vaší poslední objednávky sklad označil jako „Nemám na skladě“.</p>
-                <div class="dashboard-cards-grid dashboard-cards-unavailable">
-                    {% for i in last_order_unavailable %}
-                    <article class="dashboard-item-card">
-                        <div class="dashboard-item-card-body">
-                            <h3 class="dashboard-item-card-title">{{ i.display_name() }}</h3>
-                            <p class="dashboard-item-card-meta">Objednáno: <strong>{{ i.ordered_quantity | format_qty }}</strong> {{ i.product.unit if i.product and i.product.unit else (i.internal_product.unit if i.internal_product and i.internal_product.unit else 'ks') }}</p>
-                        </div>
-                    </article>
-                    {% endfor %}
-                </div>
-                <p class="unavailable-actions"><a href="{{ url_for('branch_order_detail', order_id=last_order.id) }}" class="btn btn-sm btn-unavailable-link">Detail objednávky #{{ last_order.id }}</a></p>
-            </div>
-        </div>
-    </section>
-    {% endif %}
-
     <section class="dashboard-section" aria-labelledby="orders-heading">
         <h2 id="orders-heading" class="dashboard-section-title">
             Poslední objednávky
@@ -121,5 +99,32 @@
             </div>
         </div>
     </section>
+
+    {% if last_order and last_order_unavailable %}
+    <section class="dashboard-section" aria-labelledby="unavailable-heading">
+        <h2 id="unavailable-heading" class="dashboard-section-title"><span class="unavailable-section-icon" aria-hidden="true">⚠</span> Co nemá sklad (z poslední objednávky #{{ last_order.id }})</h2>
+        <div class="dashboard-card unavailable-card">
+            <div class="dashboard-card-body">
+                <p class="unavailable-desc">Následující položky z vaší poslední objednávky sklad označil jako „Nemám na skladě“.</p>
+                <div class="dashboard-cards-grid dashboard-cards-unavailable">
+                    {% for i in last_order_unavailable %}
+                    <article class="dashboard-item-card">
+                        <div class="dashboard-item-card-body">
+                            <h3 class="dashboard-item-card-title">{{ i.display_name() }}</h3>
+                            <p class="dashboard-item-card-meta">Objednáno: <strong>{{ i.ordered_quantity | format_qty }}</strong> {{ i.product.unit if i.product and i.product.unit else (i.internal_product.unit if i.internal_product and i.internal_product.unit else 'ks') }}</p>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                <p class="unavailable-actions">
+                    <form method="post" action="{{ url_for('branch_move_unavailable_to_cart') }}" class="inline-form" style="display: inline;">
+                        <button type="submit" class="btn btn-sm btn-primary">Vložit do košíku</button>
+                    </form>
+                    <a href="{{ url_for('branch_order_detail', order_id=last_order.id) }}" class="btn btn-sm btn-unavailable-link">Detail objednávky #{{ last_order.id }}</a>
+                </p>
+            </div>
+        </div>
+    </section>
+    {% endif %}
 </div>
 {% endblock %}

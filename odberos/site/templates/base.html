@@ -500,21 +500,21 @@
     </script>
     <nav class="navbar navbar-expand-lg navbar-apple navbar-light">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('index') }}">Odběry</a>
+            <a class="navbar-brand" href="{{ url_for('index') }}">Domů</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto align-items-center gap-1">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('index') }}">Odběry</a>
+                        <a class="nav-link" href="{{ url_for('index') }}">Domů</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('reklamace_index') }}">Reklamace</a>
                     </li>
                     {% if current_user.is_authenticated %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('ppl_index') }}">PPL sklad</a>
+                        <a class="nav-link" href="{{ url_for('ppl_index') }}">PPL</a>
                     </li>
                     {% endif %}
                     <li class="nav-item">
@@ -558,10 +558,10 @@
         <div class="command-palette-box">
             <input type="text" class="command-palette-input" id="command-palette-input" placeholder="Hledat nebo přejít…" autocomplete="off">
             <div class="command-palette-list" id="command-palette-list">
-                <a href="{{ url_for('index') }}" class="command-palette-item" data-title="Odběry Hlavní přehled"><i class="fas fa-th-large text-secondary"></i> Odběry</a>
+                <a href="{{ url_for('index') }}" class="command-palette-item" data-title="Domovská stránka přehled"><i class="fas fa-th-large text-secondary"></i> Domů</a>
                 <a href="{{ url_for('reklamace_index') }}" class="command-palette-item" data-title="Reklamace Nová"><i class="fas fa-tools text-secondary"></i> Reklamace</a>
                 {% if current_user.is_authenticated %}
-                <a href="{{ url_for('ppl_index') }}" class="command-palette-item" data-title="PPL Sklad zásilky"><i class="fas fa-box text-secondary"></i> PPL sklad</a>
+                <a href="{{ url_for('ppl_index') }}" class="command-palette-item" data-title="PPL Sklad zásilky"><i class="fas fa-box text-secondary"></i> PPL</a>
                     {% if current_user.role == 'admin' %}
                     <a href="{{ url_for('admin_dashboard') }}" class="command-palette-item" data-title="Admin Panel"><i class="fas fa-cog text-secondary"></i> Admin panel</a>
                     <a href="{{ url_for('admin_statistiky') }}" class="command-palette-item" data-title="Statistiky"><i class="fas fa-chart-bar text-secondary"></i> Statistiky</a>
@@ -582,7 +582,7 @@
     {% block toolbar %}{% endblock %}
 
     {% if current_user.is_authenticated %}
-    <a href="{{ url_for('index') }}" class="fab" title="Rychle: Odběry" aria-label="Otevřít odběry">
+    <a href="{{ url_for('index') }}" class="fab" title="Rychle: Domů" aria-label="Domovská stránka">
         <i class="fas fa-plus"></i>
     </a>
     {% endif %}

@@ -13,7 +13,8 @@
     (function(){var k='darkMode';var v=localStorage.getItem(k);if(v==='1')document.documentElement.classList.add('dark-mode');})();
     </script>
 </head>
-<body class="{% if current_user and current_user.role == 'admin' %}layout-admin{% endif %}{% if current_user and current_user.username == 'Viktorinka' %} theme-viktorinka{% endif %}" id="body-el">
+{% set use_sidebar = current_user and (current_user.role == 'admin' or current_user.role == 'branch' or current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role)) %}
+<body class="{% if use_sidebar %}layout-admin{% endif %}{% if current_user and current_user.username == 'Viktorinka' %} theme-viktorinka{% endif %}" id="body-el">
     {% if current_user and current_user.username == 'Viktorinka' %}
     <div class="viktorinka-decorations" aria-hidden="true">
         <span class="v-heart v-h1">♥</span><span class="v-heart v-h2">♥</span><span class="v-heart v-h3">♥</span>
@@ -22,17 +23,18 @@
         <span class="v-sparkle v-s4">✧</span><span class="v-sparkle v-s5">✦</span><span class="v-sparkle v-s6">✧</span>
     </div>
     {% endif %}
-    {% if current_user and current_user.role == 'admin' %}
+    {% if use_sidebar %}
     <div class="admin-sidebar-overlay" id="admin-sidebar-overlay" aria-hidden="true"></div>
     <aside class="admin-sidebar" id="admin-sidebar" aria-label="Hlavní navigace">
         <div class="admin-sidebar-header">
-            <a href="{{ url_for('admin_dashboard') }}" class="admin-sidebar-brand">Objednávač</a>
+            <a href="{% if current_user.role == 'admin' and not acting_as_role %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'branch' or acting_as_role == 'branch' %}{{ url_for('branch_dashboard') }}{% else %}{{ url_for('warehouse_dashboard') }}{% endif %}" class="admin-sidebar-brand">Objednávač</a>
             <button type="button" class="admin-sidebar-close" id="admin-sidebar-close" aria-label="Zavřít menu">
                 <span aria-hidden="true">×</span>
             </button>
         </div>
         <nav class="admin-nav">
             <span class="admin-nav-section">Menu</span>
+            {% if current_user.role == 'admin' and not acting_as_role %}
             <a href="{{ url_for('admin_dashboard') }}" class="admin-nav-item {% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
                 <span class="admin-nav-icon" aria-hidden="true">📊</span>
                 <span>Přehled</span>
@@ -65,6 +67,61 @@
                 <span class="admin-nav-icon" aria-hidden="true">👤</span>
                 <span>Působit jako…</span>
             </a>
+            {% elif current_user.role == 'branch' or acting_as_role == 'branch' %}
+            {% if current_user.role == 'admin' and acting_as_role %}
+            <a href="{{ url_for('admin_back') }}" class="admin-nav-item nav-return-dashboard">← Zpět na admina</a>
+            {% endif %}
+            <a href="{{ url_for('branch_dashboard') }}" class="admin-nav-item {% if request.endpoint == 'branch_dashboard' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📊</span>
+                <span>Přehled</span>
+            </a>
+            <a href="{{ url_for('index') }}" class="admin-nav-item {% if request.endpoint == 'index' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📦</span>
+                <span>Produkty</span>
+            </a>
+            <a href="{{ url_for('internal_products') }}" class="admin-nav-item {% if request.endpoint == 'internal_products' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📋</span>
+                <span>Interní produkty</span>
+            </a>
+            <a href="{{ url_for('cart_view') }}?type=normal" class="admin-nav-item {% if request.endpoint == 'cart_view' and session.get('order_type') != 'internal' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">🛒</span>
+                <span>Košík<span class="js-cart-count-nav">{% if cart_count is defined and cart_count > 0 %} ({{ cart_count | format_qty }}){% endif %}</span></span>
+            </a>
+            <a href="{{ url_for('cart_view') }}?type=internal" class="admin-nav-item cart-link-internal {% if request.endpoint == 'cart_view' and session.get('order_type') == 'internal' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📥</span>
+                <span>Košík (interní){% if cart_count_internal is defined and cart_count_internal > 0 %} ({{ cart_count_internal | format_qty }}){% endif %}</span>
+            </a>
+            <a href="{{ url_for('branch_orders') }}" class="admin-nav-item {% if request.endpoint == 'branch_orders' and request.args.get('type') != 'internal' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📋</span>
+                <span>Moje objednávky</span>
+            </a>
+            <a href="{{ url_for('branch_orders', type='internal') }}" class="admin-nav-item {% if request.endpoint == 'branch_orders' and request.args.get('type') == 'internal' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📋</span>
+                <span>Interní objednávky</span>
+            </a>
+            {% if user_branches and user_branches|length > 1 %}
+            <span class="admin-nav-section">Pobočka</span>
+            <form method="post" action="{{ url_for('branch_switch') }}" class="branch-switch-form branch-switch-in-sidebar">
+                <select name="branch_id" onchange="this.form.submit()" class="branch-switch-select" aria-label="Zvolit pobočku">
+                    {% for b in user_branches %}
+                    <option value="{{ b.id }}" {{ 'selected' if current_branch and b.id == current_branch.id else '' }}>{{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            {% endif %}
+            {% elif current_user.role == 'warehouse' or acting_as_role == 'warehouse' %}
+            {% if current_user.role == 'admin' and acting_as_role %}
+            <a href="{{ url_for('admin_back') }}" class="admin-nav-item nav-return-dashboard">← Zpět na admina</a>
+            {% endif %}
+            <a href="{{ url_for('warehouse_dashboard') }}" class="admin-nav-item {% if request.endpoint == 'warehouse_dashboard' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📊</span>
+                <span>Přehled</span>
+            </a>
+            <a href="{{ url_for('warehouse_orders') }}" class="admin-nav-item {% if request.endpoint == 'warehouse_orders' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📋</span>
+                <span>Objednávky</span>
+            </a>
+            {% endif %}
             <span class="admin-nav-section admin-nav-section-end">Účet</span>
             <a href="{{ url_for('logout') }}" class="admin-nav-item">
                 <span class="admin-nav-icon" aria-hidden="true">🚪</span>
@@ -83,13 +140,16 @@
             <button type="button" class="admin-menu-toggle" id="admin-menu-toggle" aria-label="Otevřít menu" aria-expanded="false">
                 <span class="admin-menu-toggle-icon" aria-hidden="true"></span>
             </button>
-            <span class="admin-user">{{ current_user.username }} <span class="admin-role">admin</span></span>
+            <span class="admin-user">{{ current_user.username }} <span class="admin-role">{% if current_user.role == 'admin' and not acting_as_role %}admin{% elif current_user.role == 'warehouse' or acting_as_role == 'warehouse' %}sklad{% else %}pobočka{% endif %}{% if acting_as_branch %} – {{ acting_as_branch.name }}{% elif current_branch %} – {{ current_branch.name }}{% endif %}</span></span>
         </header>
     {% else %}
     <header class="header">
         <a href="{% if current_user %}{% if current_user.role == 'branch' or (current_user.role == 'admin' and acting_as_role == 'branch') %}{{ url_for('branch_dashboard') }}{% elif current_user.role == 'admin' and not acting_as_role %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}{{ url_for('warehouse_dashboard') }}{% else %}{{ url_for('warehouse_orders') }}{% endif %}{% else %}{{ url_for('login') }}{% endif %}" class="logo">Objednávač</a>
         {% if current_user %}
         <nav>
+            {% if current_user.role == 'admin' and acting_as_role %}
+            <a href="{{ url_for('admin_back') }}" class="nav-return-dashboard">← Zpět na admina</a>
+            {% endif %}
             {% if current_user.role == 'branch' or (current_user.role == 'admin' and acting_as_role == 'branch') %}
             <a href="{{ url_for('branch_dashboard') }}">Přehled</a>
             <a href="{{ url_for('index') }}">Produkty</a>
@@ -136,7 +196,7 @@
         {% endif %}
     </header>
     {% endif %}
-    <main class="main{% if current_user and current_user.role == 'admin' %} main-admin{% endif %}">
+    <main class="main{% if use_sidebar %} main-admin{% endif %}">
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
         <ul class="flash">
@@ -153,7 +213,7 @@
         {% endif %}
         {% block content %}{% endblock %}
     </main>
-    {% if current_user and current_user.role == 'admin' %}
+    {% if use_sidebar %}
     </div>
     {% endif %}
     <script>
@@ -207,6 +267,12 @@
         if (overlay) overlay.addEventListener('click', closeSidebar);
         sidebar.querySelectorAll('.admin-nav-item').forEach(function(link) {
             link.addEventListener('click', closeSidebar);
+        });
+    })();
+    (function() {
+        window.addEventListener('cart-update', function(e) {
+            var el = document.querySelector('.js-cart-count-nav');
+            if (el) el.textContent = (e.detail && e.detail.count > 0) ? (' (' + e.detail.count + ')') : '';
         });
     })();
     </script>

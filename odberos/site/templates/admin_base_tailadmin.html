@@ -192,6 +192,8 @@
                 <a href="{{ url_for('index') }}" class="ta-sidebar-link"><i class="fas fa-plus-circle"></i> Nový odběr</a>
                 <a href="{{ url_for('reklamace_index') }}" class="ta-sidebar-link"><i class="fas fa-tools"></i> Reklamace</a>
                 <a href="{{ url_for('admin_statistiky') }}" class="ta-sidebar-link"><i class="fas fa-chart-line"></i> Statistiky</a>
+                <a href="{{ url_for('admin_users') }}" class="ta-sidebar-link"><i class="fas fa-users"></i> Uživatelé</a>
+                <a href="{{ url_for('admin_pobocky') }}" class="ta-sidebar-link"><i class="fas fa-store"></i> Pobočky</a>
             </nav>
             <nav class="ta-sidebar-nav">
                 <div class="ta-sidebar-title">Nástroje</div>
@@ -201,7 +203,7 @@
             </nav>
             <nav class="ta-sidebar-nav">
                 <div class="ta-sidebar-title">Účet</div>
-                <a href="{{ url_for('index') }}" class="ta-sidebar-link"><i class="fas fa-home"></i> Odběry</a>
+                <a href="{{ url_for('index') }}" class="ta-sidebar-link"><i class="fas fa-home"></i> Domů</a>
                 <a href="{{ url_for('logout') }}" class="ta-sidebar-link"><i class="fas fa-sign-out-alt"></i> Odhlásit</a>
             </nav>
         </aside>
@@ -227,7 +229,7 @@
                         <i class="fas fa-chevron-down ta-user-chevron"></i>
                         <div class="ta-user-menu" x-show="userOpen" x-transition x-cloak
                              @click.outside="userOpen = false">
-                            <a href="{{ url_for('index') }}"><i class="fas fa-home me-2"></i>Odběry</a>
+                            <a href="{{ url_for('index') }}"><i class="fas fa-home me-2"></i>Domů</a>
                             <a href="{{ url_for('admin_statistiky') }}"><i class="fas fa-chart-bar me-2"></i>Statistiky</a>
                             <a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Odhlásit</a>
                         </div>

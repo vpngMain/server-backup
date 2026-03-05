@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 fade-in">
     <h1 class="mb-0"><i class="fas fa-user-plus"></i> Přidat uživatele</h1>
-    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+    <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary btn-sm">
         <i class="fas fa-arrow-left"></i> Zpět
     </a>
 </div>
@@ -93,7 +93,7 @@
                         <button type="submit" class="btn btn-warning">
                             <i class="fas fa-save"></i> Přidat uživatele
                         </button>
-                        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">
+                        <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary">
                             <i class="fas fa-times"></i> Zrušit
                         </a>
                     </div>

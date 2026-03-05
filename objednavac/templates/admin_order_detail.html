@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Admin – Objednávka {{ order.id }}{% endblock %}
 {% block content %}
+<p class="order-detail-actions">
+    <a href="{{ url_for('admin_orders') }}" class="btn btn-back">← Zpět na objednávky</a>
+    <a href="{{ url_for('warehouse_order_detail', order_id=order.id) }}" class="btn">Přejít na sklad (detail)</a>
+    {% if order.status == 'pending' %}
+    <form method="post" action="{{ url_for('admin_order_delete', order_id=order.id) }}" class="inline-form" style="display: inline;" onsubmit="return confirm('Opravdu smazat tuto objednávku? Tuto akci nelze vrátit zpět.');">
+        <button type="submit" class="btn btn-danger">Smazat objednávku</button>
+    </form>
+    {% endif %}
+</p>
 <h2>Objednávka {{ order.id }}</h2>
 <p class="order-detail-meta">
     <span>Pobočka: {{ order.branch.name if order.branch else '—' }} {{ order.branch.code if order.branch and order.branch.code else '' }}</span>
@@ -31,7 +40,6 @@
         {% endfor %}
     </tbody>
 </table>
-<p style="margin-top: 1rem;"><a href="{{ url_for('admin_orders') }}" class="btn">← Zpět na objednávky</a> <a href="{{ url_for('warehouse_order_detail', order_id=order.id) }}" class="btn">Přejít na sklad (detail)</a></p>
 {% if order_audit_log %}
 <details class="order-audit-log order-audit-log-dropdown">
     <summary class="order-audit-log-summary">Audit log ({{ order_audit_log|length }})</summary>

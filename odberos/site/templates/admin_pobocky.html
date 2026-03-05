@@ -1,0 +1,49 @@
+{% extends admin_base|default('admin_base_sneat.html') %}
+{% block title %}Pobočky{% endblock %}
+{% block content %}
+<h4 class="fw-bold mb-1">Pobočky</h4>
+<p class="mb-4">Správa poboček.</p>
+
+<div class="card mb-4 admin-card-interactive">
+  <div class="card-header"><h5 class="mb-0">Přidat pobočku</h5></div>
+  <div class="card-body">
+    <form method="POST">
+      {{ pobocka_form.hidden_tag() }}
+      <div class="mb-3">
+        <label class="form-label">Název pobočky</label>
+        {{ pobocka_form.nazev(class="form-control", placeholder="Např. Praha, Brno…") }}
+        {% if pobocka_form.nazev.errors %}<div class="text-danger small mt-1">{% for e in pobocka_form.nazev.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <button type="submit" class="btn btn-primary">Přidat pobočku</button>
+    </form>
+  </div>
+</div>
+
+<div class="card admin-card-interactive">
+  <div class="card-header"><h5 class="mb-0">Seznam poboček</h5></div>
+  <div class="card-body p-0">
+    {% if pobocky %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>Název</th><th class="text-center">Uživatelé</th><th>Akce</th></tr></thead>
+        <tbody>
+        {% for pob in pobocky %}
+        <tr class="admin-table-row">
+          <td><strong>{{ pob.nazev }}</strong></td>
+          <td class="text-center"><span class="badge bg-secondary">{{ pob.users|length if pob.users else 0 }}</span></td>
+          <td>
+            <a href="{{ url_for('edit_pobocka', id=pob.id) }}" class="btn btn-sm btn-outline-primary me-1">Upravit</a>
+            <form action="{{ url_for('delete_pobocka', id=pob.id) }}" method="POST" onsubmit="return confirm('Smazat pobočku {{ pob.nazev }}?');" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Smazat</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="text-muted text-center py-4 mb-0">Zatím nejsou žádné pobočky.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

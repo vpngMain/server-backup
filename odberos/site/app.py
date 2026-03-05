@@ -1905,104 +1905,6 @@ def admin_dashboard():
     if not (current_user.is_authenticated and current_user.is_admin()):
         flash('Nemáte oprávnění k přístupu k admin dashboardu!', 'danger')
         return redirect(url_for('index'))
-    try:
-        pobocka_form = AddPobockaForm()
-        user_form = AddUserForm()
-    except Exception as e:
-        app.logger.error(f'Chyba při vytváření formulářů: {str(e)}')
-        flash('Chyba při načítání formulářů', 'danger')
-        return redirect(url_for('index'))
-    
-    # Naplnění choices pro pobočky v user formu
-    try:
-        all_pobocky = Pobocka.query.all()
-        user_form.pobocky.choices = [(str(p.id), p.nazev) for p in all_pobocky]
-    except Exception as e:
-        app.logger.error(f'Chyba při načítání poboček pro formulář: {str(e)}')
-        user_form.pobocky.choices = []
-    
-    # Přidání uživatele
-    if user_form.validate_on_submit() and 'jmeno' in request.form and (current_user.is_authenticated and current_user.is_admin()):
-        # Sanitizace vstupů
-        jmeno_clean = user_form.jmeno.data.strip()[:100] if user_form.jmeno.data else ''
-        pin_clean = user_form.pin.data.strip() if user_form.pin.data else ''
-        username_clean = jmeno_clean.lower().replace(' ', '_')[:100]
-        
-        # Kontrola unikátnosti
-        existing_pin = User.query.filter_by(pin=pin_clean).first()
-        if existing_pin:
-            flash('PIN již existuje!', 'danger')
-        elif User.query.filter_by(username=username_clean).first():
-            flash('Uživatel s tímto jménem již existuje!', 'danger')
-        else:
-            user = User(
-                username=username_clean,
-                pin=pin_clean,
-                jmeno=jmeno_clean,
-                role=user_form.role.data
-            )
-            # Přihlášení jen přes PIN – ukládáme PIN jako heslo
-            user.set_password(pin_clean)
-
-            # Zpracování poboček - použijeme request.form.getlist pro checkboxy
-            pobocky_data = request.form.getlist('pobocky')
-            if not pobocky_data:
-                # Fallback na form.pobocky.data pro multiple select
-                pobocky_data = user_form.pobocky.data or []
-
-            if pobocky_data:
-                pobocky_ids = []
-                for p_id in pobocky_data:
-                    if p_id:
-                        try:
-                            pob_id = int(p_id)
-                            if db.session.get(Pobocka, pob_id):
-                                pobocky_ids.append(pob_id)
-                        except (ValueError, TypeError):
-                            continue
-
-                if pobocky_ids:
-                    pobocky_objects = Pobocka.query.filter(Pobocka.id.in_(pobocky_ids)).all()
-                    user.pobocky = pobocky_objects
-                    if pobocky_objects:
-                        user.pobocka_id = pobocky_objects[0].id
-
-            try:
-                db.session.add(user)
-                db.session.commit()
-                akce = Akce(
-                    odber_id=None,
-                    uzivatel=current_user.username,
-                    akce=f'Přidán uživatel: {user.jmeno}',
-                    datum=get_current_time(),
-                    pobocka_id=_system_pobocka_id()
-                )
-                db.session.add(akce)
-                db.session.commit()
-                flash('Uživatel přidán!', 'success')
-                return redirect(url_for('admin_dashboard'))
-            except Exception as e:
-                db.session.rollback()
-                app.logger.error(f'Chyba při přidávání uživatele: {str(e)}')
-                flash(f'Chyba při přidávání uživatele: {str(e)}', 'danger')
-    
-    if pobocka_form.validate_on_submit() and 'nazev' in request.form and (current_user.is_authenticated and current_user.is_admin()):
-        pobocka = Pobocka(nazev=pobocka_form.nazev.data)
-        db.session.add(pobocka)
-        db.session.commit()
-        akce = Akce(
-            odber_id=None,
-            uzivatel=current_user.username,
-            akce=f'Přidána pobočka: {pobocka_form.nazev.data}',
-            datum=get_current_time(),
-            pobocka_id=pobocka.id
-        )
-        db.session.add(akce)
-        db.session.commit()
-        flash('Pobočka přidána!', 'success')
-        return redirect(url_for('admin_dashboard'))
-
-
     # Filtry podle roku
     selected_year = request.args.get('rok', str(date.today().year))
     try:
@@ -2206,11 +2108,6 @@ def admin_dashboard():
         return render_template(
             'admin_dashboard.html',
             admin_base=admin_base,
-            pobocka_form=pobocka_form,
-            user_form=user_form,
-            users=users,
-            all_pobocky=all_pobocky,
-            pobocky=pobocky,
             prehled=prehled,
             akce=historie,
             reklamace_prehled=reklamace_prehled,
@@ -2229,11 +2126,6 @@ def admin_dashboard():
         flash(f'Chyba při načítání dashboardu: {str(e)}', 'danger')
         return render_template('admin_dashboard.html',
             admin_base=admin_base,
-            pobocka_form=pobocka_form,
-            user_form=user_form,
-            users=[],
-            all_pobocky=[],
-            pobocky=[],
             prehled=[],
             akce=[],
             reklamace_prehled=[],
@@ -2517,13 +2409,94 @@ def admin_statistiky():
         )
 
 
+@app.route('/admin/users', methods=['GET', 'POST'])
+@login_required
+def admin_users():
+    """Samostatná stránka – uživatelé (seznam + přidat)."""
+    if not (current_user.is_authenticated and current_user.is_admin()):
+        flash('Nemáte oprávnění!', 'danger')
+        return redirect(url_for('index'))
+    user_form = AddUserForm()
+    all_pobocky = Pobocka.query.all()
+    user_form.pobocky.choices = [(str(p.id), p.nazev) for p in all_pobocky]
+    users = User.query.all()
+
+    if user_form.validate_on_submit() and 'jmeno' in request.form:
+        jmeno_clean = (user_form.jmeno.data or '').strip()[:100]
+        pin_clean = (user_form.pin.data or '').strip()
+        username_clean = jmeno_clean.lower().replace(' ', '_')[:100]
+        existing_pin = User.query.filter_by(pin=pin_clean).first()
+        if existing_pin:
+            flash('PIN již existuje!', 'danger')
+        elif User.query.filter_by(username=username_clean).first():
+            flash('Uživatel s tímto jménem již existuje!', 'danger')
+        else:
+            user = User(username=username_clean, pin=pin_clean, jmeno=jmeno_clean, role=user_form.role.data)
+            user.set_password(pin_clean)
+            pobocky_data = request.form.getlist('pobocky') or user_form.pobocky.data or []
+            if pobocky_data:
+                pobocky_ids = []
+                for p in pobocky_data:
+                    if not p:
+                        continue
+                    try:
+                        pid = int(p)
+                        if db.session.get(Pobocka, pid):
+                            pobocky_ids.append(pid)
+                    except (ValueError, TypeError):
+                        continue
+                if pobocky_ids:
+                    user.pobocky = Pobocka.query.filter(Pobocka.id.in_(pobocky_ids)).all()
+                    user.pobocka_id = user.pobocky[0].id
+            try:
+                db.session.add(user)
+                db.session.commit()
+                akce = Akce(odber_id=None, uzivatel=current_user.username, akce=f'Přidán uživatel: {user.jmeno}', datum=get_current_time(), pobocka_id=_system_pobocka_id())
+                db.session.add(akce)
+                db.session.commit()
+                flash('Uživatel přidán!', 'success')
+                return redirect(url_for('admin_users'))
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Chyba: {str(e)}', 'danger')
+
+    _sneat_path = os.path.join(app.root_path, 'templates', 'admin_base_sneat.html')
+    admin_base = 'admin_base_sneat.html' if os.path.isfile(_sneat_path) else 'admin_base_tailadmin.html'
+    return render_template('admin_users.html', admin_base=admin_base, user_form=user_form, users=users, all_pobocky=all_pobocky)
+
+
+@app.route('/admin/pobocky', methods=['GET', 'POST'])
+@login_required
+def admin_pobocky():
+    """Samostatná stránka – pobočky (seznam + přidat)."""
+    if not (current_user.is_authenticated and current_user.is_admin()):
+        flash('Nemáte oprávnění!', 'danger')
+        return redirect(url_for('index'))
+    pobocka_form = AddPobockaForm()
+    pobocky = Pobocka.query.all()
+
+    if pobocka_form.validate_on_submit() and 'nazev' in request.form:
+        pobocka = Pobocka(nazev=pobocka_form.nazev.data)
+        db.session.add(pobocka)
+        db.session.commit()
+        akce = Akce(odber_id=None, uzivatel=current_user.username, akce=f'Přidána pobočka: {pobocka.nazev}', datum=get_current_time(), pobocka_id=pobocka.id)
+        db.session.add(akce)
+        db.session.commit()
+        flash('Pobočka přidána!', 'success')
+        return redirect(url_for('admin_pobocky'))
+
+    _sneat_path = os.path.join(app.root_path, 'templates', 'admin_base_sneat.html')
+    admin_base = 'admin_base_sneat.html' if os.path.isfile(_sneat_path) else 'admin_base_tailadmin.html'
+    return render_template('admin_pobocky.html', admin_base=admin_base, pobocka_form=pobocka_form, pobocky=pobocky)
+
+
 @app.route('/admin/user/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_user(id):
     """Editace uživatele."""
     if not (current_user.is_authenticated and current_user.is_admin()):
         flash('Nemáte oprávnění!', 'danger')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_users'))
     
     user = User.query.get_or_404(id)
     form = EditUserForm()
@@ -2604,7 +2577,7 @@ def edit_user(id):
             db.session.add(akce)
             db.session.commit()
             flash('Uživatel upraven!', 'success')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('admin_users'))
         except Exception as e:
             db.session.rollback()
             app.logger.error(f'Chyba při ukládání uživatele: {str(e)}')
@@ -2619,7 +2592,7 @@ def edit_pobocka(id):
     """Editace pobočky."""
     if not (current_user.is_authenticated and current_user.is_admin()):
         flash('Nemáte oprávnění!', 'danger')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_pobocky'))
     
     pobocka = Pobocka.query.get_or_404(id)
     form = EditPobockaForm()
@@ -2656,7 +2629,7 @@ def edit_pobocka(id):
             db.session.add(akce)
             db.session.commit()
             flash('Pobočka upravena!', 'success')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('admin_pobocky'))
         except Exception as e:
             db.session.rollback()
             app.logger.error(f'Chyba při ukládání pobočky: {str(e)}')
@@ -2686,7 +2659,7 @@ def delete_user(id):
     db.session.delete(user)
     db.session.commit()
     flash('Uživatel smazán!', 'success')
-    return redirect(url_for('admin_dashboard'))
+    return redirect(url_for('admin_users'))
 
 
 @app.route('/delete_pobocka/<int:id>', methods=['POST'])
@@ -2695,7 +2668,7 @@ def delete_pobocka(id):
     """Smazání pobočky."""
     if not (current_user.is_authenticated and current_user.is_admin()):
         flash('Nemáte oprávnění!', 'danger')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_pobocky'))
     
     pobocka = Pobocka.query.get_or_404(id)
     
@@ -2705,7 +2678,7 @@ def delete_pobocka(id):
     
     if odbery_count > 0 or reklamace_count > 0:
         flash(f'Nelze smazat pobočku! Má {odbery_count} odběrů a {reklamace_count} reklamací.', 'danger')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('admin_pobocky'))
     
     nazev = pobocka.nazev
     db.session.delete(pobocka)
@@ -2721,7 +2694,7 @@ def delete_pobocka(id):
     db.session.add(akce)
     db.session.commit()
     flash('Pobočka smazána!', 'success')
-    return redirect(url_for('admin_dashboard'))
+    return redirect(url_for('admin_pobocky'))
 
 @app.route('/logout')
 def logout():
@@ -3107,6 +3080,33 @@ def ppl_api_inventura_finish(pobocka_id):
     verified = _ppl_inventura_verified_set(scanned_pairs)
     conn = _ppl_conn()
     _ppl_ensure_inventura_session(conn)
+
+    # Propis napipaných dvojic (zásilka + umístění) do tabulky parcels – přehled po umístěních zobrazí aktuální police bez refresh
+    try:
+        cur_all = conn.execute('SELECT id, parcel_code, last_four_digits FROM parcels WHERE pobocka_id = ?', (pobocka_id,))
+        all_parcels = cur_all.fetchall()
+        for row in all_parcels:
+            pid, code, last_four = row[0], (row[1] or '').strip(), (row[2] or '').strip()
+            code_base_11, code_last4 = _ppl_canonical_parcel(code)
+            if not code_base_11:
+                continue
+            for pair in (scanned_pairs or []):
+                raw = (pair.get('parcel_code') or pair.get('parcel') or '').strip().replace(' ', '')
+                shelf_val = _ppl_normalize_shelf((pair.get('shelf') or pair.get('police') or '').strip())
+                if not raw or not shelf_val:
+                    continue
+                p_base, p_last4 = _ppl_canonical_parcel(raw)
+                if code_base_11 == p_base or (code_last4 and code_last4 == p_last4):
+                    conn.execute('UPDATE parcels SET shelf = ? WHERE id = ? AND pobocka_id = ?', (shelf_val, pid, pobocka_id))
+                    break
+        conn.commit()
+    except Exception as e:
+        app.logger.warning('PPL inventura propis polic: %s', e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
     try:
         cur = conn.execute('''
             SELECT id, parcel_code, last_four_digits, shelf FROM parcels

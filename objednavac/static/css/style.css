@@ -691,6 +691,9 @@ html.dark-mode .admin-nav-item.active {
   background: var(--header-bg);
   flex-shrink: 0;
   transition: background 0.2s ease, border-color 0.2s ease;
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 .admin-user {
   font-size: 0.95rem;
@@ -1014,6 +1017,15 @@ html.dark-mode .badge-unavailable {
   background: #fef3c7;
   border-color: #d97706;
 }
+.btn-warehouse-mam {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+.btn-warehouse-mam:hover {
+  background: #bbf7d0;
+  border-color: #22c55e;
+}
 
 /* Moje objednávky – odkaz na detail objednávky */
 .admin-orders-header {
@@ -1092,6 +1104,28 @@ html.dark-mode .badge-unavailable {
 .order-card-link:hover .order-card-arrow {
   transform: translateX(4px);
   color: var(--primary);
+}
+.order-detail-actions {
+  margin-bottom: 1rem;
+}
+.order-detail-actions .btn-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius);
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.order-detail-actions .btn-back:hover {
+  background: var(--btn-hover-bg);
+  border-color: var(--border-focus);
+  color: var(--text);
+  text-decoration: none;
 }
 .order-detail-meta {
   display: flex;
@@ -1423,6 +1457,14 @@ html.dark-mode .badge-sklad-nema {
   background: var(--input-bg);
   color: var(--text);
   font-size: 0.9rem;
+}
+.branch-switch-in-sidebar {
+  display: block;
+  margin: 0 12px 12px;
+}
+.branch-switch-in-sidebar .branch-switch-select {
+  width: 100%;
+  max-width: 100%;
 }
 .branch-checkboxes {
   display: flex;
@@ -2514,8 +2556,10 @@ html.dark-mode .input-qty:focus {
   gap: 1.25rem;
   margin-bottom: 1.5rem;
   max-width: 100%;
+  justify-content: center;
 }
 .product-card {
+  position: relative;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -2527,18 +2571,92 @@ html.dark-mode .input-qty:focus {
   box-shadow: var(--shadow-hover);
   border-color: var(--border);
 }
+.product-card-in-cart {
+  border-left: 4px solid var(--primary);
+  background: linear-gradient(90deg, rgba(13, 148, 136, 0.06) 0%, transparent 12%);
+}
+html.dark-mode .product-card-in-cart {
+  background: linear-gradient(90deg, rgba(45, 212, 191, 0.08) 0%, transparent 12%);
+}
+.product-card-waiting-warehouse {
+  border-left: 4px solid #d97706;
+  background: linear-gradient(90deg, rgba(217, 119, 6, 0.08) 0%, transparent 12%);
+}
+html.dark-mode .product-card-waiting-warehouse {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.1) 0%, transparent 12%);
+}
+.product-card-waiting-badge {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #b45309;
+  font-weight: 500;
+}
+html.dark-mode .product-card-waiting-badge {
+  color: #fbbf24;
+}
+.item-waiting-warehouse td {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.08) 0%, transparent 8%);
+  border-left: 3px solid #d97706;
+}
+.item-shipped td {
+  border-left-color: transparent;
+}
+.nav-return-dashboard {
+  font-weight: 600;
+  padding: 0.4em 0.65em;
+  border-radius: var(--radius-sm);
+  background: rgba(13, 148, 136, 0.12);
+  color: var(--primary);
+  margin-right: 0.5rem;
+}
+.nav-return-dashboard:hover {
+  background: rgba(13, 148, 136, 0.2);
+}
 .product-card-inner {
   padding: 1.25rem 1.35rem;
+  padding-right: 3rem; /* místo pro badge *mg v rohu, aby se nekryl s názvem */
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  min-height: 100%;
+}
+.product-card-inner .product-card-header {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  text-align: left;
+  width: 100%;
+}
+.product-card-inner .product-card-title {
+  text-align: left;
+}
+.product-card-inner .product-card-meta-list {
+  text-align: center;
+  justify-items: center;
+}
+.product-card-inner .product-card-cart-badge,
+.product-card-inner .product-card-waiting-badge {
+  text-align: center;
+}
+.product-card-inner .product-card-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+.product-card-inner .product-card-qty-row {
+  justify-content: center;
 }
 .product-card-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-start;
   gap: 0.5rem;
+  position: relative;
 }
 .product-card-title {
   margin: 0;
@@ -2546,17 +2664,24 @@ html.dark-mode .input-qty:focus {
   font-weight: 600;
   color: var(--text);
   line-height: 1.35;
-  flex: 1;
   min-width: 0;
+  padding-right: 4rem; /* rezerva pro badge *mg v rohu – název se pod něj nedostane */
+  box-sizing: border-box;
 }
+/* Označení mg v pravém horním rohu karty – mimo vycentrovaný obsah */
 .product-card-category {
-  flex-shrink: 0;
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 1;
+  pointer-events: none;
   font-size: 0.75rem;
   font-weight: 600;
   padding: 0.2em 0.5em;
   border-radius: var(--radius-sm);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  flex-shrink: 0;
 }
 .product-category-0mg {
   background: rgba(100, 116, 139, 0.15);
@@ -2616,6 +2741,24 @@ html.dark-mode .input-qty:focus {
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--primary);
+}
+.product-card-qty-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.product-card-qty-row .input-qty {
+  width: 3.5rem;
+  min-width: 3rem;
+  text-align: center;
+}
+.btn-qty-minus,
+.btn-qty-plus {
+  min-width: 2rem;
+  padding: 0.4rem 0.5rem;
+  font-weight: 600;
+  line-height: 1;
 }
 .product-card-form {
   display: flex;

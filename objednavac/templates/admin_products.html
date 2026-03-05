@@ -69,11 +69,11 @@
                 {% if p.pc %}
                 <dt>pc</dt><dd>{{ p.pc }}</dd>
                 {% endif %}
-                <dt>Interní</dt><dd>{{ 'Ano' if p.is_internal else 'Ne' }}</dd>
+                <dt>Interní</dt><dd><span class="js-internal-label">{{ 'Ano' if p.is_internal else 'Ne' }}</span></dd>
             </dl>
-            <form method="post" action="{{ url_for('admin_product_set_internal', product_id=p.id) }}" class="product-card-form">
+            <form method="post" action="{{ url_for('admin_product_set_internal', product_id=p.id) }}" class="product-card-form js-set-internal-form" data-product-id="{{ p.id }}">
                 <input type="hidden" name="internal" value="{{ '0' if p.is_internal else '1' }}">
-                <button type="submit" class="btn btn-sm {{ 'btn-primary' if p.is_internal else '' }}">{{ 'Zrušit interní' if p.is_internal else 'Označit jako interní' }}</button>
+                <button type="submit" class="btn btn-sm js-internal-btn {{ 'btn-primary' if p.is_internal else '' }}">{{ 'Zrušit interní' if p.is_internal else 'Označit jako interní' }}</button>
             </form>
         </div>
     </article>
@@ -127,6 +127,35 @@
     });
     input.addEventListener('keyup', filter);
     filter();
+})();
+(function() {
+    document.querySelectorAll('.js-set-internal-form').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var btn = form.querySelector('.js-internal-btn');
+            var label = form.querySelector('.js-internal-label');
+            var inputInternal = form.querySelector('input[name="internal"]');
+            if (!btn || !label || !inputInternal) return;
+            var origText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '…';
+            var fd = new FormData(form);
+            var opts = { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } };
+            fetch(form.action, opts)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data && data.ok) {
+                        var isInternal = !!data.is_internal;
+                        label.textContent = isInternal ? 'Ano' : 'Ne';
+                        inputInternal.value = isInternal ? '0' : '1';
+                        btn.textContent = isInternal ? 'Zrušit interní' : 'Označit jako interní';
+                        if (isInternal) { btn.classList.add('btn-primary'); } else { btn.classList.remove('btn-primary'); }
+                    }
+                })
+                .catch(function() { btn.textContent = origText; })
+                .then(function() { btn.disabled = false; });
+        });
+    });
 })();
 </script>
 {% endblock %}

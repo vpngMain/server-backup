@@ -59,8 +59,9 @@
     {% for brand, plist in products_by_brand %}
     {% for p in plist %}
     {% set qty_in_cart = (cart.get((p.id)|string, 0)) or 0 %}
+    {% set waiting_qty = (waiting_by_product|default({})).get(p.id, 0) or 0 %}
     {% set cat = p.name | product_category %}
-    <article class="product-card product-row" id="product-{{ p.id }}" data-name="{{ (p.name or '')|lower }}" data-sku="{{ (p.sku or '')|lower }}" data-group="{{ (p.group_name or '')|lower }}" data-brand="{{ brand|lower }}" data-category="{{ cat|lower }}">
+    <article class="product-card product-row {{ 'product-card-in-cart' if qty_in_cart > 0 else '' }} {{ 'product-card-waiting-warehouse' if waiting_qty > 0 else '' }}" id="product-{{ p.id }}" data-name="{{ (p.name or '')|lower }}" data-sku="{{ (p.sku or '')|lower }}" data-group="{{ (p.group_name or '')|lower }}" data-brand="{{ brand|lower }}" data-category="{{ cat|lower }}">
         <div class="product-card-inner">
             <div class="product-card-header">
                 <h3 class="product-card-title">{{ p.name }}</h3>
@@ -76,10 +77,15 @@
                 {% endif %}
             </dl>
             {% if qty_in_cart > 0 %}<p class="product-card-cart-badge">V košíku: {{ qty_in_cart | format_qty }}</p>{% endif %}
+            {% if waiting_qty > 0 %}<p class="product-card-waiting-badge" title="Čeká v objednávce na zpracování skladem">Čeká v objednávce: {{ waiting_qty | format_qty }} ks</p>{% endif %}
             <form id="form-add-{{ p.id }}" method="post" action="{{ url_for('cart_add') }}" class="product-card-form">
                 <input type="hidden" name="product_id" value="{{ p.id }}">
-                <label for="qty-{{ p.id }}" class="sr-only">Množství</label>
-                <input type="number" id="qty-{{ p.id }}" name="quantity" value="{{ qty_in_cart or 1 }}" min="0.01" step="any" class="input-qty" placeholder="ks">
+                <div class="product-card-qty-row">
+                    <button type="button" class="btn btn-sm btn-qty-minus js-cart-minus" data-product-id="{{ p.id }}" aria-label="Odebrat">−</button>
+                    <label for="qty-{{ p.id }}" class="sr-only">Množství</label>
+                    <input type="number" id="qty-{{ p.id }}" name="quantity" value="{{ qty_in_cart or 1 }}" min="0.01" step="any" class="input-qty js-cart-qty-input" data-product-id="{{ p.id }}" placeholder="ks">
+                    <button type="button" class="btn btn-sm btn-qty-plus js-cart-plus" data-product-id="{{ p.id }}" aria-label="Přidat">+</button>
+                </div>
                 <button type="submit" class="btn btn-sm btn-primary">Přidat do košíku</button>
             </form>
         </div>
@@ -138,6 +144,8 @@
                             p.textContent = 'V košíku: ' + disp;
                             form.parentNode.insertBefore(p, form);
                         }
+                        if (card) card.classList.add('product-card-in-cart');
+                        if (res.json.cart_total != null) window.dispatchEvent(new CustomEvent('cart-update', { detail: { count: res.json.cart_total } }));
                     } else {
                         alert(res.json.error || res.json.message || 'Chyba');
                     }
@@ -148,6 +156,71 @@
                 });
         });
     }
+})();
+(function() {
+    var setQuantityUrl = '{{ url_for("cart_set_quantity") }}';
+    function fmtQty(n) { return n == null ? '' : (n === Math.floor(n) ? Math.floor(n) : n); }
+    function updateCardCartState(card, qty) {
+        var badgeEl = card ? card.querySelector('.product-card-cart-badge') : null;
+        var inputEl = card ? card.querySelector('.js-cart-qty-input') : null;
+        if (inputEl) inputEl.value = qty > 0 ? fmtQty(qty) : (inputEl.getAttribute('min') || '1');
+        if (qty > 0) {
+            if (badgeEl) badgeEl.textContent = 'V košíku: ' + fmtQty(qty);
+            else if (card) {
+                var p = document.createElement('p');
+                p.className = 'product-card-cart-badge';
+                p.textContent = 'V košíku: ' + fmtQty(qty);
+                var form = card.querySelector('.product-card-form');
+                if (form) form.parentNode.insertBefore(p, form);
+            }
+            card.classList.add('product-card-in-cart');
+        } else {
+            if (badgeEl) badgeEl.remove();
+            card.classList.remove('product-card-in-cart');
+        }
+    }
+    document.querySelectorAll('.js-cart-minus').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var pid = btn.getAttribute('data-product-id');
+            var card = btn.closest('.product-card');
+            var input = card && card.querySelector('.js-cart-qty-input');
+            var current = input ? parseFloat(input.value) || 0 : 0;
+            var newQty = Math.max(0, current - 1);
+            var fd = new FormData();
+            fd.append('product_id', pid);
+            fd.append('quantity', newQty);
+            fetch(setQuantityUrl, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data && data.ok) {
+                        updateCardCartState(card, data.cart_qty);
+                        if (data.cart_total != null) window.dispatchEvent(new CustomEvent('cart-update', { detail: { count: data.cart_total } }));
+                    }
+                })
+                .catch(function() {});
+        });
+    });
+    document.querySelectorAll('.js-cart-plus').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var pid = btn.getAttribute('data-product-id');
+            var card = btn.closest('.product-card');
+            var input = card && card.querySelector('.js-cart-qty-input');
+            var current = input ? parseFloat(input.value) || 0 : 0;
+            var newQty = current + 1;
+            var fd = new FormData();
+            fd.append('product_id', pid);
+            fd.append('quantity', newQty);
+            fetch(setQuantityUrl, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data && data.ok) {
+                        updateCardCartState(card, data.cart_qty);
+                        if (data.cart_total != null) window.dispatchEvent(new CustomEvent('cart-update', { detail: { count: data.cart_total } }));
+                    }
+                })
+                .catch(function() {});
+        });
+    });
 })();
 (function() {
     var input = document.getElementById('live-search');

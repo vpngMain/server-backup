@@ -1,0 +1,61 @@
+{% extends admin_base|default('admin_base_sneat.html') %}
+{% block title %}Uživatelé{% endblock %}
+{% block content %}
+<h4 class="fw-bold mb-1">Uživatelé</h4>
+<p class="mb-4">Správa uživatelů a přístupů k pobočkám.</p>
+
+<div class="card mb-4 admin-card-interactive">
+  <div class="card-header"><h5 class="mb-0">Přidat uživatele</h5></div>
+  <div class="card-body">
+    <form method="POST">
+      {{ user_form.hidden_tag() }}
+      <div class="row g-3 mb-3">
+        <div class="col-md-6"><label class="form-label">Jméno a příjmení</label>{{ user_form.jmeno(class="form-control", placeholder="Jan Novák") }}{% if user_form.jmeno.errors %}<div class="text-danger small">{% for e in user_form.jmeno.errors %}{{ e }}{% endfor %}</div>{% endif %}</div>
+        <div class="col-md-3"><label class="form-label">PIN</label>{{ user_form.pin(class="form-control", placeholder="4–10 číslic") }}{% if user_form.pin.errors %}<div class="text-danger small">{% for e in user_form.pin.errors %}{{ e }}{% endfor %}</div>{% endif %}</div>
+        <div class="col-md-3"><label class="form-label">Role</label>{{ user_form.role(class="form-select") }}</div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Pobočky</label>
+        <div class="border rounded p-3" style="max-height: 160px; overflow-y: auto;">
+          {% for pobocka in all_pobocky %}
+          <div class="form-check"><input class="form-check-input" type="checkbox" name="pobocky" value="{{ pobocka.id }}" id="add_pobocka_{{ pobocka.id }}"><label class="form-check-label" for="add_pobocka_{{ pobocka.id }}">{{ pobocka.nazev }}</label></div>
+          {% endfor %}
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Přidat uživatele</button>
+    </form>
+  </div>
+</div>
+
+<div class="card admin-card-interactive">
+  <div class="card-header"><h5 class="mb-0">Seznam uživatelů</h5></div>
+  <div class="card-body p-0">
+    {% if users %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>Jméno</th><th>PIN</th><th>Pobočky</th><th>Role</th><th>Akce</th></tr></thead>
+        <tbody>
+        {% for u in users %}
+        <tr class="admin-table-row">
+          <td><strong>{{ u.jmeno or u.username }}</strong></td>
+          <td><code class="small">{{ u.pin or '-' }}</code></td>
+          <td>{% if u.role == 'admin' %}<span class="badge bg-secondary">Všechny</span>{% elif u.pobocky %}{% for pob in u.pobocky %}<span class="badge bg-primary me-1">{{ pob.nazev }}</span>{% endfor %}{% elif u.pobocka %}<span class="badge bg-primary">{{ u.pobocka.nazev }}</span>{% else %}—{% endif %}</td>
+          <td>{% if u.role == 'admin' %}<span class="badge bg-dark">Admin</span>{% else %}<span class="badge bg-secondary">Uživatel</span>{% endif %}</td>
+          <td>
+            <a href="{{ url_for('edit_user', id=u.id) }}" class="btn btn-sm btn-outline-primary me-1">Upravit</a>
+            {% if u.id != current_user.id %}
+            <form action="{{ url_for('delete_user', id=u.id) }}" method="POST" onsubmit="return confirm('Smazat tohoto uživatele?');" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Smazat</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="text-muted text-center py-4 mb-0">Zatím nejsou žádní uživatelé.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}
