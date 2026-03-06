@@ -140,6 +140,7 @@
             <button type="button" class="admin-menu-toggle" id="admin-menu-toggle" aria-label="Otevřít menu" aria-expanded="false">
                 <span class="admin-menu-toggle-icon" aria-hidden="true"></span>
             </button>
+            <button type="button" class="smeros-btn" onclick="goToSmeros()">Směrovač</button>
             <span class="admin-user">{{ current_user.username }} <span class="admin-role">{% if current_user.role == 'admin' and not acting_as_role %}admin{% elif current_user.role == 'warehouse' or acting_as_role == 'warehouse' %}sklad{% else %}pobočka{% endif %}{% if acting_as_branch %} – {{ acting_as_branch.name }}{% elif current_branch %} – {{ current_branch.name }}{% endif %}</span></span>
         </header>
     {% else %}
@@ -171,6 +172,7 @@
             <a href="{{ url_for('warehouse_orders') }}">Objednávky</a>
             {% endif %}
             <a href="{{ url_for('logout') }}">Odhlásit</a>
+            <button type="button" class="smeros-btn" onclick="goToSmeros()">🚦 Směros</button>
             <button type="button" id="dark-mode-toggle" class="theme-toggle" aria-label="Přepnout režim">
                 <span id="theme-icon">🌙</span>
                 <span id="theme-label">Tmavý režim</span>
@@ -217,6 +219,10 @@
     </div>
     {% endif %}
     <script>
+    function goToSmeros() {
+        var host = window.location.hostname;
+        window.location.href = 'http://' + host + ':8000';
+    }
     (function() {
         var key = 'darkMode';
         var html = document.documentElement;

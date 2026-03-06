@@ -442,9 +442,12 @@ body.theme-viktorinka .flash-message {
 body.theme-viktorinka .header,
 body.theme-viktorinka .main,
 body.theme-viktorinka .admin-main,
-body.theme-viktorinka .admin-sidebar,
 body.theme-viktorinka .admin-topbar {
   position: relative;
+  z-index: 1;
+}
+body.theme-viktorinka .admin-sidebar {
+  position: sticky;
   z-index: 1;
 }
 
@@ -527,8 +530,12 @@ body.layout-admin {
   min-height: 100vh;
 }
 .admin-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
   width: 260px;
   min-width: 260px;
+  flex-shrink: 0;
   background: var(--header-bg);
   border-right: 1px solid var(--header-border);
   display: flex;
@@ -734,6 +741,20 @@ html.dark-mode .admin-nav-item.active {
 .theme-toggle span {
   font-size: 1rem;
   line-height: 1;
+}
+
+/* Směros – přechod na aplikaci na portu 8000 */
+.smeros-btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  background: #3b82f6;
+  color: white;
+}
+.smeros-btn:hover {
+  background: #2563eb;
 }
 
 /* Main */

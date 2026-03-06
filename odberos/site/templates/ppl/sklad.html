@@ -113,7 +113,7 @@
                 var code = (p.parcel_code || p.parcelCode || '').toString().trim();
                 var last4 = (p.last_four || '').toString().trim() || '—';
                 var link = trackUrl(code);
-                html += '<div class="ppl-parcel-card card card-apple text-center" role="button" tabindex="0" data-parcel-id="' + pid + '" data-parcel-code="' + esc(code) + '" title="Kliknutím označíte balík jako smazaný">' +
+                html += '<div class="ppl-parcel-card card card-apple text-center" role="button" tabindex="0" data-parcel-id="' + pid + '" data-parcel-code="' + esc(code) + '" title="Kliknutím trvale smažete zásilku">' +
                     '<span class="ppl-parcel-num">' + esc(last4) + '</span>' +
                     '<a href="' + link + '" target="_blank" rel="noopener" class="ppl-parcel-track" onclick="event.stopPropagation()" title="Sledovat na PPL">PPL</a></div>';
             });
@@ -130,17 +130,20 @@
         e.preventDefault();
         var id = card.getAttribute('data-parcel-id');
         var code = card.getAttribute('data-parcel-code') || '';
-        if (!confirm('Opravdu chcete označit tento balík jako smazaný?')) return;
-        fetch('/ppl/' + pobockaId + '/api/parcels/' + id + '/mark-delete', {
-            method: 'POST',
-            headers: { 'X-CSRFToken': csrfHeader, 'Content-Type': 'application/json' }
+        if (!confirm('Opravdu chcete smazat tento balík?')) return;
+        fetch('/ppl/' + pobockaId + '/api/parcels/' + id, {
+            method: 'DELETE',
+            headers: { 'X-CSRFToken': csrfHeader }
         })
         .then(function(r) {
             if (r.ok) {
                 removeParcelFromData(id);
                 renderCards(allShelves);
+            } else {
+                r.json().then(function(d) { alert(d.error || 'Chyba mazání.'); }).catch(function() { alert('Chyba mazání.'); });
             }
-        });
+        })
+        .catch(function() { alert('Chyba mazání.'); });
     });
     document.getElementById('stockContent').addEventListener('keydown', function(e) {
         if (e.key !== 'Enter' && e.key !== ' ') return;
