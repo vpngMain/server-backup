@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="application-name" content="Objednávač">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/app-icon.png') }}">
     <title>{% block title %}Objednávač{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -62,6 +63,10 @@
             <a href="{{ url_for('admin_import') }}" class="admin-nav-item {% if request.endpoint == 'admin_import' %}active{% endif %}">
                 <span class="admin-nav-icon" aria-hidden="true">📥</span>
                 <span>Import</span>
+            </a>
+            <a href="{{ url_for('admin_monthly_overview') }}" class="admin-nav-item {% if request.endpoint == 'admin_monthly_overview' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📊</span>
+                <span>Měsíční přehled</span>
             </a>
             <a href="{{ url_for('admin_act_as') }}" class="admin-nav-item {% if request.endpoint == 'admin_act_as' %}active{% endif %}">
                 <span class="admin-nav-icon" aria-hidden="true">👤</span>
@@ -140,7 +145,7 @@
             <button type="button" class="admin-menu-toggle" id="admin-menu-toggle" aria-label="Otevřít menu" aria-expanded="false">
                 <span class="admin-menu-toggle-icon" aria-hidden="true"></span>
             </button>
-            <button type="button" class="smeros-btn" onclick="goToSmeros()">Směrovač</button>
+            <button type="button" class="smeros-btn" onclick="goToSmeros()">🚦 Směros</button>
             <span class="admin-user">{{ current_user.username }} <span class="admin-role">{% if current_user.role == 'admin' and not acting_as_role %}admin{% elif current_user.role == 'warehouse' or acting_as_role == 'warehouse' %}sklad{% else %}pobočka{% endif %}{% if acting_as_branch %} – {{ acting_as_branch.name }}{% elif current_branch %} – {{ current_branch.name }}{% endif %}</span></span>
         </header>
     {% else %}
@@ -165,6 +170,7 @@
             <a href="{{ url_for('admin_users') }}">Uživatelé</a>
             <a href="{{ url_for('admin_branches') }}">Pobočky</a>
             <a href="{{ url_for('admin_import') }}">Import</a>
+            <a href="{{ url_for('admin_monthly_overview') }}">Měsíční přehled</a>
             <a href="{{ url_for('admin_internal_products') }}">Interní produkty</a>
             <a href="{{ url_for('admin_act_as') }}">Působit jako…</a>
             {% elif current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}

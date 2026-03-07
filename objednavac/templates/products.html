@@ -5,7 +5,7 @@
 <p class="branch-cart-info">Košík platí pro vaši pobočku: <strong>{{ current_branch.name if current_branch else '—' }}</strong></p>
 <div class="products-filters">
     <div class="search-form">
-        <label for="live-search">Vyhledávání (název, sku)</label>
+        <label for="live-search">Vyhledávání (název, kód, EAN)</label>
         <input type="search" id="live-search" placeholder="Napište pro filtrování…" value="{{ search_q or '' }}" autocomplete="off">
     </div>
     {% if groups %}
@@ -60,20 +60,23 @@
     {% for p in plist %}
     {% set qty_in_cart = (cart.get((p.id)|string, 0)) or 0 %}
     {% set waiting_qty = (waiting_by_product|default({})).get(p.id, 0) or 0 %}
-    {% set cat = p.name | product_category %}
-    <article class="product-card product-row {{ 'product-card-in-cart' if qty_in_cart > 0 else '' }} {{ 'product-card-waiting-warehouse' if waiting_qty > 0 else '' }}" id="product-{{ p.id }}" data-name="{{ (p.name or '')|lower }}" data-sku="{{ (p.sku or '')|lower }}" data-group="{{ (p.group_name or '')|lower }}" data-brand="{{ brand|lower }}" data-category="{{ cat|lower }}">
+    {% set cat = p.nazev | product_category %}
+    <article class="product-card product-row {{ 'product-card-in-cart' if qty_in_cart > 0 else '' }} {{ 'product-card-waiting-warehouse' if waiting_qty > 0 else '' }}" id="product-{{ p.id }}" data-name="{{ (p.nazev or '')|lower }}" data-sku="{{ (p.kod_zbozi or '')|lower }}" data-ean="{{ (p.ean or '')|lower }}" data-group="{{ (p.naz_skup or '')|lower }}" data-brand="{{ brand|lower }}" data-category="{{ cat|lower }}">
         <div class="product-card-inner">
             <div class="product-card-header">
-                <h3 class="product-card-title">{{ p.name }}</h3>
+                <h3 class="product-card-title">{{ p.nazev }}</h3>
                 {% if cat %}<span class="product-card-category product-category-{{ cat }}">{{ cat }}</span>{% endif %}
             </div>
             <dl class="product-card-meta-list">
-                <dt>Jednotka</dt><dd>{{ p.unit or 'ks' }}</dd>
-                {% if p.sku %}
-                <dt>SKU</dt><dd class="td-sku">{{ p.sku }}</dd>
+                <dt>Jednotka</dt><dd>{{ p.mj or 'ks' }}</dd>
+                {% if p.kod_zbozi %}
+                <dt>Kód zboží</dt><dd class="td-sku">{{ p.kod_zbozi }}</dd>
                 {% endif %}
-                {% if p.group_name %}
-                <dt>Skupina</dt><dd>{{ p.group_name }}</dd>
+                {% if p.ean %}
+                <dt>EAN</dt><dd>{{ p.ean }}</dd>
+                {% endif %}
+                {% if p.naz_skup %}
+                <dt>Skupina</dt><dd>{{ p.naz_skup }}</dd>
                 {% endif %}
             </dl>
             {% if qty_in_cart > 0 %}<p class="product-card-cart-badge">V košíku: {{ qty_in_cart | format_qty }}</p>{% endif %}
@@ -236,10 +239,11 @@
             var card = cards[i];
             var name = (card.getAttribute('data-name') || '');
             var sku = (card.getAttribute('data-sku') || '');
+            var ean = (card.getAttribute('data-ean') || '');
             var group = (card.getAttribute('data-group') || '');
             var brand = (card.getAttribute('data-brand') || '');
             var category = (card.getAttribute('data-category') || '');
-            var show = !q || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || group.indexOf(q) !== -1 || brand.indexOf(q) !== -1 || category.indexOf(q) !== -1;
+            var show = !q || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || ean.indexOf(q) !== -1 || group.indexOf(q) !== -1 || brand.indexOf(q) !== -1 || category.indexOf(q) !== -1;
             card.style.display = show ? '' : 'none';
             if (show) visible++;
         }

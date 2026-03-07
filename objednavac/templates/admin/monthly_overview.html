@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Měsíční přehled nákupních nákladů{% endblock %}
+{% block content %}
+<p class="order-detail-actions"><a href="{{ url_for('admin_dashboard') }}" class="btn btn-back">← Zpět na přehled</a></p>
+<h2>Měsíční přehled nákupních nákladů (nc)</h2>
+<p class="order-detail-meta">Součet nákupních cen (nc × odeslané množství) podle skladu a pobočky. Do přehledu se zahrnují i objednávky, které byly jen částečně odeslané (započítávají se položky s odeslaným množstvím).</p>
+<form method="get" action="{{ url_for('admin_monthly_overview') }}" class="form-inline" style="margin-bottom:1.5rem;">
+    <label for="year">Rok</label>
+    <select name="year" id="year">
+        {% for y in years %}
+        <option value="{{ y }}" {{ 'selected' if y == year else '' }}>{{ y }}</option>
+        {% endfor %}
+    </select>
+    <label for="month">Měsíc</label>
+    <select name="month" id="month">
+        {% for m in months %}
+        <option value="{{ m }}" {{ 'selected' if m == month else '' }}>{{ m }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn">Zobrazit</button>
+</form>
+{% if rows %}
+<table class="table">
+    <thead>
+        <tr>
+            <th>Sklad</th>
+            <th>Pobočka</th>
+            <th>Celkové nákupní náklady (nc)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in rows %}
+        <tr>
+            <td>{{ r.warehouse_name }}</td>
+            <td>{{ r.branch_name }}</td>
+            <td>{{ "%.2f"|format(r.total_nc) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Pro zvolený měsíc nejsou žádné odeslané položky s nákupní cenou.</p>
+{% endif %}
+{% endblock %}

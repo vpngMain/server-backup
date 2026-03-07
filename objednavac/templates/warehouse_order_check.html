@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Kontrola objednávky {{ order.id }}{% endblock %}
+{% block content %}
+<p class="order-detail-actions">
+    <a href="{{ url_for('branch_order_detail', order_id=order.id) if check_for_branch else url_for('warehouse_order_detail', order_id=order.id) }}" class="btn btn-back">← Zpět na objednávku</a>
+</p>
+<h2>Kontrola objednávky {{ order.id }}</h2>
+<p class="order-detail-meta">
+    Pobočka: {{ order.branch.name if order.branch else '—' }}
+    <span class="status-badge status-{{ order.status }}">{{ status_cz(order.status) }}</span>
+</p>
+<p class="order-check-help">Skenujte ve formátu <strong>množství*EAN</strong> (např. 3*8591234567890).</p>
+<div class="order-check-scan-row">
+    <label for="scan-input" class="sr-only">Sken</label>
+    <input type="text" id="scan-input" class="input-scan" placeholder="3*8591234567890" autocomplete="off" autofocus>
+    <span id="scan-feedback" class="scan-feedback" aria-live="polite"></span>
+</div>
+<div class="table-wrapper">
+<table class="table" id="check-table">
+    <thead>
+        <tr>
+            <th>Produkt</th>
+            <th>EAN</th>
+            <th>Očekávané množství</th>
+            <th>Výsledek kontroly</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for i in order.items %}
+        <tr id="check-row-{{ i.id }}" class="{% if item_results.get(i.id) %}{% if item_results[i.id].result == 'correct' %}item-check-correct{% else %}item-check-incorrect{% endif %}{% endif %}" data-order-item-id="{{ i.id }}" data-ean="{{ i.product.ean if i.product and i.product.ean else '' }}">
+            <td>{{ i.display_name() }}</td>
+            <td>{{ i.product.ean if i.product and i.product.ean else '—' }}</td>
+            <td>{{ i.ordered_quantity | format_qty }}</td>
+            <td class="check-result-cell">
+                {% if item_results.get(i.id) %}
+                {{ item_results[i.id].scanned_quantity | format_qty }} skenováno → {{ 'Správně' if item_results[i.id].result == 'correct' else 'Nesprávně' }}
+                ({{ item_results[i.id].created_at | format_datetime }})
+                {% else %}
+                —
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+<script src="{{ url_for('static', filename='js/order_check.js') }}"></script>
+<script>
+(function() {
+    var orderId = {{ order.id }};
+    var scanInput = document.getElementById('scan-input');
+    var feedback = document.getElementById('scan-feedback');
+    if (typeof orderCheckInit === 'function') {
+        orderCheckInit({ orderId: orderId, scanInput: scanInput, feedback: feedback });
+    } else {
+        scanInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var val = (scanInput.value || '').trim();
+                if (!val) return;
+                feedback.textContent = 'Odesílám…';
+                fetch('/warehouse/order/' + orderId + '/check/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: 'scan=' + encodeURIComponent(val)
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    if (data.ok) {
+                        feedback.textContent = data.result === 'correct' ? 'Správně' : 'Nesprávně';
+                        feedback.className = 'scan-feedback ' + (data.result === 'correct' ? 'feedback-correct' : 'feedback-incorrect');
+                        var row = document.getElementById('check-row-' + data.order_item_id);
+                        if (row) {
+                            row.className = data.result === 'correct' ? 'item-check-correct' : 'item-check-incorrect';
+                            var td = row.querySelector('.check-result-cell');
+                            if (td) td.textContent = data.scanned_quantity + ' skenováno → ' + (data.result === 'correct' ? 'Správně' : 'Nesprávně');
+                        }
+                        scanInput.value = '';
+                        if (data.all_checked) feedback.textContent += '. ' + (data.all_correct ? 'Objednávka zkontrolována.' : 'Zjištěna chyba.');
+                    } else {
+                        feedback.textContent = data.error || 'Chyba';
+                        feedback.className = 'scan-feedback feedback-error';
+                    }
+                }).catch(function() {
+                    feedback.textContent = 'Chyba spojení';
+                    feedback.className = 'scan-feedback feedback-error';
+                });
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

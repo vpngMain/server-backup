@@ -18,7 +18,7 @@
         <span class="order-card-meta">{{ o.branch.name if o.branch else '—' }} {{ o.branch.code if o.branch and o.branch.code else '' }}</span>
         <span class="order-card-meta">{{ o.created_at | format_datetime }}</span>
         <span class="status-badge status-{{ o.status }}">{{ status_cz(o.status) }}</span>
-        <span class="order-card-invoice" title="Stav faktury">{% if o.invoice_ok == true %}✅ Cajk{% elif o.invoice_ok == false %}❌ Chyba{% else %}—{% endif %}</span>
+        <span class="order-card-invoice" title="Stav kontroly">{% if o.status == 'verified' %}✅ Cajk{% elif o.status == 'error' %}❌ Chyba{% elif o.invoice_ok == true %}✅ Cajk{% elif o.invoice_ok == false %}❌ Chyba{% else %}—{% endif %}</span>
         <span class="order-card-count">{{ o.items|length }} položek</span>
         <span class="order-card-arrow" aria-hidden="true">→</span>
     </a>

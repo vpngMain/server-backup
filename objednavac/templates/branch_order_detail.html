@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Objednávka {{ order.id }}{% endblock %}
 {% block content %}
-<p class="order-detail-actions"><a href="{{ url_for('branch_orders') }}" class="btn btn-back">← Zpět na objednávky</a></p>
+<p class="order-detail-actions">
+    <a href="{{ url_for('branch_orders') }}" class="btn btn-back">← Zpět na objednávky</a>
+    {% if order.status in ('shipped', 'partially_shipped') %}
+    <a href="{{ url_for('branch_order_check', order_id=order.id) }}" class="btn btn-sm">Kontrola</a>
+    {% endif %}
+</p>
 <h2>Objednávka {{ order.id }}{% if order.created_by_warehouse_id %} <span class="badge-warehouse" title="Vytvořeno skladem">sklad</span>{% endif %}</h2>
 <p class="order-detail-meta">
     <span>Datum: {{ order.created_at | format_datetime }}</span>
@@ -9,60 +14,30 @@
     <span class="status-badge status-{{ order.status }}">{{ status_cz(order.status) }}</span>
     <span><strong>Celkem kusů:</strong> {{ total_qty | format_qty }} objednáno, <strong>{{ shipped_qty | format_qty }}</strong> odesláno</span>
 </p>
-<div class="invoice-wrapper">
-    <section class="invoice-section" aria-labelledby="invoice-heading">
-        <div class="invoice-section-inner">
-            <h3 id="invoice-heading" class="invoice-heading">Faktura</h3>
-
-            <!-- Část 1: Potvrzení stavu -->
-            <div class="invoice-part invoice-part-status">
-                <h4 class="invoice-part-title">Potvrzení stavu</h4>
-                <div class="invoice-status-block">
-                    <span class="invoice-status-label">Aktuální stav:</span>
-                    <span class="invoice-status-value invoice-status-{{ 'ok' if order.invoice_ok == true else ('error' if order.invoice_ok == false else 'none') }}">{% if order.invoice_ok == true %}✅ Vše v pořádku{% elif order.invoice_ok == false %}❌ Nalezena chyba{% else %}— nevyplněno{% endif %}</span>
-                </div>
-                <div class="invoice-buttons-row">
-                    <form method="post" action="{{ url_for('branch_order_invoice', order_id=order.id) }}" class="invoice-form-cajk">
-                        <input type="hidden" name="invoice_ok" value="1">
-                        <button type="submit" class="btn btn-sm {{ 'btn-primary' if order.invoice_ok == true else '' }}">✅ Vše v pořádku</button>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Část 2: Poznámka k chybě (tlačítko „Nalezena chyba“ + textarea) -->
-            <div class="invoice-part invoice-part-note">
-                <h4 class="invoice-part-title">Nalezena chyba</h4>
-                <p class="invoice-part-desc">Pokud je něco špatně, vyplňte popis a odešlete.</p>
-                <form method="post" action="{{ url_for('branch_order_invoice', order_id=order.id) }}" class="invoice-form-chyba">
-                    <input type="hidden" name="invoice_ok" value="0">
-                    <label for="invoice-note-{{ order.id }}" class="invoice-note-label">Popis chyby</label>
-                    <textarea id="invoice-note-{{ order.id }}" name="invoice_note" required class="invoice-note-textarea" placeholder="Např. nesedí množství, špatná položka, rozbité…" rows="3">{{ order.invoice_note or '' }}</textarea>
-                    <button type="submit" class="btn btn-sm btn-danger {{ 'btn-primary' if order.invoice_ok == false else '' }}">❌ Nalezena chyba – uložit</button>
-                </form>
-            </div>
-        </div>
-    </section>
-</div>
 <div class="table-wrapper">
 <table class="table">
     <thead>
         <tr>
             <th>Produkt</th>
+            {% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}<th>Kód zboží</th>{% endif %}
             <th>ks</th>
             <th>Objednáno</th>
             <th>Odesláno</th>
+            <th>Prodejní cena (pc)</th>
             <th>Poznámka skladu</th>
         </tr>
     </thead>
     <tbody>
         {% for i in order.items %}
-        <tr class="{% if i.unavailable %}item-unavailable item-unavailable-branch{% elif (i.shipped_quantity or 0) >= (i.ordered_quantity or 0) and i.ordered_quantity %}item-shipped{% else %}item-waiting-warehouse{% endif %}">
+        <tr class="{% if i.unavailable %}item-unavailable item-unavailable-branch{% elif (i.shipped_quantity or 0) >= (i.ordered_quantity or 0) and i.ordered_quantity %}item-shipped{% elif (i.shipped_quantity or 0) > 0 and (i.shipped_quantity or 0) < (i.ordered_quantity or 0) %}item-partial{% else %}item-waiting-warehouse{% endif %}">
             <td>
                 {{ i.display_name() }}{% if i.branch_note %} <span class="branch-note">({{ i.branch_note }})</span>{% endif %}
             </td>
-            <td>{{ i.product.unit if i.product and i.product.unit else 'ks' }}</td>
+            {% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}<td>{{ i.product.kod_zbozi if i.product else '—' }}</td>{% endif %}
+            <td>{{ i.product.mj if i.product and i.product.mj else 'ks' }}</td>
             <td>{{ i.ordered_quantity | format_qty }}</td>
             <td>{% if i.shipped_quantity is not none %}{{ i.shipped_quantity | format_qty }}{% else %}—{% endif %}</td>
+            <td>{{ "%.2f"|format((i.product.pc or 0) * (i.shipped_quantity or 0)) if i.product and i.product.pc is not none else '—' }}</td>
             <td>
                 {% if i.warehouse_note %}
                 <span class="warehouse-note-text">{{ i.warehouse_note }}</span>
@@ -75,6 +50,12 @@
         </tr>
         {% endfor %}
     </tbody>
+    <tfoot>
+        <tr>
+            <td colspan="{% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}6{% else %}5{% endif %}" class="text-right"><strong>Celková prodejní cena objednávky:</strong></td>
+            <td colspan="2"><strong>{{ "%.2f"|format(order_total_selling) }}</strong></td>
+        </tr>
+    </tfoot>
 </table>
 </div>
 {% if order_audit_log %}

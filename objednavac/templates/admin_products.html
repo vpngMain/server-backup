@@ -53,21 +53,24 @@
 {% if products %}
 <div class="products-grid" id="admin-products-grid">
     {% for p in products %}
-    {% set cat = p.name | product_category %}
+    {% set cat = p.nazev | product_category %}
     <article class="product-card" id="product-{{ p.id }}">
         <div class="product-card-inner">
             <div class="product-card-header">
-                <h3 class="product-card-title">{{ p.name }}</h3>
+                <h3 class="product-card-title">{{ p.nazev }}</h3>
                 {% if cat %}<span class="product-card-category product-category-{{ cat }}">{{ cat }}</span>{% endif %}
             </div>
             <dl class="product-card-meta-list">
-                <dt>Skupina</dt><dd>{{ p.group_name or '—' }}</dd>
-                <dt>Jednotka</dt><dd>{{ p.unit or 'ks' }}</dd>
-                {% if p.sku %}
-                <dt>SKU</dt><dd class="td-sku">{{ p.sku }}</dd>
+                <dt>Skupina</dt><dd>{{ p.naz_skup or '—' }}</dd>
+                <dt>Jednotka</dt><dd>{{ p.mj or 'ks' }}</dd>
+                {% if p.kod_zbozi %}
+                <dt>Kód zboží</dt><dd class="td-sku">{{ p.kod_zbozi }}</dd>
                 {% endif %}
-                {% if p.pc %}
-                <dt>pc</dt><dd>{{ p.pc }}</dd>
+                {% if p.ean %}
+                <dt>EAN</dt><dd>{{ p.ean }}</dd>
+                {% endif %}
+                {% if p.pc is not none %}
+                <dt>Prodejní cena (pc)</dt><dd>{{ "%.2f"|format(p.pc) }}</dd>
                 {% endif %}
                 <dt>Interní</dt><dd><span class="js-internal-label">{{ 'Ano' if p.is_internal else 'Ne' }}</span></dd>
             </dl>

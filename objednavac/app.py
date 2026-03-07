@@ -58,13 +58,15 @@ def _run_migrations():
 
 
 ROLES = ("admin", "branch", "warehouse")
-# Workflow stavů objednávky (ERP inspirace: pending → partially_shipped → shipped)
-ORDER_STATUSES = ("pending", "partially_shipped", "shipped")
+# Workflow stavů objednávky (ERP inspirace: pending → partially_shipped → shipped → verified/error)
+ORDER_STATUSES = ("pending", "partially_shipped", "shipped", "verified", "error")
 STATUS_CZ = {
     "pending": "Čeká",
     "processed": "Zpracováno",  # jen pro zobrazení starých záznamů
     "shipped": "Odesláno",
     "partially_shipped": "Částečně odesláno",
+    "verified": "Zkontrolováno",
+    "error": "Chyba kontroly",
 }
 
 
@@ -121,15 +123,24 @@ class Branch(db.Model):
     orders = db.relationship("Order", backref="branch", lazy="dynamic")
 
 
-class Product(db.Model):
-    __tablename__ = "products"
+class Warehouse(db.Model):
+    __tablename__ = "warehouses"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
-    sku = db.Column(db.String(100), nullable=True)           # kód produktu (volitelný)
-    unit = db.Column(db.String(50), nullable=True)          # jednotka: ks, ml, balení atd.
-    group_name = db.Column(db.String(255), nullable=True)   # název_skupiny z importu
-    pc = db.Column(db.String(100), nullable=True)            # sloupec pc z importu
-    is_internal = db.Column(db.Boolean, default=False, nullable=False)  # kancelář / interní objednávky (legacy; nově používat InternalProduct)
+
+
+class Product(db.Model):
+    """Produkty dle schématu: naz_skup, kod_zbozi, nazev, ean, mj, nc, pc."""
+    __tablename__ = "products"
+    id = db.Column(db.Integer, primary_key=True)
+    naz_skup = db.Column(db.String(100), nullable=True)      # group name
+    kod_zbozi = db.Column(db.String(100), nullable=True, index=True)  # product code
+    nazev = db.Column(db.String(255), nullable=False)        # product name
+    ean = db.Column(db.String(50), nullable=True, index=True)  # barcode
+    mj = db.Column(db.String(20), nullable=True)            # unit
+    nc = db.Column(db.Float, nullable=True)                  # purchase price
+    pc = db.Column("pc_float", db.Float, nullable=True)      # selling price
+    is_internal = db.Column(db.Boolean, default=False, nullable=False)
 
 
 class InternalProduct(db.Model):
@@ -147,6 +158,7 @@ class Order(db.Model):
     __tablename__ = "orders"
     id = db.Column(db.Integer, primary_key=True)
     branch_id = db.Column(db.Integer, db.ForeignKey("branches.id"), nullable=False)
+    warehouse_id = db.Column(db.Integer, db.ForeignKey("warehouses.id"), nullable=True)
     status = db.Column(db.String(30), default="pending")
     created_at = db.Column(db.DateTime, default=datetime.now)
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
@@ -157,6 +169,7 @@ class Order(db.Model):
     order_type = db.Column(db.String(30), default="normal", nullable=False)
     created_by_warehouse_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_by_warehouse = db.relationship("User", foreign_keys=[created_by_warehouse_id])
+    warehouse = db.relationship("Warehouse", backref="orders")
 
 
 class OrderItem(db.Model):
@@ -177,7 +190,19 @@ class OrderItem(db.Model):
     def display_name(self):
         if self.internal_product:
             return self.internal_product.name
-        return self.custom_product_name or (self.product.name if self.product else "—")
+        return self.custom_product_name or (self.product.nazev if self.product else "—")
+
+
+class OrderItemCheck(db.Model):
+    """Výsledek kontroly položky objednávky (čtečka čárových kódů)."""
+    __tablename__ = "order_item_checks"
+    id = db.Column(db.Integer, primary_key=True)
+    order_item_id = db.Column(db.Integer, db.ForeignKey("order_items.id"), nullable=False)
+    scanned_quantity = db.Column(db.Float, nullable=False)
+    expected_quantity = db.Column(db.Float, nullable=False)
+    result = db.Column(db.String(20), nullable=False)  # 'correct' | 'incorrect'
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    order_item = db.relationship("OrderItem", backref=db.backref("checks", lazy="dynamic"))
 
 
 class BranchCart(db.Model):
@@ -661,28 +686,28 @@ def index():
     brand_filter = request.args.get("brand", "").strip() or None
     category_filter = request.args.get("category", "").strip() or None  # 10mg | 20mg
     base = Product.query.filter(
-        Product.name != "[Vlastní – produkt mimo katalog]",
+        Product.nazev != "[Vlastní – produkt mimo katalog]",
         db.or_(Product.is_internal == False, Product.is_internal.is_(None)),
     )
     if group_filter:
-        base = base.filter(Product.group_name == group_filter)
+        base = base.filter(Product.naz_skup == group_filter)
     if q:
         q_like = f"%{q}%"
         products = base.filter(
-            or_(Product.name.ilike(q_like), Product.sku.ilike(q_like))
-        ).order_by(Product.name).all()
+            or_(Product.nazev.ilike(q_like), Product.kod_zbozi.ilike(q_like), (Product.ean.isnot(None)) & (Product.ean.ilike(q_like)))
+        ).order_by(Product.nazev).all()
     else:
-        products = base.order_by(Product.group_name, Product.name).all()
-    brands = sorted({_product_brand(p.name) for p in products if _product_brand(p.name)})
+        products = base.order_by(Product.naz_skup, Product.nazev).all()
+    brands = sorted({_product_brand(p.nazev) for p in products if _product_brand(p.nazev)})
     if brand_filter:
-        products = [p for p in products if _product_brand(p.name) == brand_filter]
+        products = [p for p in products if _product_brand(p.nazev) == brand_filter]
     if category_filter and category_filter in PRODUCT_MG_OPTIONS:
-        products = [p for p in products if _product_category(p.name) == category_filter]
-    groups = sorted({p.group_name for p in products if p.group_name})
+        products = [p for p in products if _product_category(p.nazev) == category_filter]
+    groups = sorted({p.naz_skup for p in products if p.naz_skup})
     categories = PRODUCT_MG_OPTIONS.copy()
     by_brand = defaultdict(list)
     for p in products:
-        by_brand[_product_brand(p.name) or "—"].append(p)
+        by_brand[_product_brand(p.nazev) or "—"].append(p)
     products_by_brand = sorted(by_brand.items(), key=lambda x: x[0])
     cart = _get_branch_cart()
     cart_notes = _get_branch_cart_notes()
@@ -775,9 +800,9 @@ def internal_products():
 
 
 def _get_or_create_custom_placeholder_product():
-    p = Product.query.filter_by(name="[Vlastní – produkt mimo katalog]").first()
+    p = Product.query.filter_by(nazev="[Vlastní – produkt mimo katalog]").first()
     if not p:
-        p = Product(name="[Vlastní – produkt mimo katalog]", sku=None, unit="ks")
+        p = Product(nazev="[Vlastní – produkt mimo katalog]", kod_zbozi=None, mj="ks")
         db.session.add(p)
         db.session.flush()
     return p
@@ -842,7 +867,7 @@ def cart_add():
     _set_branch_cart_notes(notes)
     if wants_json:
         total = sum((v for v in _get_branch_cart().values() if v and v > 0))
-        return jsonify({"ok": True, "cart_qty": cart[key], "cart_total": total, "message": f"Přidáno: {product.name}"})
+        return jsonify({"ok": True, "cart_qty": cart[key], "cart_total": total, "message": f"Přidáno: {product.nazev}"})
     return _redirect_back_to_products(product_id=product_id)
 
 
@@ -1182,6 +1207,7 @@ def branch_order_detail(order_id):
         .limit(30)
         .all()
     )
+    order_total_selling = _order_total_selling(order)
     return render_template(
         "branch_order_detail.html",
         order=order,
@@ -1190,6 +1216,7 @@ def branch_order_detail(order_id):
         total_qty=total_qty,
         shipped_qty=shipped_qty,
         order_audit_log=order_audit_log,
+        order_total_selling=order_total_selling,
     )
 
 
@@ -1206,9 +1233,9 @@ def admin_dashboard():
     )
     status_counts = {s: c for s, c in by_status}
     top_products = (
-        db.session.query(Product.id, Product.name, Product.sku, Product.unit, func.sum(OrderItem.ordered_quantity).label("total"))
+        db.session.query(Product.id, Product.nazev, Product.kod_zbozi, Product.mj, func.sum(OrderItem.ordered_quantity).label("total"))
         .join(OrderItem, OrderItem.product_id == Product.id)
-        .group_by(Product.id, Product.name, Product.sku, Product.unit)
+        .group_by(Product.id, Product.nazev, Product.kod_zbozi, Product.mj)
         .order_by(func.sum(OrderItem.ordered_quantity).desc())
         .limit(12)
         .all()
@@ -1304,6 +1331,7 @@ def admin_order_detail(order_id):
         .limit(30)
         .all()
     )
+    order_total_selling = _order_total_selling(order)
     return render_template(
         "admin_order_detail.html",
         order=order,
@@ -1312,6 +1340,7 @@ def admin_order_detail(order_id):
         total_qty=total_qty,
         shipped_qty=shipped_qty,
         order_audit_log=order_audit_log,
+        order_total_selling=order_total_selling,
     )
 
 
@@ -1331,6 +1360,64 @@ def admin_order_delete(order_id):
     audit_log("order_deleted", "order", oid, f"Admin smazal objednávku #{oid}")
     flash("Objednávka byla smazána.")
     return redirect(url_for("admin_orders"))
+
+
+@app.route("/admin/monthly-overview")
+@login_required
+@role_required("admin")
+def admin_monthly_overview():
+    """Měsíční přehled nákupních nákladů (nc) podle skladu a pobočky. Zahrnuje všechny objednávky v daném měsíci (včetně částečně odeslaných); do sumy nc jdou jen položky s odeslaným množstvím (shipped_quantity > 0)."""
+    from collections import defaultdict
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
+    if not year or not month:
+        now = datetime.now()
+        year = year or now.year
+        month = month or now.month
+    month_start = datetime(year, month, 1)
+    if month == 12:
+        month_end = datetime(year + 1, 1, 1)
+    else:
+        month_end = datetime(year, month + 1, 1)
+    # Všechny objednávky v měsíci (bez filtru na status) – částečně odeslané se zahrnou
+    orders = Order.query.filter(Order.created_at >= month_start, Order.created_at < month_end).all()
+    # (warehouse_id, branch_id) -> total nc (sum of product.nc * shipped_quantity for items with shipped > 0)
+    totals = defaultdict(float)
+    warehouse_names = {}
+    branch_names = {}
+    for order in orders:
+        wh_id = order.warehouse_id
+        br_id = order.branch_id
+        if wh_id and wh_id not in warehouse_names:
+            w = Warehouse.query.get(wh_id)
+            warehouse_names[wh_id] = w.name if w else f"ID {wh_id}"
+        if br_id not in branch_names:
+            b = Branch.query.get(br_id)
+            branch_names[br_id] = b.name if b else f"ID {br_id}"
+        for item in order.items:
+            if (item.shipped_quantity or 0) <= 0 or not item.product or item.product.nc is None:
+                continue
+            totals[(wh_id, br_id)] += (item.product.nc or 0) * (item.shipped_quantity or 0)
+    rows = []
+    for (wh_id, br_id), total in sorted(totals.items(), key=lambda x: (str(x[0][0] or ""), x[0][1])):
+        rows.append({
+            "warehouse_id": wh_id,
+            "warehouse_name": warehouse_names.get(wh_id) or "—",
+            "branch_id": br_id,
+            "branch_name": branch_names.get(br_id) or "—",
+            "total_nc": total,
+        })
+    years = list(range(datetime.now().year, datetime.now().year - 5, -1))
+    months = list(range(1, 13))
+    return render_template(
+        "admin/monthly_overview.html",
+        user=get_current_user(),
+        rows=rows,
+        year=year,
+        month=month,
+        years=years,
+        months=months,
+    )
 
 
 @app.route("/admin/users", methods=["GET", "POST"])
@@ -1485,27 +1572,27 @@ def admin_products():
     brand_filter = request.args.get("brand", "").strip() or None
     category_filter = request.args.get("category", "").strip() or None  # 10mg | 20mg
     internal_filter = request.args.get("internal", "").strip() or None  # "0" = běžné, "1" = interní, None = vše
-    base = Product.query.filter(Product.name != "[Vlastní – produkt mimo katalog]")
+    base = Product.query.filter(Product.nazev != "[Vlastní – produkt mimo katalog]")
     if internal_filter == "1":
         base = base.filter(Product.is_internal == True)
     elif internal_filter == "0":
         base = base.filter(db.or_(Product.is_internal == False, Product.is_internal.is_(None)))
     if group_filter:
-        base = base.filter(Product.group_name == group_filter)
+        base = base.filter(Product.naz_skup == group_filter)
     if q:
         q_like = f"%{q}%"
         products = base.filter(
-            or_(Product.name.ilike(q_like), Product.sku.ilike(q_like))
-        ).order_by(Product.group_name, Product.name).all()
+            or_(Product.nazev.ilike(q_like), Product.kod_zbozi.ilike(q_like), (Product.ean.isnot(None)) & (Product.ean.ilike(q_like)))
+        ).order_by(Product.naz_skup, Product.nazev).all()
     else:
-        products = base.order_by(Product.group_name, Product.name).all()
-    all_for_options = Product.query.filter(Product.name != "[Vlastní – produkt mimo katalog]").all()
-    groups = sorted({p.group_name for p in all_for_options if p.group_name})
-    brands = sorted({_product_brand(p.name) for p in all_for_options if _product_brand(p.name)})
+        products = base.order_by(Product.naz_skup, Product.nazev).all()
+    all_for_options = Product.query.filter(Product.nazev != "[Vlastní – produkt mimo katalog]").all()
+    groups = sorted({p.naz_skup for p in all_for_options if p.naz_skup})
+    brands = sorted({_product_brand(p.nazev) for p in all_for_options if _product_brand(p.nazev)})
     if brand_filter:
-        products = [p for p in products if _product_brand(p.name) == brand_filter]
+        products = [p for p in products if _product_brand(p.nazev) == brand_filter]
     if category_filter and category_filter in PRODUCT_MG_OPTIONS:
-        products = [p for p in products if _product_category(p.name) == category_filter]
+        products = [p for p in products if _product_category(p.nazev) == category_filter]
     categories = PRODUCT_MG_OPTIONS.copy()
     return render_template(
         "admin_products.html",
@@ -1527,7 +1614,7 @@ def admin_products():
 @role_required("admin")
 def admin_internal_products():
     """Interní produkty (kancelář) – samostatná stránka."""
-    products = Product.query.filter(Product.is_internal == True).order_by(Product.group_name, Product.name).all()
+    products = Product.query.filter(Product.is_internal == True).order_by(Product.naz_skup, Product.nazev).all()
     return render_template("admin_internal_products.html", products=products, user=get_current_user())
 
 
@@ -1557,6 +1644,43 @@ def _norm(val):
     return s if s else None
 
 
+def _pc_to_float(val):
+    """Převede pc (řetězec nebo číslo) na float pro Product.pc."""
+    if val is None:
+        return None
+    try:
+        return float(str(val).strip().replace(",", "."))
+    except (ValueError, TypeError):
+        return None
+
+
+def _product_field_empty(val):
+    """True pokud je hodnota považována za prázdnou (None nebo prázdný řetězec)."""
+    if val is None:
+        return True
+    if isinstance(val, (int, float)) and val == 0:
+        return True
+    return not str(val).strip()
+
+
+def _update_product_only_missing(existing, name, sku, unit, group_name, pc_float, ean, nc_float=None):
+    """Aktualizuje existující produkt jen v polích, která jsou prázdná. Zachová stávající data v DB."""
+    if name and _product_field_empty(existing.nazev):
+        existing.nazev = name
+    if sku is not None and _product_field_empty(existing.kod_zbozi):
+        existing.kod_zbozi = sku
+    if unit is not None and _product_field_empty(existing.mj):
+        existing.mj = unit
+    if group_name is not None and _product_field_empty(existing.naz_skup):
+        existing.naz_skup = group_name
+    if pc_float is not None and existing.pc is None:
+        existing.pc = pc_float
+    if ean is not None and _product_field_empty(existing.ean):
+        existing.ean = ean
+    if nc_float is not None and existing.nc is None:
+        existing.nc = nc_float
+
+
 def _import_csv(path):
     import csv
     added, updated, skipped, errors = 0, 0, 0, 0
@@ -1572,22 +1696,32 @@ def _import_csv(path):
                 skipped += 1
                 continue
             try:
-                sku = _norm(row.get("sku") or row.get("code") or row.get("kod"))
-                unit = _norm(row.get("ks"))  # jednotka: ks, ml, balení
-                group_name = _norm(row.get("název_skupiny") or row.get("nazev_skupiny") or row.get("group_name"))
+                sku = _norm(row.get("sku") or row.get("code") or row.get("kod") or row.get("kod_zbozi"))
+                unit = _norm(row.get("ks") or row.get("mj"))  # jednotka: ks, ml, balení
+                group_name = _norm(
+                    row.get("název_skupiny") or row.get("nazev_skupiny") or row.get("naz_skupiny") or row.get("group_name")
+                )
                 pc = _norm(row.get("pc"))
-                existing = Product.query.filter_by(sku=sku).first() if sku else None
+                ean = _norm(row.get("ean"))
+                nc_float = _pc_to_float(row.get("nc"))
+                # Párování: nejdřív podle EAN, pak kod_zbozi, pak název
+                existing = None
+                if ean:
+                    existing = Product.query.filter_by(ean=ean).first()
+                if not existing and sku:
+                    existing = Product.query.filter_by(kod_zbozi=sku).first()
                 if not existing:
-                    existing = Product.query.filter(Product.name == name).first()
+                    existing = Product.query.filter(Product.nazev == name).first()
                 if existing:
-                    existing.name = name
-                    existing.sku = sku
-                    existing.unit = unit
-                    existing.group_name = group_name
-                    existing.pc = pc
+                    _update_product_only_missing(
+                        existing, name, sku, unit, group_name, _pc_to_float(pc), ean, nc_float
+                    )
                     updated += 1
                 else:
-                    db.session.add(Product(name=name, sku=sku, unit=unit, group_name=group_name, pc=pc))
+                    db.session.add(Product(
+                        nazev=name, kod_zbozi=sku, mj=unit, naz_skup=group_name,
+                        pc=_pc_to_float(pc), ean=ean, nc=nc_float
+                    ))
                     added += 1
                 db.session.commit()
             except Exception:
@@ -1636,21 +1770,23 @@ def _import_internal_csv(path):
 
 
 def _excel_row_to_product(d):
-    """Z řádku Excelu vrátí (name, sku, unit, group_name, pc) nebo None. col2 = ks (jednotka) nebo sku."""
+    """Z řádku Excelu vrátí (name, sku, unit, group_name, pc, ean, nc_float) nebo None. Podporuje hlavičky nazev, kod_zbozi, ean, mj, nc, pc, naz_skupiny."""
     name = _norm(
         d.get("název") or d.get("nazev") or d.get("name") or d.get("col1")
     )
     if not name:
         return None
-    sku = _norm(d.get("sku") or d.get("code") or d.get("kod"))
-    unit = _norm(d.get("ks"))  # jednotka: ks, ml, balení (col2 v pořadí skupina,název,ks,pc)
+    sku = _norm(d.get("sku") or d.get("code") or d.get("kod") or d.get("kod_zbozi"))
+    unit = _norm(d.get("ks") or d.get("mj"))
     if not unit and d.get("col2") is not None:
         unit = _norm(d.get("col2"))
     group_name = _norm(
-        d.get("název_skupiny") or d.get("nazev_skupiny") or d.get("group_name") or d.get("col0")
+        d.get("název_skupiny") or d.get("nazev_skupiny") or d.get("naz_skupiny") or d.get("group_name") or d.get("col0")
     )
     pc = _norm(d.get("pc") or d.get("col3"))
-    return (name, sku, unit, group_name, pc)
+    ean = _norm(d.get("ean"))
+    nc_float = _pc_to_float(d.get("nc"))
+    return (name, sku, unit, group_name, pc, ean, nc_float)
 
 
 def _import_excel(path):
@@ -1662,20 +1798,26 @@ def _import_excel(path):
         if not t:
             skipped += 1
             return
-        name, sku, unit, group_name, pc = t
+        name, sku, unit, group_name, pc, ean, nc_float = t
         try:
-            existing = Product.query.filter_by(sku=sku).first() if sku else None
+            # Párování: nejdřív podle EAN, pak kod_zbozi, pak název
+            existing = None
+            if ean:
+                existing = Product.query.filter_by(ean=ean).first()
+            if not existing and sku:
+                existing = Product.query.filter_by(kod_zbozi=sku).first()
             if not existing:
-                existing = Product.query.filter(Product.name == name).first()
+                existing = Product.query.filter(Product.nazev == name).first()
             if existing:
-                existing.name = name
-                existing.sku = sku
-                existing.unit = unit
-                existing.group_name = group_name
-                existing.pc = pc
+                _update_product_only_missing(
+                    existing, name, sku, unit, group_name, _pc_to_float(pc), ean, nc_float
+                )
                 updated += 1
             else:
-                db.session.add(Product(name=name, sku=sku, unit=unit, group_name=group_name, pc=pc))
+                db.session.add(Product(
+                    nazev=name, kod_zbozi=sku, mj=unit, naz_skup=group_name,
+                    pc=_pc_to_float(pc), ean=ean, nc=nc_float
+                ))
                 added += 1
             db.session.commit()
         except Exception:
@@ -1953,9 +2095,9 @@ def warehouse_dashboard():
     )
     status_counts = {s: c for s, c in by_status}
     top_products = (
-        db.session.query(Product.id, Product.name, Product.sku, Product.unit, func.sum(OrderItem.ordered_quantity).label("total"))
+        db.session.query(Product.id, Product.nazev, Product.kod_zbozi, Product.mj, func.sum(OrderItem.ordered_quantity).label("total"))
         .join(OrderItem, OrderItem.product_id == Product.id)
-        .group_by(Product.id, Product.name, Product.sku, Product.unit)
+        .group_by(Product.id, Product.nazev, Product.kod_zbozi, Product.mj)
         .order_by(func.sum(OrderItem.ordered_quantity).desc())
         .limit(12)
         .all()
@@ -1996,9 +2138,9 @@ def warehouse_order_new():
     """Sklad vytvoří objednávku a přiřadí ji pobočce (created_by_warehouse_id)."""
     branches = Branch.query.order_by(Branch.name).all()
     base_products = Product.query.filter(
-        Product.name != "[Vlastní – produkt mimo katalog]",
+        Product.nazev != "[Vlastní – produkt mimo katalog]",
         db.or_(Product.is_internal == False, Product.is_internal.is_(None)),
-    ).order_by(Product.group_name, Product.name).all()
+    ).order_by(Product.naz_skup, Product.nazev).all()
     if request.method == "POST":
         branch_id = request.form.get("branch_id", type=int)
         branch = Branch.query.get(branch_id) if branch_id else None
@@ -2049,6 +2191,7 @@ def warehouse_order_detail(order_id):
         .limit(30)
         .all()
     )
+    order_total_selling = _order_total_selling(order)
     return render_template(
         "warehouse_order_detail.html",
         order=order,
@@ -2057,7 +2200,221 @@ def warehouse_order_detail(order_id):
         total_qty=total_qty,
         shipped_qty=shipped_qty,
         order_audit_log=order_audit_log,
+        order_total_selling=order_total_selling,
     )
+
+
+def _parse_warehouse_xls(path):
+    """Parsuje .xls/.xlsx z externího skladu. Sloupce: naz_skup, kod_zbozi, nazev, ean, pc. Vrací seznam dict s klíči ean (povinný pro match), ostatní volitelné."""
+    rows = []
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext == ".xlsx":
+            import openpyxl
+            wb = openpyxl.load_workbook(path, read_only=True)
+            ws = wb.active
+            headers_raw = [c.value for c in ws[1]]
+            headers = [str(h or "").strip().lower().replace(" ", "_").replace("-", "_") for h in headers_raw]
+            for row in ws.iter_rows(min_row=2):
+                vals = [c.value for c in row]
+                d = dict(zip(headers, vals))
+                ean = _norm(d.get("ean"))
+                if not ean:
+                    continue
+                rows.append({
+                    "naz_skup": _norm(d.get("naz_skup")),
+                    "kod_zbozi": _norm(d.get("kod_zbozi")),
+                    "nazev": _norm(d.get("nazev")),
+                    "ean": ean,
+                    "pc": _norm(d.get("pc")),
+                })
+            wb.close()
+        else:
+            import xlrd
+            wb = xlrd.open_workbook(path)
+            sheet = wb.sheet_by_index(0)
+            headers = []
+            for c in range(sheet.ncols):
+                v = sheet.cell_value(0, c)
+                headers.append(str(v or "").strip().lower().replace(" ", "_").replace("-", "_"))
+            for r in range(1, sheet.nrows):
+                d = {}
+                for c in range(sheet.ncols):
+                    if c < len(headers) and headers[c]:
+                        d[headers[c]] = sheet.cell_value(r, c)
+                ean = _norm(d.get("ean"))
+                if not ean:
+                    continue
+                rows.append({
+                    "naz_skup": _norm(d.get("naz_skup")),
+                    "kod_zbozi": _norm(d.get("kod_zbozi")),
+                    "nazev": _norm(d.get("nazev")),
+                    "ean": ean,
+                    "pc": _norm(d.get("pc")),
+                })
+    except Exception:
+        raise
+    return rows
+
+
+@app.route("/warehouse/order/<int:order_id>/import-xls", methods=["POST"])
+@login_required
+@role_required("warehouse", "admin")
+def warehouse_order_import_xls(order_id):
+    """Import položek z .xls externího skladu. Match podle EAN, nc z DB, množství zadá sklad ručně."""
+    order = Order.query.get_or_404(order_id)
+    f = request.files.get("file")
+    if not f or not f.filename:
+        flash("Vyberte soubor.", "error")
+        return redirect(url_for("warehouse_order_detail", order_id=order_id))
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in (".xls", ".xlsx"):
+        flash("Povolené formáty: .xls, .xlsx.", "error")
+        return redirect(url_for("warehouse_order_detail", order_id=order_id))
+    path = os.path.join(app.config["UPLOAD_FOLDER"], f.filename)
+    f.save(path)
+    try:
+        rows = _parse_warehouse_xls(path)
+        if not rows:
+            flash("V souboru nebyly nalezeny žádné řádky s EAN.", "error")
+            return redirect(url_for("warehouse_order_detail", order_id=order_id))
+        added = 0
+        skipped = 0
+        for row in rows:
+            product = Product.query.filter(Product.ean == row["ean"]).first()
+            if not product:
+                skipped += 1
+                continue
+            item = OrderItem(
+                order_id=order.id,
+                product_id=product.id,
+                ordered_quantity=0,
+            )
+            db.session.add(item)
+            added += 1
+        db.session.commit()
+        audit_log("order_import_xls", "order", order.id, f"Import .xls: přidáno {added} položek, přeskočeno (bez EAN v DB): {skipped}")
+        flash(f"Import dokončen. Přidáno {added} položek do objednávky. Množství vyplňte ručně. Přeskočeno (EAN nenalezen): {skipped}.")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Chyba importu: {e}", "error")
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+    return redirect(url_for("warehouse_order_detail", order_id=order_id))
+
+
+def _order_check_view(order_id, redirect_back_route, for_branch=False):
+    """Společná logika pro stránku kontroly objednávky (používá sklad i pobočka)."""
+    order = Order.query.get_or_404(order_id)
+    if order.status not in ("shipped", "partially_shipped"):
+        flash("Kontrola je k dispozici pouze u odeslaných nebo částečně odeslaných objednávek.", "error")
+        return redirect(url_for(redirect_back_route, order_id=order_id))
+    item_results = {}
+    for item in order.items:
+        last_check = OrderItemCheck.query.filter_by(order_item_id=item.id).order_by(OrderItemCheck.created_at.desc()).first()
+        if last_check:
+            item_results[item.id] = last_check
+    return render_template(
+        "warehouse_order_check.html",
+        order=order,
+        item_results=item_results,
+        user=get_current_user(),
+        status_cz=status_cz,
+        check_for_branch=for_branch,
+    )
+
+
+@app.route("/warehouse/order/<int:order_id>/check")
+@login_required
+@role_required("warehouse", "admin")
+def warehouse_order_check(order_id):
+    """Stránka kontroly objednávky čtečkou (sklad)."""
+    return _order_check_view(order_id, "warehouse_order_detail", for_branch=False)
+
+
+@app.route("/branch/order/<int:order_id>/check")
+@login_required
+@role_required("branch")
+def branch_order_check(order_id):
+    """Stránka kontroly objednávky čtečkou (pobočka)."""
+    order = Order.query.get_or_404(order_id)
+    if order.branch_id != get_current_branch_id():
+        flash("Objednávka nepatří vaší pobočce.", "error")
+        return redirect(url_for("branch_orders"))
+    return _order_check_view(order_id, "branch_order_detail", for_branch=True)
+
+
+@app.route("/warehouse/order/<int:order_id>/check/scan", methods=["POST"])
+@login_required
+@role_required("warehouse", "admin", "branch")
+def warehouse_order_check_scan(order_id):
+    """Zpracuje jeden sken ve formátu množství*EAN (např. 3*8591234567890). Vrací JSON. Přístup: sklad, admin, pobočka (jen k objednávkám své pobočky)."""
+    order = Order.query.get_or_404(order_id)
+    user = get_current_user()
+    if user and user.role == "branch" and get_current_branch_id() != order.branch_id:
+        return jsonify({"ok": False, "error": "Objednávka nepatří vaší pobočce."}), 403
+    if order.status not in ("shipped", "partially_shipped"):
+        return jsonify({"ok": False, "error": "Kontrola není k dispozici."}), 400
+    raw = (request.form.get("scan") or request.json.get("scan") or request.get_data(as_text=True) or "").strip()
+    if "*" not in raw:
+        return jsonify({"ok": False, "error": "Formát: množství*EAN (např. 3*8591234567890)"}), 400
+    parts = raw.split("*", 1)
+    try:
+        scanned_qty = float(parts[0].strip())
+    except (ValueError, IndexError):
+        return jsonify({"ok": False, "error": "Neplatné množství"}), 400
+    ean = (parts[1].strip() if len(parts) > 1 else "").strip()
+    if not ean:
+        return jsonify({"ok": False, "error": "Chybí EAN"}), 400
+    product = Product.query.filter(Product.ean == ean).first()
+    if not product:
+        return jsonify({"ok": False, "error": f"Produkt s EAN {ean} nenalezen"}), 404
+    order_item = OrderItem.query.filter(OrderItem.order_id == order.id, OrderItem.product_id == product.id).first()
+    if not order_item:
+        return jsonify({"ok": False, "error": "Tento produkt není v objednávce"}), 404
+    expected = order_item.ordered_quantity or 0
+    result = "correct" if abs((scanned_qty or 0) - expected) < 0.001 else "incorrect"
+    check = OrderItemCheck(
+        order_item_id=order_item.id,
+        scanned_quantity=scanned_qty,
+        expected_quantity=expected,
+        result=result,
+    )
+    db.session.add(check)
+    db.session.commit()
+    audit_log("order_check_scan", "order_item", order_item.id, f"Scan: {scanned_qty}*{ean} -> {result}")
+    all_items_with_product = [i for i in order.items if i.product_id and i.product and i.product.ean]
+    checks_per_item = {}
+    for it in order.items:
+        last_check = OrderItemCheck.query.filter_by(order_item_id=it.id).order_by(OrderItemCheck.created_at.desc()).first()
+        checks_per_item[it.id] = last_check
+    all_checked = all(checks_per_item.get(it.id) for it in all_items_with_product)
+    all_correct = all((checks_per_item.get(it.id) and checks_per_item[it.id].result == "correct") for it in all_items_with_product)
+    if all_checked:
+        if all_correct:
+            order.status = "verified"
+            db.session.commit()
+            audit_log("order_verified", "order", order.id, "Všechny položky zkontrolovány správně")
+        else:
+            order.status = "error"
+            db.session.commit()
+            audit_log("order_check_error", "order", order.id, "Kontrola odhalila chybu")
+            try:
+                branch = order.branch
+                notify_worker(order.id, branch.name if branch else f"ID {order.branch_id}")
+            except Exception:
+                pass
+    return jsonify({
+        "ok": True,
+        "order_item_id": order_item.id,
+        "scanned_quantity": scanned_qty,
+        "expected_quantity": expected,
+        "result": result,
+        "order_status": order.status,
+        "all_checked": all_checked,
+        "all_correct": all_correct,
+    })
 
 
 @app.route("/warehouse/order/<int:order_id>/status", methods=["POST"])
@@ -2099,6 +2456,15 @@ def _order_totals(order):
     total_o = sum((it.ordered_quantity or 0) for it in order.items)
     total_s = sum((it.shipped_quantity or 0) for it in order.items)
     return total_o, total_s
+
+
+def _order_total_selling(order):
+    """Celková prodejní cena objednávky: SUM(pc * shipped_quantity) přes položky s produktem (jen odeslané množství)."""
+    total = 0
+    for it in order.items:
+        if it.product and it.product.pc is not None:
+            total += (it.product.pc or 0) * (it.shipped_quantity or 0)
+    return total
 
 
 @app.route("/warehouse/order/<int:order_id>/item/<int:item_id>/shipped", methods=["POST"])
@@ -2286,6 +2652,66 @@ with app.app_context():
             db.session.commit()
         except Exception:
             db.session.rollback()
+    # Tabulka warehouses a orders.warehouse_id
+    try:
+        db.session.execute(text("""
+            CREATE TABLE IF NOT EXISTS warehouses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR(255) NOT NULL
+            )
+        """))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    try:
+        db.session.execute(text("ALTER TABLE orders ADD COLUMN warehouse_id INTEGER REFERENCES warehouses(id)"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    # Tabulka order_item_checks (kontrola objednávky čtečkou)
+    try:
+        db.session.execute(text("""
+            CREATE TABLE IF NOT EXISTS order_item_checks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_item_id INTEGER NOT NULL REFERENCES order_items(id),
+                scanned_quantity REAL NOT NULL,
+                expected_quantity REAL NOT NULL,
+                result VARCHAR(20) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    # Nové schéma produktů: naz_skup, kod_zbozi, nazev, ean, mj, nc, pc_float
+    for sql in (
+        "ALTER TABLE products ADD COLUMN naz_skup VARCHAR(100)",
+        "ALTER TABLE products ADD COLUMN kod_zbozi VARCHAR(100)",
+        "ALTER TABLE products ADD COLUMN nazev VARCHAR(255)",
+        "ALTER TABLE products ADD COLUMN ean VARCHAR(50)",
+        "ALTER TABLE products ADD COLUMN mj VARCHAR(20)",
+        "ALTER TABLE products ADD COLUMN nc REAL",
+        "ALTER TABLE products ADD COLUMN pc_float REAL",
+    ):
+        try:
+            db.session.execute(text(sql))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+    # Zkopírovat data ze starých sloupců do nových (pokud tabulka má ještě name/sku/...)
+    try:
+        r = db.session.execute(text("PRAGMA table_info(products)"))
+        cols = [row[1] for row in r.fetchall()]
+        if "name" in cols and "nazev" in cols:
+            db.session.execute(text(
+                "UPDATE products SET nazev=name, kod_zbozi=sku, naz_skup=group_name, mj=unit WHERE id IS NOT NULL"
+            ))
+            db.session.execute(text(
+                "UPDATE products SET pc_float=CAST(pc AS REAL) WHERE pc IS NOT NULL AND TRIM(COALESCE(pc,'')) != ''"
+            ))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
     # Tabulka internal_products (samostatná od products) – před přidáním FK z order_items
     try:
         db.session.execute(text("""

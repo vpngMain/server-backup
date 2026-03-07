@@ -36,8 +36,8 @@
                     </form>
                 </td>
                 {% else %}
-                <td>{{ item.product.name }}</td>
-                <td>{{ item.product.unit or 'ks' }}</td>
+                <td>{{ item.product.nazev }}</td>
+                <td>{{ item.product.mj or 'ks' }}</td>
                 <td>
                     <input form="cart-update-form" type="number" name="qty_{{ item.product.id }}" value="{{ item.quantity | format_qty }}" min="0.01" step="any" class="input-qty" placeholder="ks">
                 </td>

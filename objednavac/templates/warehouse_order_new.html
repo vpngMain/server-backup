@@ -22,9 +22,9 @@
             {% for p in products %}
             <article class="dashboard-item-card warehouse-product-card">
                 <div class="dashboard-item-card-body">
-                    <p class="dashboard-item-card-meta">{{ p.group_name or '—' }}</p>
-                    <h3 class="dashboard-item-card-title">{{ p.name }}</h3>
-                    <p class="dashboard-item-card-meta">Jednotka: {{ p.unit or 'ks' }}</p>
+                    <p class="dashboard-item-card-meta">{{ p.naz_skup or '—' }}</p>
+                    <h3 class="dashboard-item-card-title">{{ p.nazev }}</h3>
+                    <p class="dashboard-item-card-meta">Jednotka: {{ p.mj or 'ks' }}</p>
                     <label for="qty_{{ p.id }}" class="sr-only">Množství</label>
                     <input type="number" name="qty_{{ p.id }}" id="qty_{{ p.id }}" value="" min="0" step="any" class="input-qty warehouse-order-qty" placeholder="0">
                 </div>

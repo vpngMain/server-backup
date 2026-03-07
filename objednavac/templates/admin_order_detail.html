@@ -22,23 +22,33 @@
     <thead>
         <tr>
             <th>Produkt</th>
+            {% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}<th>Kód zboží</th>{% endif %}
             <th>ks</th>
             <th>Objednáno</th>
             <th>Odesláno</th>
+            <th>Prodejní cena (pc)</th>
             <th>Poznámka</th>
         </tr>
     </thead>
     <tbody>
         {% for i in order.items %}
-        <tr class="{% if i.unavailable %}item-unavailable item-unavailable-branch{% elif (i.shipped_quantity or 0) >= (i.ordered_quantity or 0) and i.ordered_quantity %}item-shipped{% endif %}">
+        <tr class="{% if i.unavailable %}item-unavailable item-unavailable-branch{% elif (i.shipped_quantity or 0) >= (i.ordered_quantity or 0) and i.ordered_quantity %}item-shipped{% elif (i.shipped_quantity or 0) > 0 and (i.shipped_quantity or 0) < (i.ordered_quantity or 0) %}item-partial{% endif %}">
             <td>{{ i.display_name() }}{% if i.branch_note %} <span class="branch-note">({{ i.branch_note }})</span>{% endif %}</td>
-            <td>{{ i.product.unit if i.product and i.product.unit else 'ks' }}</td>
+            {% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}<td>{{ i.product.kod_zbozi if i.product else '—' }}</td>{% endif %}
+            <td>{{ i.product.mj if i.product and i.product.mj else 'ks' }}</td>
             <td>{{ i.ordered_quantity | format_qty }}</td>
             <td>{% if i.shipped_quantity is not none %}{{ i.shipped_quantity | format_qty }}{% else %}—{% endif %}</td>
+            <td>{{ "%.2f"|format((i.product.pc or 0) * (i.shipped_quantity or 0)) if i.product and i.product.pc is not none else '—' }}</td>
             <td>{% if i.warehouse_note %}<span class="warehouse-note-text">{{ i.warehouse_note }}</span>{% elif i.unavailable %}<span class="badge badge-unavailable badge-sklad-nema">Sklad nemá</span>{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
     </tbody>
+    <tfoot>
+        <tr>
+            <td colspan="{% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}6{% else %}5{% endif %}" class="text-right"><strong>Celková prodejní cena objednávky:</strong></td>
+            <td><strong>{{ "%.2f"|format(order_total_selling) }}</strong></td>
+        </tr>
+    </tfoot>
 </table>
 {% if order_audit_log %}
 <details class="order-audit-log order-audit-log-dropdown">

@@ -910,6 +910,16 @@ html.dark-mode .cart-qty-badge {
   color: #065f46;
   border: 1px solid #6ee7b7;
 }
+.status-verified {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+.status-error {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
 .badge-warehouse {
   display: inline-block;
   padding: 2px 8px;
@@ -962,6 +972,16 @@ html.dark-mode .status-shipped {
   color: #6ee7b7;
   border-color: #059669;
 }
+html.dark-mode .status-verified {
+  background: #064e3b;
+  color: #6ee7b7;
+  border-color: #059669;
+}
+html.dark-mode .status-error {
+  background: #7f1d1d;
+  color: #fca5a5;
+  border-color: #dc2626;
+}
 
 /* Shipped item row / list item */
 .item-shipped {
@@ -988,6 +1008,45 @@ html.dark-mode .badge-shipped {
   background: #064e3b;
   color: #6ee7b7;
 }
+
+/* Partially shipped product row – same purple as partially shipped order */
+.item-partial {
+  background-color: #8e44ad;
+  color: white;
+}
+.item-partial td,
+.order-items-list li.item-partial {
+  color: white;
+  border-left: 3px solid #7d3c98;
+}
+html.dark-mode .item-partial {
+  background-color: #6c3483;
+  border-left-color: #8e44ad;
+}
+
+/* Kontrola objednávky – výsledek skenu */
+.item-check-correct {
+  background-color: rgba(5, 150, 105, 0.15);
+  border-left: 3px solid #059669;
+}
+.item-check-incorrect {
+  background-color: rgba(220, 38, 38, 0.15);
+  border-left: 3px solid #dc2626;
+}
+html.dark-mode .item-check-correct {
+  background-color: rgba(52, 211, 153, 0.2);
+  border-left-color: #34d399;
+}
+html.dark-mode .item-check-incorrect {
+  background-color: rgba(248, 113, 113, 0.2);
+  border-left-color: #f87171;
+}
+.order-check-scan-row { margin: 1rem 0; }
+.input-scan { padding: 0.5rem 0.75rem; font-size: 1rem; min-width: 200px; }
+.scan-feedback { margin-left: 0.5rem; }
+.scan-feedback.feedback-correct { color: #059669; }
+.scan-feedback.feedback-incorrect { color: #dc2626; }
+.scan-feedback.feedback-error { color: #dc2626; }
 
 .input-branch-note {
   width: 100%;
