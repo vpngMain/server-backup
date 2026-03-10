@@ -1,0 +1,11 @@
+{% for p in products %}
+<tr>
+    <td>{{ p.description }}</td>
+    <td>{{ p.description2 or '-' }}</td>
+    <td>{{ p.pot_size or '-' }}</td>
+    <td>{% if p.active %}Ano{% else %}Ne{% endif %}</td>
+    <td><a href="/products/{{ p.id }}" class="btn btn-sm btn-outline-primary">Detail</a></td>
+</tr>
+{% else %}
+<tr><td colspan="5" class="text-muted">Žádné produkty nevyhovují filtru.</td></tr>
+{% endfor %}

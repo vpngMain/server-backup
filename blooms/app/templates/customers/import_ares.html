@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Import z ARES – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">Import odběratele z ARES</h1>
+<a href="/customers" class="btn btn-outline-secondary mb-3">Zpět na odběratele</a>
+<p class="text-muted">Zadejte IČO (8 číslic) nebo obchodní název firmy. Data se načtou z veřejného registru ARES.</p>
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+<form method="post" action="/customers/import_ares" class="mb-4">
+    {% include '_csrf.html' %}
+    <div class="row g-2">
+        <div class="col-auto">
+            <input type="text" name="q" class="form-control" placeholder="IČO nebo obchodní název" value="{{ query }}" style="min-width: 250px;">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Vyhledat</button>
+        </div>
+    </div>
+</form>
+
+{% if results %}
+<div class="card">
+    <div class="card-header">Výsledky</div>
+    <div class="card-body">
+        {% for r in results %}
+        <div class="d-flex justify-content-between align-items-center border-bottom py-3 {% if not loop.last %}mb-0{% endif %}">
+            <div>
+                <strong>{{ r.company_name }}</strong>
+                {% if r.ico %}<span class="text-muted ms-2">IČO: {{ r.ico }}</span>{% endif %}
+                {% if r.dic %}<span class="text-muted ms-2">DIČ: {{ r.dic }}</span>{% endif %}
+                <div class="small text-muted mt-1">
+                    {% if r.street %}{{ r.street }}{% endif %}
+                    {% if r.city %}{{ r.city }}{% endif %}
+                    {% if r.zip_code %}{{ r.zip_code }}{% endif %}
+                    {% if r.country %}{{ r.country }}{% endif %}
+                </div>
+            </div>
+            <form method="post" action="/customers/import_ares" class="d-inline">
+                {% include '_csrf.html' %}
+                <input type="hidden" name="q" value="{{ query }}">
+                {% if results|length == 1 %}
+                <input type="hidden" name="confirm" value="1">
+                {% else %}
+                <input type="hidden" name="confirm_ico" value="{{ r.ico or '' }}">
+                {% endif %}
+                <button type="submit" class="btn btn-success btn-sm">Přidat jako odběratele</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

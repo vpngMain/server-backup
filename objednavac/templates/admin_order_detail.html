@@ -14,8 +14,22 @@
 <p class="order-detail-meta">
     <span>Pobočka: {{ order.branch.name if order.branch else '—' }} {{ order.branch.code if order.branch and order.branch.code else '' }}</span>
     <span>Datum: {{ order.created_at | format_datetime }}</span>
+    <span><strong>Sklad odeslání:</strong> {{ order.warehouse.name if order.warehouse else '—' }}{% if order.warehouse and order.warehouse.code %} ({{ order.warehouse.code }}){% endif %}</span>
+</p>
+<form method="post" action="{{ url_for('admin_order_set_warehouse', order_id=order.id) }}" class="inline-form order-set-warehouse-form">
+    <label for="warehouse_id">Změnit sklad odeslání</label>
+    <select name="warehouse_id" id="warehouse_id">
+        <option value="">— žádný —</option>
+        {% for w in warehouses %}
+        <option value="{{ w.id }}" {{ 'selected' if order.warehouse_id == w.id else '' }}>{{ w.name }}{% if w.code %} ({{ w.code }}){% endif %}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm">Uložit</button>
+</form>
+<p class="order-detail-meta">
     {% if order.created_by %}<span>Vytvořil: <strong>{{ order.created_by.username }}</strong></span>{% endif %}
-    <span class="status-badge status-{{ order.status }}">{{ status_cz(order.status) }}</span>
+    {% set main_status = 'shipped' if order.status in ('verified','error') else order.status %}
+    <span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if order.check_status or order.status in ('verified','error') %}<span class="status-badge status-{{ order.check_status or order.status }}">{{ status_cz(order.check_status or order.status) }}</span>{% endif %}
     <span><strong>Celkem kusů:</strong> {{ total_qty | format_qty }} objednáno, {{ shipped_qty | format_qty }} odesláno</span>
 </p>
 <table class="table">

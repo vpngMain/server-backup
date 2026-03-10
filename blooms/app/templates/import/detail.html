@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Detail importu – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">Detail importu</h1>
+<p><strong>Složka:</strong> {{ batch.source_folder }}</p>
+<p><strong>Datum:</strong> {{ batch.imported_at.strftime('%d.%m.%Y %H:%M') if batch.imported_at else '-' }}</p>
+<p><strong>Soubory:</strong> {{ batch.total_files }} | <strong>Řádky:</strong> {{ batch.total_rows }} | <strong>Nové produkty:</strong> {{ batch.new_products }} | <strong>Existující:</strong> {{ batch.existing_products }} | <strong>Chyby:</strong> {{ batch.error_rows }}</p>
+<p><strong>Status:</strong> {{ batch.status }}</p>
+<a href="/import/history" class="btn btn-outline-secondary mb-3">Zpět na historii</a>
+<h5>Soubory v dávce</h5>
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>Soubor</th>
+            <th>Objednávka</th>
+            <th>Řádky</th>
+            <th>Nové</th>
+            <th>Exist.</th>
+            <th>Chyby</th>
+            <th>Status</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for f in batch.import_files %}
+        <tr>
+            <td>{{ f.filename }}</td>
+            <td>{{ f.order_number or '-' }}</td>
+            <td>{{ f.row_count }}</td>
+            <td>{{ f.new_products }}</td>
+            <td>{{ f.existing_products }}</td>
+            <td>{{ f.error_rows }}</td>
+            <td>{{ f.status }}</td>
+            <td><a href="/import/history/{{ batch.id }}/files/{{ f.id }}" class="btn btn-sm btn-outline-primary">Detail řádků</a></td>
+        </tr>
+        {% if f.report_text %}
+        <tr><td colspan="8" class="small text-muted"><pre class="mb-0 small">{{ f.report_text }}</pre></td></tr>
+        {% endif %}
+        {% else %}
+        <tr><td colspan="8" class="text-muted">Žádné soubory.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

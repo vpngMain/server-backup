@@ -1,0 +1,33 @@
+# Blooms - Zahradnictví interní systém
+# Python 3.12+
+
+# Flask
+flask==3.0.3
+flask-login==0.6.3
+flask-wtf>=1.2.0
+jinja2==3.1.4
+httpx==0.28.1
+
+# Database
+sqlalchemy==2.0.36
+alembic==1.14.0
+
+# Auth – bcrypt přímo (bez passlib), session přes Flask-Login
+bcrypt>=4.0.0
+itsdangerous>=2.0
+
+# Session do souborů (instance/flask_session)
+Flask-Session>=0.5.0
+
+# Excel .xls (binární XLS) a .xlsx
+xlrd==2.0.1
+openpyxl==3.1.5
+
+# PDF export (čistý Python, funguje na Windows bez externích binárek)
+reportlab==4.2.5
+
+# Testy
+pytest==8.3.3
+
+# HTMX - pouze statické soubory, žádná závislost
+# Bootstrap 5 - CDN v šablonách

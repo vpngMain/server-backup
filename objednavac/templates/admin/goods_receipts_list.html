@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Admin – Příjmy zboží{% endblock %}
+{% block content %}
+<p class="order-detail-actions"><a href="{{ url_for('admin_dashboard') }}" class="btn btn-back">← Zpět na přehled</a></p>
+<h2>Příjmy zboží od dodavatele</h2>
+{% if suppliers %}
+<form method="get" action="{{ url_for('admin_goods_receipts') }}" class="filter-form card-section" style="margin-bottom: 1rem;">
+    <label for="supplier_id">Dodavatel</label>
+    <select name="supplier_id" id="supplier_id" onchange="this.form.submit()">
+        <option value="">— všichni dodavatelé —</option>
+        {% for s in suppliers %}
+        <option value="{{ s.id }}" {{ 'selected' if selected_supplier_id == s.id else '' }}>{{ s.supplier_name }}{% if s.supplier_id %} ({{ s.supplier_id }}){% endif %}</option>
+        {% endfor %}
+    </select>
+</form>
+{% endif %}
+{% if receipts %}
+<div class="table-wrapper">
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Sklad</th>
+            <th>Dodavatel</th>
+            <th>Datum</th>
+            <th>Položek</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in receipts %}
+        <tr>
+            <td>{{ r.id }}</td>
+            <td>{{ r.warehouse.name if r.warehouse else '—' }}{% if r.warehouse and r.warehouse.code %} ({{ r.warehouse.code }}){% endif %}</td>
+            <td>{{ r.supplier.supplier_name if r.supplier else '—' }}{% if r.supplier and r.supplier.supplier_id %} ({{ r.supplier.supplier_id }}){% endif %}</td>
+            <td>{{ r.received_at | format_datetime }}</td>
+            <td>{{ r.items|length }}</td>
+            <td>
+                <a href="{{ url_for('admin_goods_receipt_detail', receipt_id=r.id) }}" class="btn btn-sm">Detail</a>
+                <form method="post" action="{{ url_for('admin_goods_receipt_delete', receipt_id=r.id) }}" class="inline-form" style="display:inline;" onsubmit="return confirm('Opravdu smazat tento příjem zboží?');">
+                    <button type="submit" class="btn btn-sm">Smazat</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p>Žádné příjmy zboží.{% if selected_supplier_id %} Zkuste zvolit jiného dodavatele nebo všichni.{% endif %}</p>
+{% endif %}
+{% endblock %}

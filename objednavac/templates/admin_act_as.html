@@ -6,7 +6,7 @@
 
 {% if acting_as_role %}
 <div class="flash flash-info" role="alert">
-    Aktuálně působíte jako <strong>{{ acting_as_role }}</strong>{% if acting_as_branch %}: {{ acting_as_branch.name }}{% endif %}.
+    Aktuálně působíte jako <strong>{{ acting_as_role }}</strong>{% if acting_as_branch %}: {{ acting_as_branch.name }}{% endif %}{% if acting_as_warehouse %}: {{ acting_as_warehouse.name }}{% endif %}.
 </div>
 {% endif %}
 
@@ -30,7 +30,16 @@
     <input type="hidden" name="action" value="warehouse">
     <h3>Působit jako sklad</h3>
     <p>Zobrazí se vám přehled skladu a objednávky jako běžnému uživateli skladu.</p>
-    <button type="submit" class="btn btn-primary">Působit jako sklad</button>
+    <div class="form-group">
+        <label for="warehouse_id">Sklad</label>
+        <select name="warehouse_id" id="warehouse_id" required>
+            <option value="">— vyberte —</option>
+            {% for w in warehouses %}
+            <option value="{{ w.id }}">{{ w.name }}{% if w.code %} ({{ w.code }}){% endif %}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Působit jako tento sklad</button>
 </form>
 
 {% if acting_as_role %}

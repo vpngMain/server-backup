@@ -1,37 +1,41 @@
 {% extends "base.html" %}
 {% block title %}Sklad – Objednávka {{ order.id }}{% endblock %}
 {% block content %}
+<section class="order-detail-actions-top" aria-label="Akce">
+    {% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}
+    <div class="order-detail-top-row">
+        <form method="post" action="{{ url_for('warehouse_order_import_xls', order_id=order.id) }}" enctype="multipart/form-data" class="inline-form order-import-xls-form">
+            <input type="file" name="file" accept=".xls,.xlsx" required>
+            <button type="submit" class="btn btn-primary">Import z externího skladu</button>
+        </form>
+        <form method="post" action="{{ url_for('warehouse_order_status', order_id=order.id) }}" class="form-inline js-warehouse-status-form">
+            <label for="status">Stav</label>
+            <select id="status" name="status">
+                <option value="pending" {{ 'selected' if order.status == 'pending' else '' }}>Čeká</option>
+                <option value="partially_shipped" {{ 'selected' if order.status == 'partially_shipped' else '' }}>Částečně odesláno</option>
+                <option value="shipped" {{ 'selected' if order.status == 'shipped' else '' }}>Odesláno</option>
+                <option value="verified" {{ 'selected' if order.status == 'verified' else '' }}>Zkontrolováno</option>
+                <option value="error" {{ 'selected' if order.status == 'error' else '' }}>Chyba kontroly</option>
+            </select>
+            <button type="submit" class="btn">Změnit stav</button>
+        </form>
+    </div>
+    {% endif %}
+</section>
 <p class="order-detail-actions">
     <a href="{{ url_for('warehouse_orders') }}" class="btn btn-back">← Zpět na seznam</a>
-    {% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}
-    <form method="post" action="{{ url_for('warehouse_order_import_xls', order_id=order.id) }}" enctype="multipart/form-data" class="inline-form order-import-xls-form">
-        <input type="file" name="file" accept=".xls,.xlsx" required>
-        <button type="submit" class="btn btn-sm">Import z externího skladu</button>
-    </form>
-    {% endif %}
 </p>
 <h2>Objednávka {{ order.id }}{% if order.created_by_warehouse_id %} <span class="badge-warehouse" title="Vytvořeno skladem">sklad</span>{% endif %}</h2>
 <p class="order-detail-meta">
     <span>Pobočka: {{ order.branch.name if order.branch else '—' }}{% if order.branch and order.branch.code %} ({{ order.branch.code }}){% endif %}</span>
     <span>Datum: {{ order.created_at | format_datetime }}</span>
     {% if order.created_by_warehouse %}<span>Vytvořil sklad: <strong>{{ order.created_by_warehouse.username }}</strong></span>{% elif order.created_by %}<span>Vytvořil: <strong>{{ order.created_by.username }}</strong></span>{% endif %}
-    <span class="status-badge status-{{ order.status }} js-order-status-badge" id="js-order-status">{{ status_cz(order.status) }}</span>
+    {% set main_status = 'shipped' if order.status in ('verified','error') else order.status %}
+    <span class="status-badge status-{{ main_status }} js-order-status-badge" id="js-order-status">{{ status_cz(main_status) }}</span>
+    {% if order.check_status or order.status in ('verified','error') %}<span class="status-badge status-{{ order.check_status or order.status }}">{{ status_cz(order.check_status or order.status) }}</span>{% endif %}
     <span><strong>Celkem kusů:</strong> <span class="js-order-total-ordered">{{ total_qty | format_qty }}</span> objednáno, <strong><span class="js-order-total-shipped">{{ shipped_qty | format_qty }}</span></strong> odesláno</span>
 </p>
-<form method="post" action="{{ url_for('warehouse_order_status', order_id=order.id) }}" class="form-inline js-warehouse-status-form">
-    <div class="form-group">
-        <label for="status">Stav</label>
-        <select id="status" name="status">
-            <option value="pending" {{ 'selected' if order.status == 'pending' else '' }}>Čeká</option>
-            <option value="partially_shipped" {{ 'selected' if order.status == 'partially_shipped' else '' }}>Částečně odesláno</option>
-            <option value="shipped" {{ 'selected' if order.status == 'shipped' else '' }}>Odesláno</option>
-            <option value="verified" {{ 'selected' if order.status == 'verified' else '' }}>Zkontrolováno</option>
-            <option value="error" {{ 'selected' if order.status == 'error' else '' }}>Chyba kontroly</option>
-        </select>
-    </div>
-    <button type="submit" class="btn">Změnit stav</button>
-</form>
-<div class="table-wrapper" data-order-id="{{ order.id }}">
+<div class="table-wrapper warehouse-order-detail-table" data-order-id="{{ order.id }}">
 <table class="table">
     <thead>
         <tr>
@@ -68,7 +72,7 @@
             <td>{{ "%.2f"|format((i.product.pc or 0) * (i.shipped_quantity or 0)) if i.product and i.product.pc is not none else '—' }}</td>
             <td class="warehouse-note-cell">
                 <form method="post" action="{{ url_for('warehouse_item_note', order_id=order.id, item_id=i.id) }}" class="warehouse-note-form js-warehouse-note-form">
-                    <input type="text" name="warehouse_note" value="{{ i.warehouse_note or '' }}" placeholder="Poznámka k položce…" class="input-warehouse-note">
+                    <input type="text" name="warehouse_note" value="{{ i.warehouse_note or '' }}" placeholder="Pozn." class="input-warehouse-note" maxlength="80">
                     <button type="submit" class="btn btn-sm">Uložit</button>
                 </form>
             </td>
@@ -110,6 +114,7 @@
                 var val = parseFloat(ordered);
                 input.value = (val === Math.floor(val)) ? Math.floor(val) : val;
             }
+            if (form) form.requestSubmit();
         });
     });
 

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Sklad – Příjem zboží{% endblock %}
+{% block content %}
+<p class="order-detail-actions"><a href="{{ url_for('warehouse_dashboard') }}" class="btn btn-back">← Zpět na přehled</a></p>
+<h2>Příjmy zboží (od dodavatelů)</h2>
+<p class="hint"><a href="{{ url_for('warehouse_goods_receipt_new') }}" class="btn btn-primary">Nový příjem zboží</a></p>
+{% if receipts %}
+<div class="table-wrapper">
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Datum</th>
+            <th>Položek</th>
+            <th>Poznámka</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in receipts %}
+        <tr>
+            <td><a href="{{ url_for('warehouse_goods_receipt_detail', receipt_id=r.id) }}">{{ r.id }}</a></td>
+            <td>{{ r.received_at | format_datetime }}</td>
+            <td>{{ r.items|length }}</td>
+            <td>{{ r.note or '—' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p>Zatím žádné příjmy zboží.</p>
+{% endif %}
+{% endblock %}

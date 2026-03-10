@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Import .xls / .xlsx – Blooms{% endblock %}
+{% block head_scripts %}{% endblock %}
+{% block content %}
+<h1 class="mb-4">Import produktů</h1>
+{% if error %}
+<div class="alert alert-danger">{% if "cestu" in (error|lower) or "složce" in (error|lower) or "slozce" in (error|lower) %}Vyberte alespoň jeden soubor .xls nebo .xlsx.{% else %}{{ error }}{% endif %}</div>
+{% endif %}
+<form method="post" action="/import" enctype="multipart/form-data" class="mb-4">
+    {% include '_csrf.html' %}
+    <div class="mb-3">
+        <label for="files" class="form-label">Soubory .xls / .xlsx</label>
+        <input type="file" id="files" name="files" class="form-control" accept=".xls,.xlsx" multiple required>
+    </div>
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <label for="shipping_eur" class="form-label">Doprava (EUR)</label>
+            <input type="text" id="shipping_eur" name="shipping_eur" class="form-control" placeholder="např. 70" title="Cena dopravy v EUR k tomuto importu – použije se pro Cena+doprava a 7% marže+doprava">
+        </div>
+        <div class="col-md-4">
+            <label for="exchange_rate" class="form-label">Kurz EUR→CZK (VIP CZK, Cena obchod)</label>
+            <input type="text" id="exchange_rate" name="exchange_rate" class="form-control" placeholder="např. 25.5" title="Kurz pro VIP CZK a pro D1 (cena obchod = cena + doprava×kurz×1.12×2)">
+        </div>
+    </div>
+    <button type="submit" class="btn btn-success">Spustit import</button>
+    <a href="/import/history" class="btn btn-outline-secondary ms-2">Historie importů</a>
+</form>
+<div class="alert alert-info">
+    <strong>Poznámka:</strong> Produkty jsou identifikovány podle Description + Pot-Size. Dopočty: <strong>Cena+doprava</strong> = sales + doprava/unit_cc; <strong>7% marže+doprava</strong> = (cena+doprava)×1.07; <strong>VIP Eur</strong> = (cena+doprava) + 100/unit_cc; <strong>VIP CZK</strong> = VIP Eur × volitelný kurz; <strong>Cena obchod (D1)</strong> = sales×kurz + (doprava/unit_cc)×kurz×1.12×2; <strong>D4</strong> = průměr(VIP Eur, Sales Price). Doprava (EUR) a Kurz se zadávají výše.
+</div>
+{% endblock %}

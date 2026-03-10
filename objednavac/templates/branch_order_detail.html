@@ -3,7 +3,7 @@
 {% block content %}
 <p class="order-detail-actions">
     <a href="{{ url_for('branch_orders') }}" class="btn btn-back">← Zpět na objednávky</a>
-    {% if order.status in ('shipped', 'partially_shipped') %}
+    {% if order.status in ('shipped', 'partially_shipped', 'verified', 'error') %}
     <a href="{{ url_for('branch_order_check', order_id=order.id) }}" class="btn btn-sm">Kontrola</a>
     {% endif %}
 </p>
@@ -11,7 +11,8 @@
 <p class="order-detail-meta">
     <span>Datum: {{ order.created_at | format_datetime }}</span>
     {% if order.created_by_warehouse %}<span>Vytvořil sklad: <strong>{{ order.created_by_warehouse.username }}</strong></span>{% elif order.created_by %}<span>Vytvořil: <strong>{{ order.created_by.username }}</strong></span>{% endif %}
-    <span class="status-badge status-{{ order.status }}">{{ status_cz(order.status) }}</span>
+    {% set main_status = 'shipped' if order.status in ('verified','error') else order.status %}
+    <span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if order.check_status or order.status in ('verified','error') %}<span class="status-badge status-{{ order.check_status or order.status }}">{{ status_cz(order.check_status or order.status) }}</span>{% endif %}
     <span><strong>Celkem kusů:</strong> {{ total_qty | format_qty }} objednáno, <strong>{{ shipped_qty | format_qty }}</strong> odesláno</span>
 </p>
 <div class="table-wrapper">

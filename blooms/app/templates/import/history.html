@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Historie importu – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">Historie importu</h1>
+{% if success %}
+<div class="alert alert-success">Import byl úspěšně dokončen.</div>
+{% endif %}
+<a href="/import" class="btn btn-success mb-3">Novy import</a>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Datum</th>
+            <th>Složka</th>
+            <th>Soubory</th>
+            <th>Řádky</th>
+            <th>Nové</th>
+            <th>Existující</th>
+            <th>Chyby</th>
+            <th>Status</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for b in batches %}
+        <tr>
+            <td>{{ b.imported_at.strftime('%d.%m.%Y %H:%M') if b.imported_at else '-' }}</td>
+            <td class="text-truncate" style="max-width:200px" title="{{ b.source_folder }}">{{ b.source_folder }}</td>
+            <td>{{ b.total_files }}</td>
+            <td>{{ b.total_rows }}</td>
+            <td>{{ b.new_products }}</td>
+            <td>{{ b.existing_products }}</td>
+            <td>{{ b.error_rows }}</td>
+            <td><span class="badge bg-{{ 'success' if b.status == 'completed' else 'warning' if b.status == 'running' else 'danger' }}">{{ b.status }}</span></td>
+            <td><a href="/import/history/{{ b.id }}" class="btn btn-sm btn-outline-primary">Detail</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-muted">Žádné importy.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

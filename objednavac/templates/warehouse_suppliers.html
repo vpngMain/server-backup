@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Sklad – Dodavatelé{% endblock %}
+{% block content %}
+<p class="order-detail-actions"><a href="{{ url_for('warehouse_dashboard') }}" class="btn btn-back">← Zpět na přehled</a></p>
+<h2>Dodavatelé</h2>
+
+{% if edit_supplier and user.role == 'admin' %}
+<form method="post" action="{{ url_for('warehouse_supplier_edit', supplier_id=edit_supplier.id) }}" class="form-stacked warehouse-suppliers-form">
+    <div class="form-group">
+        <label for="edit_supplier_id">Kód dodavatele</label>
+        <input type="text" id="edit_supplier_id" name="supplier_id" class="input-warehouse" required maxlength="100" value="{{ edit_supplier.supplier_id }}">
+    </div>
+    <div class="form-group">
+        <label for="edit_supplier_name">Název dodavatele</label>
+        <input type="text" id="edit_supplier_name" name="supplier_name" class="input-warehouse" required maxlength="255" value="{{ edit_supplier.supplier_name }}">
+    </div>
+    <button type="submit" class="btn btn-primary">Uložit</button>
+    <a href="{{ url_for('warehouse_suppliers') }}" class="btn btn-secondary">Zrušit</a>
+</form>
+{% else %}
+<form method="post" class="form-stacked warehouse-suppliers-form">
+    <div class="form-group">
+        <label for="supplier_id">Kód dodavatele (Supplier ID)</label>
+        <input type="text" id="supplier_id" name="supplier_id" class="input-warehouse" required maxlength="100" placeholder="např. DOD01">
+    </div>
+    <div class="form-group">
+        <label for="supplier_name">Název dodavatele (Supplier name)</label>
+        <input type="text" id="supplier_name" name="supplier_name" class="input-warehouse" required maxlength="255" placeholder="Název dodavatele">
+    </div>
+    <button type="submit" class="btn btn-primary">Přidat dodavatele</button>
+</form>
+{% endif %}
+
+<div class="warehouse-suppliers-list" style="margin-top: 2rem;">
+{% if suppliers %}
+<div class="table-wrapper">
+<table class="table">
+    <thead>
+        <tr>
+            <th>Kód</th>
+            <th>Název</th>
+            <th>Sklad</th>
+            {% if user.role == 'admin' %}<th>Akce</th>{% endif %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in suppliers %}
+        <tr>
+            <td>{{ s.supplier_id }}</td>
+            <td>{{ s.supplier_name }}</td>
+            <td>{{ s.warehouse.name if s.warehouse else '—' }}</td>
+            {% if user.role == 'admin' %}
+            <td>
+                <a href="{{ url_for('warehouse_suppliers', edit=s.id) }}" class="btn btn-sm">Upravit</a>
+                <form method="post" action="{{ url_for('warehouse_supplier_delete', supplier_id=s.id) }}" class="inline-form" onsubmit="return confirm('Opravdu smazat dodavatele {{ s.supplier_name }}?');">
+                    <button type="submit" class="btn btn-sm">Smazat</button>
+                </form>
+            </td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p>Zatím žádní dodavatelé. Přidejte prvního pomocí formuláře výše.</p>
+{% endif %}
+</div>
+{% endblock %}

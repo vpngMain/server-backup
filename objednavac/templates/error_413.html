@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Soubor je příliš velký{% endblock %}
+{% block content %}
+<div class="error-page">
+    <h2>Request Entity Too Large (413)</h2>
+    <p class="error-message">{{ message }}</p>
+    <p><a href="{{ request.referrer or url_for('admin_import') }}" class="btn">Zpět</a></p>
+</div>
+{% endblock %}

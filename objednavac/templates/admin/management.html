@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Admin – Správa{% endblock %}
+{% block content %}
+<p class="order-detail-actions"><a href="{{ url_for('admin_dashboard') }}" class="btn btn-back">← Zpět na přehled</a></p>
+<h2>Správa</h2>
+<p class="hint">Vyberte sekci: uživatelé, pobočky, sklady nebo dodavatelé.</p>
+<div class="dashboard-cards-grid" style="margin-top: 1.5rem;">
+    <a href="{{ url_for('admin_users') }}" class="dashboard-stat-card dashboard-stat-total">
+        <span class="dashboard-stat-icon" aria-hidden="true">👥</span>
+        <div class="dashboard-stat-content">
+            <span class="dashboard-stat-label">Uživatelé</span>
+        </div>
+    </a>
+    <a href="{{ url_for('admin_branches') }}" class="dashboard-stat-card dashboard-stat-pending">
+        <span class="dashboard-stat-icon" aria-hidden="true">🏢</span>
+        <div class="dashboard-stat-content">
+            <span class="dashboard-stat-label">Pobočky</span>
+        </div>
+    </a>
+    <a href="{{ url_for('admin_warehouses') }}" class="dashboard-stat-card dashboard-stat-partially">
+        <span class="dashboard-stat-icon" aria-hidden="true">📦</span>
+        <div class="dashboard-stat-content">
+            <span class="dashboard-stat-label">Sklady</span>
+        </div>
+    </a>
+    <a href="{{ url_for('warehouse_suppliers') }}" class="dashboard-stat-card dashboard-stat-shipped">
+        <span class="dashboard-stat-icon" aria-hidden="true">📦</span>
+        <div class="dashboard-stat-content">
+            <span class="dashboard-stat-label">Dodavatelé</span>
+        </div>
+    </a>
+</div>
+{% endblock %}

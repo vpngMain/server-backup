@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Sklad – Odběratelé (pobočky){% endblock %}
+{% block content %}
+<h2>Odběratelé (pobočky)</h2>
+<p class="hint">Seznam poboček – odběratelů objednávek. Pro úpravy poboček použijte admin rozhraní.</p>
+{% if branches %}
+<table class="table">
+    <thead>
+        <tr>
+            <th>Název</th>
+            <th>Kód</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for b in branches %}
+        <tr>
+            <td>{{ b.name }}</td>
+            <td>{{ b.code or '—' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Žádné pobočky.</p>
+{% endif %}
+{% endblock %}

@@ -23,15 +23,20 @@ function orderCheckInit(options) {
             body: 'scan=' + encodeURIComponent(val)
         }).then(function(r) { return r.json(); }).then(function(data) {
             if (data.ok) {
+                var totalShown = data.total_scanned_for_item != null ? data.total_scanned_for_item : data.scanned_quantity;
                 if (feedback) {
-                    feedback.textContent = data.result === 'correct' ? 'Správně' : 'Nesprávně';
+                    var msg = data.result === 'correct' ? 'Správně' : 'Nesprávně';
+                    if (data.already_scanned) {
+                        msg = 'Již pípáno, celkem ' + totalShown + ' ks. ' + msg;
+                    }
+                    feedback.textContent = msg;
                     feedback.className = 'scan-feedback ' + (data.result === 'correct' ? 'feedback-correct' : 'feedback-incorrect');
                 }
                 var row = document.getElementById('check-row-' + data.order_item_id);
                 if (row) {
                     row.className = data.result === 'correct' ? 'item-check-correct' : 'item-check-incorrect';
                     var td = row.querySelector('.check-result-cell');
-                    if (td) td.textContent = data.scanned_quantity + ' skenováno → ' + (data.result === 'correct' ? 'Správně' : 'Nesprávně');
+                    if (td) td.textContent = totalShown + ' skenováno → ' + (data.result === 'correct' ? 'Správně' : 'Nesprávně');
                 }
                 if (scanInput) scanInput.value = '';
                 if (data.all_checked && feedback) {

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Uživatelé – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">Uživatelé</h1>
+<a href="/users/new" class="btn btn-success mb-3">Nový uživatel</a>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Uživatel</th>
+            <th>Role</th>
+            <th>Aktivní</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.username }}</td>
+            <td>{{ u.role }}</td>
+            <td>{% if u.is_active %}Ano{% else %}Ne{% endif %}</td>
+            <td><a href="/users/{{ u.id }}/edit" class="btn btn-sm btn-outline-primary">Upravit</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-muted">Žádní uživatelé.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

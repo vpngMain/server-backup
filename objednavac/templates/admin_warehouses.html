@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Admin – Sklady{% endblock %}
+{% block content %}
+<h2>Sklady</h2>
+<p class="hint">Sklad = místo odesílání. Uživatelé s rolí „warehouse“ se přiřazují ke skladu v sekci Uživatelé; mohou mít více skladů a přepínat mezi nimi.</p>
+<form method="post" action="{{ url_for('admin_warehouses') }}" class="form-inline">
+    <input type="hidden" name="action" value="create">
+    <div class="form-group">
+        <label for="name">Název skladu</label>
+        <input type="text" id="name" name="name" required>
+    </div>
+    <div class="form-group">
+        <label for="code">Kód skladu (volitelné)</label>
+        <input type="text" id="code" name="code" maxlength="50" placeholder="např. SKL01">
+    </div>
+    <button type="submit" class="btn btn-primary">Přidat sklad</button>
+</form>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Název</th>
+            <th>Kód</th>
+            <th>Akce</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for w in warehouses %}
+        <tr>
+            {% if w.id == edit_warehouse_id %}
+            <td colspan="3">
+                <form method="post" action="{{ url_for('admin_warehouse_edit', warehouse_id=w.id) }}" class="form-inline">
+                    <div class="form-group">
+                        <label>Název</label>
+                        <input type="text" name="name" value="{{ w.name }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Kód skladu</label>
+                        <input type="text" name="code" value="{{ w.code or '' }}" maxlength="50" placeholder="volitelné">
+                    </div>
+                    <button type="submit" class="btn btn-sm">Uložit</button>
+                    <a href="{{ url_for('admin_warehouses') }}" class="btn btn-sm">Zrušit</a>
+                </form>
+            </td>
+            {% else %}
+            <td>{{ w.name }}</td>
+            <td>{{ w.code or '—' }}</td>
+            <td>
+                <a href="{{ url_for('admin_warehouses') }}?edit={{ w.id }}" class="btn btn-sm">Upravit</a>
+                <form method="post" action="{{ url_for('admin_warehouse_delete', warehouse_id=w.id) }}" class="inline-form" onsubmit="return confirm('Smazat sklad {{ w.name }}?');">
+                    <button type="submit" class="btn btn-sm">Smazat</button>
+                </form>
+            </td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ customer.company_name }} – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">{{ customer.company_name }}</h1>
+<a href="/customers" class="btn btn-outline-secondary mb-2">Zpět na seznam</a>
+<a href="/customers/{{ customer.id }}/edit" class="btn btn-primary mb-2">Upravit</a>
+<div class="card">
+    <div class="card-body">
+        <p><strong>IČO:</strong> {{ customer.ico or '-' }} &nbsp; <strong>DIČ:</strong> {{ customer.dic or '-' }}</p>
+        <p class="mb-1"><strong>Sídlo:</strong></p>
+        <p class="ms-3 mb-2">{{ customer.street or '-' }}<br>{{ (customer.zip_code or '') + ' ' + (customer.city or '') }}<br>{{ customer.country or '-' }}</p>
+        {% if customer.provozovna_street or customer.provozovna_city or customer.provozovna_zip_code or customer.provozovna_country %}
+        <p class="mb-1"><strong>Provozovna:</strong></p>
+        <p class="ms-3 mb-2">{{ customer.provozovna_street or '-' }}<br>{{ (customer.provozovna_zip_code or '') + ' ' + (customer.provozovna_city or '') }}<br>{{ customer.provozovna_country or '-' }}</p>
+        {% endif %}
+        <p><strong>Kontakt:</strong> {{ customer.contact_person or '-' }}</p>
+        <p><strong>Telefon:</strong> {{ customer.phone or '-' }}</p>
+        <p><strong>Email:</strong> {{ customer.email or '-' }}</p>
+        <p><strong>Cenová hladina:</strong> {{ customer.price_level or '—' }} {% if customer.price_level %}({{ {'VIP_EUR':'VIP Eur','VIP_CZK':'VIP CZK','D4':'D4','D1':'D1 (obchod)'}.get(customer.price_level, customer.price_level) }}){% endif %}</p>
+        {% if customer.note %}<p><strong>Poznámka:</strong> {{ customer.note }}</p>{% endif %}
+    </div>
+</div>
+<h5 class="mt-4">Historie vydaných dodávek</h5>
+{% set issued = customer.delivery_notes|selectattr('status', 'equalto', 'issued')|list %}
+{% if issued %}
+<table class="table table-sm">
+    <thead><tr><th>Číslo</th><th>Datum vystavení</th><th>Datum dodání</th><th>Celkem</th><th></th></tr></thead>
+    <tbody>
+    {% for dn in issued|sort(attribute='created_at', reverse=True) %}
+    <tr>
+        <td>{{ dn.document_number }}</td>
+        <td>{{ dn.issue_date }}</td>
+        <td>{{ dn.delivery_date }}</td>
+        <td>{{ dn.total_amount or '-' }}</td>
+        <td><a href="/delivery/{{ dn.id }}">Detail</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="text-muted">Zatím žádné vydané dodací listy.</p>
+{% endif %}
+{% endblock %}

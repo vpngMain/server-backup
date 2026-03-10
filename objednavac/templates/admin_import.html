@@ -39,6 +39,11 @@
     </form>
 </section>
 
+<section class="card-section" style="margin-bottom: 2rem;">
+    <h3>Import EAN z katalogu</h3>
+    <p class="hint">Přiřazení EAN k produktům podle katalog.xlsx (sloupce nazev, kod_zbozi, ean). <a href="{{ url_for('admin_import_katalog_ean') }}">Otevřít import EAN z katalogu</a>.</p>
+</section>
+
 <section class="card-section">
     <h3>Import výdejek</h3>
     <p class="hint">CSV s hlavičkou. Sloupce: <strong>order_id</strong>, <strong>order_item_id</strong>, <strong>shipped_quantity</strong>. Aktualizuje odeslané množství u položek objednávky. Validace: objednávka a položka musí existovat.</p>

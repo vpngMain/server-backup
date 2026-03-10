@@ -2,7 +2,7 @@
 {% block title %}Admin – Produkty{% endblock %}
 {% block content %}
 <h2>Produkty</h2>
-<p class="hint">Produkty se mění pouze přes Import. Počet: {{ products|length }}</p>
+<p class="hint">Produkty se mění pouze přes Import.{% if total is defined %} Stránka {{ page }} / {{ total_pages }}, celkem {{ total }} produktů.{% else %} Zobrazeno: {{ products|length }}{% endif %}</p>
 <div class="products-filters">
     <div class="search-form">
         <label for="admin-live-search">Vyhledávání (název, sku)</label>
@@ -72,16 +72,42 @@
                 {% if p.pc is not none %}
                 <dt>Prodejní cena (pc)</dt><dd>{{ "%.2f"|format(p.pc) }}</dd>
                 {% endif %}
+                <dt>Nákupní cena (nc)</dt><dd>{{ "%.2f"|format(p.nc) if p.nc is not none else '—' }}</dd>
                 <dt>Interní</dt><dd><span class="js-internal-label">{{ 'Ano' if p.is_internal else 'Ne' }}</span></dd>
             </dl>
             <form method="post" action="{{ url_for('admin_product_set_internal', product_id=p.id) }}" class="product-card-form js-set-internal-form" data-product-id="{{ p.id }}">
                 <input type="hidden" name="internal" value="{{ '0' if p.is_internal else '1' }}">
                 <button type="submit" class="btn btn-sm js-internal-btn {{ 'btn-primary' if p.is_internal else '' }}">{{ 'Zrušit interní' if p.is_internal else 'Označit jako interní' }}</button>
             </form>
+            <div class="product-card-extra-eans">
+                <span class="label">Další EAN</span>
+                {% for pe in p.extra_eans %}
+                <span class="extra-ean-item">{{ pe.ean }}
+                    <form method="post" action="{{ url_for('admin_product_remove_ean', product_id=p.id, ean_id=pe.id) }}" class="inline-form">
+                        <button type="submit" class="btn btn-sm">Odebrat</button>
+                    </form>
+                </span>
+                {% endfor %}
+                <form method="post" action="{{ url_for('admin_product_add_ean', product_id=p.id) }}" class="form-inline form-add-ean">
+                    <input type="text" name="ean" placeholder="Nový EAN" maxlength="50" class="input-ean">
+                    <button type="submit" class="btn btn-sm">Přidat EAN</button>
+                </form>
+            </div>
         </div>
     </article>
     {% endfor %}
 </div>
+{% if total_pages is defined and total_pages > 1 %}
+<nav class="pagination" aria-label="Stránkování produktů">
+    {% if page > 1 %}
+    <a href="{{ url_for('admin_products', page=page-1, q=search_q or none, group=group_filter or none, brand=brand_filter or none, category=category_filter or none, internal=internal_filter or none) }}" class="btn btn-sm">← Předchozí</a>
+    {% endif %}
+    <span class="pagination-info">Stránka {{ page }} / {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="{{ url_for('admin_products', page=page+1, q=search_q or none, group=group_filter or none, brand=brand_filter or none, category=category_filter or none, internal=internal_filter or none) }}" class="btn btn-sm">Další →</a>
+    {% endif %}
+</nav>
+{% endif %}
 {% else %}
 <p>Žádné produkty{% if search_q or group_filter or brand_filter or category_filter or internal_filter %} nevyhovují filtrům. <a href="{{ url_for('admin_products') }}">Zobrazit vše</a>{% else %}. Použijte <a href="{{ url_for('admin_import') }}">Import</a>{% endif %}.</p>
 {% endif %}
@@ -99,6 +125,7 @@
         if (c) params.set('category', c);
         if (i) params.set('internal', i);
         if (q) params.set('q', q);
+        params.set('page', '1');
         window.location.href = '{{ url_for("admin_products") }}' + (params.toString() ? '?' + params.toString() : '');
     }
     window.applyUrlFilters = applyUrlFilters;

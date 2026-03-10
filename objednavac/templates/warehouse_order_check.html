@@ -7,9 +7,15 @@
 <h2>Kontrola objednávky {{ order.id }}</h2>
 <p class="order-detail-meta">
     Pobočka: {{ order.branch.name if order.branch else '—' }}
-    <span class="status-badge status-{{ order.status }}">{{ status_cz(order.status) }}</span>
+    {% set main_status = 'shipped' if order.status in ('verified','error') else order.status %}
+    <span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if order.check_status or order.status in ('verified','error') %}<span class="status-badge status-{{ order.check_status or order.status }}">{{ status_cz(order.check_status or order.status) }}</span>{% endif %}
 </p>
-<p class="order-check-help">Skenujte ve formátu <strong>množství*EAN</strong> (např. 3*8591234567890).</p>
+<p class="order-check-help">Skenujte ve formátu <strong>množství*EAN</strong> (např. 3*8591234567890). Můžete použít kameru nebo ruční vstup.</p>
+<div id="scanner-wrapper" class="scanner-wrapper" style="display:none;">
+    <div id="scanner-container" class="scanner-container"></div>
+    <p class="scanner-hint">Namiřte na čárový kód (EAN). Po rozpoznání se vyplní pole níže.</p>
+</div>
+<button type="button" id="scanner-toggle" class="btn btn-secondary btn-scanner-toggle">Zapnout kameru</button>
 <div class="order-check-scan-row">
     <label for="scan-input" class="sr-only">Sken</label>
     <input type="text" id="scan-input" class="input-scan" placeholder="3*8591234567890" autocomplete="off" autofocus>
@@ -44,12 +50,67 @@
     </tbody>
 </table>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/1.0.0-beta.2/quagga.min.js"></script>
 <script src="{{ url_for('static', filename='js/order_check.js') }}"></script>
 <script>
 (function() {
     var orderId = {{ order.id }};
     var scanInput = document.getElementById('scan-input');
     var feedback = document.getElementById('scan-feedback');
+    var scannerWrapper = document.getElementById('scanner-wrapper');
+    var scannerToggle = document.getElementById('scanner-toggle');
+    var scannerActive = false;
+
+    function startScanner() {
+        if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+            if (feedback) feedback.textContent = 'Kamera není v prohlížeči podporována (použijte HTTPS nebo localhost).';
+            return;
+        }
+        scannerWrapper.style.display = 'block';
+        scannerToggle.textContent = 'Vypnout kameru';
+        scannerActive = true;
+        var target = document.getElementById('scanner-container');
+        if (typeof Quagga !== 'undefined') {
+            Quagga.init({
+                inputStream: { name: 'Live', type: 'LiveStream', target: target, constraints: { facingMode: 'environment' } },
+                locator: { patchSize: 'medium', halfSample: true },
+                numOfWorkers: 2,
+                decoder: { readers: ['ean_reader', 'ean_8_reader'] },
+                locate: true
+            }, function(err) {
+                if (err) {
+                    if (feedback) feedback.textContent = 'Kamera se nepodařila spustit: ' + (err.message || err);
+                    return;
+                }
+                Quagga.start();
+                Quagga.onDetected(function(data) {
+                    var code = data.codeResult && data.codeResult.code;
+                    if (code && scanInput) {
+                        scanInput.value = code;
+                        scanInput.focus();
+                        if (feedback) feedback.textContent = 'Naskenováno: ' + code + ' – upravte množství a stiskněte Enter.';
+                    }
+                });
+            });
+        }
+    }
+
+    function stopScanner() {
+        scannerToggle.textContent = 'Zapnout kameru';
+        scannerWrapper.style.display = 'none';
+        scannerActive = false;
+        if (typeof Quagga !== 'undefined') {
+            Quagga.offDetected();
+            Quagga.stop();
+        }
+    }
+
+    if (scannerToggle) {
+        scannerToggle.addEventListener('click', function() {
+            if (scannerActive) stopScanner(); else startScanner();
+        });
+    }
+
     if (typeof orderCheckInit === 'function') {
         orderCheckInit({ orderId: orderId, scanInput: scanInput, feedback: feedback });
     } else {
@@ -65,13 +126,16 @@
                     body: 'scan=' + encodeURIComponent(val)
                 }).then(function(r) { return r.json(); }).then(function(data) {
                     if (data.ok) {
-                        feedback.textContent = data.result === 'correct' ? 'Správně' : 'Nesprávně';
+                        var totalShown = data.total_scanned_for_item != null ? data.total_scanned_for_item : data.scanned_quantity;
+                        var msg = data.result === 'correct' ? 'Správně' : 'Nesprávně';
+                        if (data.already_scanned) msg = 'Již pípáno, celkem ' + totalShown + ' ks. ' + msg;
+                        feedback.textContent = msg;
                         feedback.className = 'scan-feedback ' + (data.result === 'correct' ? 'feedback-correct' : 'feedback-incorrect');
                         var row = document.getElementById('check-row-' + data.order_item_id);
                         if (row) {
                             row.className = data.result === 'correct' ? 'item-check-correct' : 'item-check-incorrect';
                             var td = row.querySelector('.check-result-cell');
-                            if (td) td.textContent = data.scanned_quantity + ' skenováno → ' + (data.result === 'correct' ? 'Správně' : 'Nesprávně');
+                            if (td) td.textContent = totalShown + ' skenováno → ' + (data.result === 'correct' ? 'Správně' : 'Nesprávně');
                         }
                         scanInput.value = '';
                         if (data.all_checked) feedback.textContent += '. ' + (data.all_correct ? 'Objednávka zkontrolována.' : 'Zjištěna chyba.');

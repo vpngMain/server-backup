@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Upravit řádek {{ row.row_index + 1 }} – {{ import_file.filename }}{% endblock %}
+{% block content %}
+<h1 class="mb-4">Upravit řádek {{ row.row_index + 1 }}</h1>
+<p class="text-muted">Soubor: {{ import_file.filename }} | Řádek: <strong>{{ data.get('description', '–') }}</strong> {{ data.get('pot_size', '') }} | Akce: <span class="badge bg-{% if row.action_taken == 'new' %}success{% elif row.action_taken == 'matched' %}primary{% else %}secondary{% endif %}">{{ row.action_taken }}</span></p>
+<a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id) }}" class="btn btn-outline-secondary mb-3">← Zpět na report souboru</a>
+
+<form method="post" action="{{ url_for('import.row_edit', batch_id=batch_id, file_id=file_id, row_id=row.id) }}">
+    {% include '_csrf.html' %}
+    <div class="card mb-4">
+        <div class="card-header"><strong>Editovatelná pole</strong> (ceny a EAN) – úpravy se zapíší do produktu a do dat importu. Description, Pot-Size, Qty atd. nelze zde měnit.</div>
+        <div class="card-body">
+            <div class="row g-3">
+                {% for key, label in row_edit_fields %}
+                <div class="col-md-6 col-lg-4">
+                    <label for="f_{{ key }}" class="form-label small">{{ label }}</label>
+                    <input type="text" class="form-control form-control-sm" id="f_{{ key }}" name="{{ key }}"
+                           value="{{ data.get(key, '') }}"
+                           placeholder="–">
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="card-footer">
+            <button type="submit" class="btn btn-success">Uložit řádek a produkt</button>
+            <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id) }}" class="btn btn-outline-secondary ms-2">Zrušit</a>
+        </div>
+    </div>
+</form>
+{% endblock %}

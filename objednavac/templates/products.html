@@ -96,6 +96,17 @@
     {% endfor %}
     {% endfor %}
 </div>
+{% if total_pages is defined and total_pages > 1 %}
+<nav class="pagination" aria-label="Stránkování produktů">
+    {% if page > 1 %}
+    <a href="{{ url_for('index', page=page-1, q=search_q or none, group=group_filter or none, brand=brand_filter or none, category=category_filter or none) }}" class="btn btn-sm">← Předchozí</a>
+    {% endif %}
+    <span class="pagination-info">Stránka {{ page }} / {{ total_pages }} (celkem {{ total }})</span>
+    {% if page < total_pages %}
+    <a href="{{ url_for('index', page=page+1, q=search_q or none, group=group_filter or none, brand=brand_filter or none, category=category_filter or none) }}" class="btn btn-sm">Další →</a>
+    {% endif %}
+</nav>
+{% endif %}
 <p class="muted" id="live-search-no-results" style="display: none;">Žádný produkt nevyhovuje filtru.</p>
 {% else %}
 <p>Žádné produkty{% if search_q %} nevyhovují hledání „{{ search_q }}“. <a href="{{ url_for('index') }}">Zobrazit vše</a>{% else %}. Administrátor může naimportovat produkty (Import).{% endif %}</p>
@@ -112,6 +123,7 @@
         if (b) params.set('brand', b);
         if (c) params.set('category', c);
         if (q) params.set('q', q);
+        params.set('page', '1');
         window.location.href = '{{ url_for("index") }}' + (params.toString() ? '?' + params.toString() : '');
     }
     window.applyUrlFilters = applyUrlFilters;
@@ -249,19 +261,43 @@
         }
         if (noResults) noResults.style.display = (visible === 0 && cards.length > 0) ? 'block' : 'none';
     }
-    function syncSearchToUrl() {
+    function submitSearchToServer() {
         var q = (input.value || '').trim();
-        var params = new URLSearchParams(window.location.search);
-        if (q) params.set('q', q); else params.delete('q');
-        var newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-        var currentUrl = window.location.pathname + window.location.search;
-        if (newUrl !== currentUrl) {
-            if (!q) { window.location = newUrl; return; }
-            history.replaceState(null, '', newUrl);
-        }
+        var g = (document.getElementById('filter-group') && document.getElementById('filter-group').value) || '';
+        var b = (document.getElementById('filter-brand') && document.getElementById('filter-brand').value) || '';
+        var c = (document.getElementById('filter-category') && document.getElementById('filter-category').value) || '';
+        var params = new URLSearchParams();
+        if (q) params.set('q', q);
+        params.set('page', '1');
+        if (g) params.set('group', g);
+        if (b) params.set('brand', b);
+        if (c) params.set('category', c);
+        window.location.href = '{{ url_for("index") }}' + (params.toString() ? '?' + params.toString() : '');
     }
-    var urlSyncTimer;
-    input.addEventListener('input', function() { filter(); clearTimeout(urlSyncTimer); urlSyncTimer = setTimeout(syncSearchToUrl, 400); });
+    var searchSubmitTimer;
+    input.addEventListener('input', function() {
+        filter();
+        clearTimeout(searchSubmitTimer);
+        var q = (input.value || '').trim();
+        if (q) {
+            searchSubmitTimer = setTimeout(submitSearchToServer, 500);
+        } else {
+            var params = new URLSearchParams(window.location.search);
+            params.delete('q');
+            params.set('page', '1');
+            var newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+            if (window.location.search !== (params.toString() ? '?' + params.toString() : '')) {
+                window.location.href = newUrl;
+            }
+        }
+    });
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            clearTimeout(searchSubmitTimer);
+            submitSearchToServer();
+        }
+    });
     input.addEventListener('keyup', filter);
     filter();
 })();

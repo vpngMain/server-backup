@@ -2,7 +2,7 @@
 {% block title %}Admin – Uživatelé{% endblock %}
 {% block content %}
 <h2>Účty uživatelů</h2>
-<p class="hint">Uživatel = přihlašovací účet. Uživatel s rolí „branch“ musí být přiřazen k alespoň jedné pobočce; může jich mít více a při objednávání si vybere jednu.</p>
+<p class="hint">Uživatel = přihlašovací účet. Uživatel s rolí „branch“ musí být přiřazen k alespoň jedné pobočce; s rolí „warehouse“ k alespoň jednomu skladu. Může jich mít více a přepínat mezi nimi.</p>
 <form method="post" action="{{ url_for('admin_users') }}" class="form-inline" id="form-create-user" onsubmit="return validateBranchForm(this);">
     <input type="hidden" name="action" value="create">
     <div class="form-group">
@@ -30,6 +30,15 @@
         </div>
         <p class="hint">Uživatel musí být přiřazen k alespoň jedné pobočce.</p>
     </div>
+    <div class="form-group" id="warehouse-group">
+        <span class="label">Sklady (může být více)</span>
+        <div class="warehouse-checkboxes">
+            {% for w in warehouses %}
+            <label class="warehouse-checkbox"><input type="checkbox" name="warehouse_ids" value="{{ w.id }}"> {{ w.name }}{% if w.code %} ({{ w.code }}){% endif %}</label>
+            {% endfor %}
+        </div>
+        <p class="hint">Uživatel musí být přiřazen k alespoň jednomu skladu.</p>
+    </div>
     <button type="submit" class="btn btn-primary">Přidat uživatele</button>
 </form>
 <table class="table">
@@ -38,6 +47,7 @@
             <th>Účet</th>
             <th>Role</th>
             <th>Pobočka</th>
+            <th>Sklad</th>
             <th>Akce</th>
         </tr>
     </thead>
@@ -47,6 +57,7 @@
             <td>{{ u.username }}</td>
             <td>{{ u.role }}</td>
             <td>{{ u.branch_names_display() if u.role == 'branch' else '—' }}</td>
+            <td>{{ u.warehouse_names_display() if u.role == 'warehouse' else '—' }}</td>
             <td>
                 {% if u.id == edit_user_id %}
                 <a href="{{ url_for('admin_users') }}" class="btn btn-sm">Zrušit úpravu</a>
@@ -60,7 +71,7 @@
         </tr>
         {% if u.id == edit_user_id %}
         <tr class="edit-row">
-            <td colspan="4">
+            <td colspan="5">
                 <form method="post" action="{{ url_for('admin_user_edit', user_id=u.id) }}" class="form-inline form-edit-user" onsubmit="return validateBranchForm(this);">
                     <div class="form-group">
                         <label>Uživatelské jméno</label>
@@ -84,6 +95,15 @@
                         </div>
                     </div>
                     <div class="form-group">
+                        <span class="label">Sklady (může být více)</span>
+                        <div class="warehouse-checkboxes">
+                            {% set user_warehouse_ids = u.get_warehouse_ids() %}
+                            {% for w in warehouses %}
+                            <label class="warehouse-checkbox"><input type="checkbox" name="warehouse_ids" value="{{ w.id }}" {{ 'checked' if w.id in user_warehouse_ids else '' }}> {{ w.name }}{% if w.code %} ({{ w.code }}){% endif %}</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="form-group">
                         <label>Nové heslo (prázdné = beze změny)</label>
                         <input type="text" name="new_password" placeholder="Viditelné pro admina">
                     </div>
@@ -97,18 +117,31 @@
 </table>
 </div>
 <script>
-document.getElementById('role').addEventListener('change', function() {
-    document.getElementById('branch-group').style.display = this.value === 'branch' ? 'block' : 'none';
-});
-document.getElementById('branch-group').style.display = document.getElementById('role').value === 'branch' ? 'block' : 'none';
+function toggleRoleGroups() {
+    var role = document.getElementById('role').value;
+    document.getElementById('branch-group').style.display = role === 'branch' ? 'block' : 'none';
+    document.getElementById('warehouse-group').style.display = role === 'warehouse' ? 'block' : 'none';
+}
+document.getElementById('role').addEventListener('change', toggleRoleGroups);
+toggleRoleGroups();
 
 function validateBranchForm(form) {
     var roleSelect = form.querySelector('select[name="role"]');
-    if (!roleSelect || roleSelect.value !== 'branch') return true;
-    var checked = form.querySelectorAll('input[name="branch_ids"]:checked');
-    if (checked.length === 0) {
-        alert('Uživatel s rolí branch musí být přiřazen k alespoň jedné pobočce.');
-        return false;
+    if (!roleSelect) return true;
+    var role = roleSelect.value;
+    if (role === 'branch') {
+        var branchChecked = form.querySelectorAll('input[name="branch_ids"]:checked');
+        if (branchChecked.length === 0) {
+            alert('Uživatel s rolí branch musí být přiřazen k alespoň jedné pobočce.');
+            return false;
+        }
+    }
+    if (role === 'warehouse') {
+        var whChecked = form.querySelectorAll('input[name="warehouse_ids"]:checked');
+        if (whChecked.length === 0) {
+            alert('Uživatel s rolí warehouse musí být přiřazen k alespoň jednomu skladu.');
+            return false;
+        }
     }
     return true;
 }

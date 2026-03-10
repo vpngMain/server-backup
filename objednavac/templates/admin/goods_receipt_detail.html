@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Admin – Příjem zboží {{ receipt.id }}{% endblock %}
+{% block content %}
+<section class="receipt-detail receipt-detail-admin">
+<p class="order-detail-actions">
+    <a href="{{ url_for('admin_goods_receipts') }}" class="btn btn-back">← Zpět na přehled</a>
+</p>
+<h2>Příjem zboží {{ receipt.id }}</h2>
+<div class="receipt-detail-meta order-detail-meta">
+    <p class="receipt-meta-row">
+        <span><strong>ID:</strong> {{ receipt.id }}</span>
+        <span><strong>Sklad:</strong> {{ receipt.warehouse.name if receipt.warehouse else '—' }}{% if receipt.warehouse and receipt.warehouse.code %} ({{ receipt.warehouse.code }}){% endif %}</span>
+        <span><strong>Dodavatel:</strong> {{ receipt.supplier.supplier_name if receipt.supplier else '—' }}{% if receipt.supplier %} ({{ receipt.supplier.supplier_id }}){% endif %}</span>
+    </p>
+    <p class="receipt-meta-row">
+        <span><strong>Datum vytvoření:</strong> {{ receipt.received_at | format_datetime }}</span>
+    </p>
+</div>
+{% if receipt.items %}
+<div class="table-wrapper receipt-items-table">
+<table class="table">
+    <thead>
+        <tr>
+            <th>Produkt</th>
+            <th>Kód zboží</th>
+            <th>EAN</th>
+            <th>Množství</th>
+            <th>nc</th>
+            <th>pc</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for it in receipt.items %}
+        <tr>
+            <td>{{ it.product.nazev if it.product else '—' }}</td>
+            <td>{{ it.product.kod_zbozi if it.product else '—' }}</td>
+            <td>{{ it.product.ean if it.product else '—' }}</td>
+            <td>{{ it.quantity | format_qty }}</td>
+            <td>{{ "%.2f"|format(it.product.nc) if it.product and it.product.nc is not none else '—' }}</td>
+            <td>{{ "%.2f"|format(it.product.pc) if it.product and it.product.pc is not none else '—' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+    <tfoot>
+        <tr class="receipt-detail-totals">
+            <th colspan="3">Celkem</th>
+            <th>—</th>
+            <th>{{ "%.2f"|format(total_nc) }}</th>
+            <th>{{ "%.2f"|format(total_pc) }}</th>
+        </tr>
+    </tfoot>
+</table>
+</div>
+<p class="receipt-detail-totals-summary"><strong>Celková nákupní cena (nc):</strong> {{ "%.2f"|format(total_nc) }} &nbsp; <strong>Celková prodejní cena (pc):</strong> {{ "%.2f"|format(total_pc) }}</p>
+{% else %}
+<p>Žádné položky v příjmu.</p>
+{% endif %}
+<form method="post" action="{{ url_for('admin_goods_receipt_delete', receipt_id=receipt.id) }}" class="inline-form" onsubmit="return confirm('Opravdu smazat tento příjem zboží?');">
+    <button type="submit" class="btn">Smazat příjem</button>
+</form>
+</section>
+{% endblock %}

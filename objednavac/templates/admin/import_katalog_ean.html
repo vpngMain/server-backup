@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Admin – Import EAN z katalogu{% endblock %}
+{% block content %}
+<h2>Import EAN z katalogu</h2>
+<p class="hint">Nahrajte soubor <strong>katalog.xlsx</strong>. První řádek = hlavičky (normalizované). Očekávané sloupce: <strong>nazev</strong>, <strong>kod_zbozi</strong>, <strong>ean</strong> (nebo <strong>ean1</strong>, <strong>ean2</strong>, …). Pro každý řádek se najde produkt podle kódu zboží nebo názvu a k němu se přiřadí všechny EAN z řádku (jeden produkt může mít více EAN).</p>
+
+<form method="post" action="{{ url_for('admin_import_katalog_ean') }}" enctype="multipart/form-data" class="card-section">
+    <div class="form-group">
+        <label for="file">Soubor katalog.xlsx</label>
+        <input type="file" id="file" name="file" accept=".xlsx" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Importovat EAN z katalogu</button>
+    <a href="{{ url_for('admin_import') }}" class="btn btn-secondary">Zpět na Import</a>
+</form>
+{% endblock %}

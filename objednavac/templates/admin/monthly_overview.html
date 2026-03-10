@@ -4,15 +4,15 @@
 <p class="order-detail-actions"><a href="{{ url_for('admin_dashboard') }}" class="btn btn-back">← Zpět na přehled</a></p>
 <h2>Měsíční přehled nákupních nákladů (nc)</h2>
 <p class="order-detail-meta">Součet nákupních cen (nc × odeslané množství) podle skladu a pobočky. Do přehledu se zahrnují i objednávky, které byly jen částečně odeslané (započítávají se položky s odeslaným množstvím).</p>
-<form method="get" action="{{ url_for('admin_monthly_overview') }}" class="form-inline" style="margin-bottom:1.5rem;">
+<form method="get" action="{{ url_for('admin_monthly_overview') }}" class="form-inline month-year-selects">
     <label for="year">Rok</label>
-    <select name="year" id="year">
+    <select name="year" id="year" class="month-year-select" aria-label="Rok">
         {% for y in years %}
         <option value="{{ y }}" {{ 'selected' if y == year else '' }}>{{ y }}</option>
         {% endfor %}
     </select>
     <label for="month">Měsíc</label>
-    <select name="month" id="month">
+    <select name="month" id="month" class="month-year-select" aria-label="Měsíc">
         {% for m in months %}
         <option value="{{ m }}" {{ 'selected' if m == month else '' }}>{{ m }}</option>
         {% endfor %}
@@ -26,6 +26,7 @@
             <th>Sklad</th>
             <th>Pobočka</th>
             <th>Celkové nákupní náklady (nc)</th>
+            <th>Celková prodejní cena (pc)</th>
         </tr>
     </thead>
     <tbody>
@@ -34,11 +35,47 @@
             <td>{{ r.warehouse_name }}</td>
             <td>{{ r.branch_name }}</td>
             <td>{{ "%.2f"|format(r.total_nc) }}</td>
+            <td>{{ "%.2f"|format(r.total_pc) }}</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
 {% else %}
 <p>Pro zvolený měsíc nejsou žádné odeslané položky s nákupní cenou.</p>
+{% endif %}
+
+{% if receipt_groups %}
+<h3 class="monthly-overview-receipts-title">Příjmy zboží podle dodavatele</h3>
+<p class="order-detail-meta">Příjmy zboží v daném měsíci seskupené podle dodavatele. U každého příjmu součet nc a pc (nákladová a prodejní cena × množství).</p>
+{% for group in receipt_groups %}
+<section class="monthly-overview-supplier-group">
+    <h4 class="monthly-overview-supplier-name">{{ group.supplier_name }}</h4>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Příjem</th>
+                <th>Celkem nc</th>
+                <th>Celkem pc</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in group.receipts %}
+            <tr>
+                <td><a href="{{ url_for('admin_goods_receipt_detail', receipt_id=r.id) }}">{{ r.label }}</a></td>
+                <td>{{ "%.2f"|format(r.total_nc) }}</td>
+                <td>{{ "%.2f"|format(r.total_pc) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="monthly-overview-supplier-total">
+                <th>Celkem ({{ group.supplier_name }})</th>
+                <th>{{ "%.2f"|format(group.total_nc) }}</th>
+                <th>{{ "%.2f"|format(group.total_pc) }}</th>
+            </tr>
+        </tfoot>
+    </table>
+</section>
+{% endfor %}
 {% endif %}
 {% endblock %}

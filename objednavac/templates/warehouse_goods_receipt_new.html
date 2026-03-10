@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Sklad – Nový příjem zboží{% endblock %}
+{% block content %}
+<p class="order-detail-actions"><a href="{{ url_for('warehouse_goods_receipts') }}" class="btn btn-back">← Zpět na příjmy zboží</a></p>
+<h2>Nový příjem zboží</h2>
+<p class="order-detail-meta">Nahrajte XLS/XLSX se sloupci EAN nebo kód zboží (kod_zbozi) a množství (mnozstvi/ks/quantity). Produkty se spárují s katalogem.</p>
+<form method="post" action="{{ url_for('warehouse_goods_receipt_new') }}" enctype="multipart/form-data" class="form-stacked warehouse-receipt-form">
+    <div class="form-group">
+        <label for="supplier_code">Kód dodavatele (volitelné)</label>
+        <div class="supplier-code-row">
+            <input type="text" id="supplier_code" name="supplier_code" class="input-text input-warehouse" placeholder="např. DOD01" autocomplete="off">
+            <button type="button" id="supplier_load_btn" class="btn btn-secondary">Načíst</button>
+        </div>
+    </div>
+    <div class="form-group">
+        <label for="supplier_name_display">Název dodavatele</label>
+        <input type="text" id="supplier_name_display" class="input-text input-warehouse" readonly placeholder="Vyplní se po zadání kódu a kliknutí na Načíst">
+    </div>
+    {% if suppliers %}
+    <div class="form-group">
+        <label for="supplier_select">Nebo vybrat dodavatele ze seznamu</label>
+        <select id="supplier_select" class="input-select input-warehouse">
+            <option value="">— vyberte —</option>
+            {% for s in suppliers %}
+            <option value="{{ s.supplier_id }}" data-name="{{ s.supplier_name }}">{{ s.supplier_name }} ({{ s.supplier_id }})</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    <div class="form-group">
+        <label for="file">Soubor XLS/XLSX (volitelné)</label>
+        <input type="file" id="file" name="file" accept=".xls,.xlsx" class="input-file">
+    </div>
+    <button type="submit" class="btn btn-primary">Vytvořit příjem zboží</button>
+</form>
+<script>
+(function() {
+    var codeInp = document.getElementById('supplier_code');
+    var nameInp = document.getElementById('supplier_name_display');
+    var loadBtn = document.getElementById('supplier_load_btn');
+    var selectEl = document.getElementById('supplier_select');
+    function fillName(name) {
+        if (nameInp) nameInp.value = name || '';
+    }
+    function loadByCode() {
+        var code = codeInp && codeInp.value ? codeInp.value.trim() : '';
+        if (!code) { fillName(''); return; }
+        fetch('{{ url_for("warehouse_suppliers_by_code") }}?code=' + encodeURIComponent(code))
+            .then(function(r) { return r.json(); })
+            .then(function(d) { fillName(d.supplier_name || ''); })
+            .catch(function() { fillName(''); });
+    }
+    if (loadBtn && codeInp) loadBtn.addEventListener('click', loadByCode);
+    if (codeInp) codeInp.addEventListener('blur', loadByCode);
+    if (selectEl) {
+        selectEl.addEventListener('change', function() {
+            var opt = selectEl.options[selectEl.selectedIndex];
+            if (opt && opt.value) {
+                if (codeInp) codeInp.value = opt.value;
+                fillName(opt.getAttribute('data-name') || '');
+            } else {
+                if (codeInp) codeInp.value = '';
+                fillName('');
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

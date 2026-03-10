@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Odběratelé – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">Odběratelé</h1>
+<form method="get" action="{{ url_for('customers.customer_list') }}" class="row g-3 mb-4">
+    <div class="col-auto">
+        <input type="text" name="q" class="form-control" placeholder="Hledat (název, IČO, email)" value="{{ q }}">
+    </div>
+    <div class="col-auto"><button type="submit" class="btn btn-primary">Hledat</button></div>
+</form>
+<a href="{{ url_for('customers.new') }}" class="btn btn-success mb-3">Nový odběratel</a>
+<a href="{{ url_for('customers.import_ares') }}" class="btn btn-outline-primary mb-3 ms-2">Import z ARES</a>
+<div class="table-responsive-wrap">
+<table class="table table-striped table-hover">
+    <thead>
+        <tr>
+            <th>Firma</th>
+            <th>IČO</th>
+            <th>Město</th>
+            <th>Email</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in customers %}
+        <tr>
+            <td>{{ c.company_name }}</td>
+            <td>{{ c.ico or '-' }}</td>
+            <td>{{ c.city or '-' }}</td>
+            <td>{{ c.email or '-' }}</td>
+            <td><a href="/customers/{{ c.id }}" class="btn btn-sm btn-outline-primary">Detail</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">Žádní odběratelé.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

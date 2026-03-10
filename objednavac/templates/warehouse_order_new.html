@@ -2,15 +2,36 @@
 {% block title %}Nová objednávka pro pobočku{% endblock %}
 {% block content %}
 <h2>Vytvořit objednávku pro pobočku</h2>
-<p class="hint">Objednávka bude přiřazena zvolené pobočce a označena jako vytvořená skladem.</p>
 
-<form method="post" action="{{ url_for('warehouse_order_new') }}">
+<form method="post" action="{{ url_for('warehouse_order_new') }}" enctype="multipart/form-data" class="warehouse-order-new-form">
+    <div class="warehouse-order-new-actions order-detail-actions-top warehouse-order-import-section">
+        <div class="form-group form-group-inline">
+            <label for="file">Import Převodky</label>
+            <input type="file" name="file" id="file" accept=".xls,.xlsx" class="input-file">
+        </div>
+        <div class="form-actions form-actions-inline">
+            <button type="submit" class="btn btn-primary">Vytvořit objednávku</button>
+            <a href="{{ url_for('warehouse_orders') }}" class="btn btn-secondary">Zrušit</a>
+        </div>
+    </div>
+
+    <p class="hint">Objednávka bude přiřazena zvolené pobočce a označena jako vytvořená skladem. Soubor .xls/.xlsx přidá položky podle EAN.</p>
+
     <div class="form-group card-section">
         <label for="branch_id">Pobočka <span class="required">*</span></label>
         <select name="branch_id" id="branch_id" required>
             <option value="">— vyberte pobočku —</option>
             {% for b in branches %}
             <option value="{{ b.id }}">{{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-group card-section">
+        <label for="supplier_id">Dodavatel (volitelné)</label>
+        <select name="supplier_id" id="supplier_id">
+            <option value="">— bez dodavatele —</option>
+            {% for s in suppliers %}
+            <option value="{{ s.id }}">{{ s.supplier_name }} ({{ s.supplier_id }})</option>
             {% endfor %}
         </select>
     </div>

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Upravit uživatele' if user else 'Nový uživatel' }} – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">{{ 'Upravit uživatele' if user else 'Nový uživatel' }}</h1>
+{% if query_error == 'exists' %}<div class="alert alert-danger">Uživatel s tímto jménem již existuje.</div>{% endif %}
+{% if query_error == 'short_password' %}<div class="alert alert-danger">Heslo musí mít alespoň 6 znaků.</div>{% endif %}
+{% if query_error == 'empty_username' %}<div class="alert alert-danger">Uživatelské jméno nesmí být prázdné.</div>{% endif %}
+<a href="/users" class="btn btn-outline-secondary mb-3">Zpět</a>
+<form method="post" action="{% if user %}/users/{{ user.id }}/edit{% else %}/users/new{% endif %}">
+    {% include '_csrf.html' %}
+    <div class="mb-3"><label class="form-label">Uživatelské jméno *</label><input type="text" name="username" class="form-control" value="{{ user.username if user else '' }}" required></div>
+    <div class="mb-3"><label class="form-label">Heslo {% if user %}(nechte prázdné pro zachování){% endif %} *</label><input type="password" name="password" class="form-control" {{ '' if user else 'required' }}></div>
+    <div class="mb-3"><label class="form-label">Role</label><select name="role" class="form-select"><option value="user" {% if user and user.role == 'user' %}selected{% endif %}>user</option><option value="admin" {% if user and user.role == 'admin' %}selected{% endif %}>admin</option></select></div>
+    {% if user %}<div class="mb-3"><label class="form-label">Aktivní</label><select name="is_active" class="form-select"><option value="1" {% if user.is_active %}selected{% endif %}>Ano</option><option value="0" {% if not user.is_active %}selected{% endif %}>Ne</option></select></div>{% endif %}
+    <button type="submit" class="btn btn-success">Uložit</button>
+</form>
+{% endblock %}

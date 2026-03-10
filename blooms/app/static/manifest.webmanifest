@@ -1,0 +1,12 @@
+{
+  "name": "Blooms",
+  "short_name": "Blooms",
+  "description": "Interní systém zahradnictví – produkty, odběratelé, dodací listy",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#2d5a3d",
+  "background_color": "#e8f0eb",
+  "lang": "cs",
+  "scope": "/"
+}

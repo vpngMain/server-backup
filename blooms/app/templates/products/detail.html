@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ product.description }} – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">Detail produktu</h1>
+<a href="/products" class="btn btn-outline-secondary mb-3">Zpět na seznam</a>
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="post" action="/products/{{ product.id }}">
+            {% include '_csrf.html' %}
+            <div class="row mb-2">
+                <label class="col-sm-2 form-label">Description</label>
+                <div class="col-sm-10"><input type="text" name="description" class="form-control" value="{{ product.description }}" required></div>
+            </div>
+            <div class="row mb-2">
+                <label class="col-sm-2 form-label">Description 2</label>
+                <div class="col-sm-10"><input type="text" name="description2" class="form-control" value="{{ product.description2 or '' }}"></div>
+            </div>
+            <div class="row mb-2">
+                <label class="col-sm-2 form-label">Pot-Size</label>
+                <div class="col-sm-10"><input type="text" name="pot_size" class="form-control" value="{{ product.pot_size or '' }}"></div>
+            </div>
+            <div class="row mb-2">
+                <label class="col-sm-2 form-label">Aktivní</label>
+                <div class="col-sm-10">
+                    <select name="active" class="form-select">
+                        <option value="1" {% if product.active %}selected{% endif %}>Ano</option>
+                        <option value="0" {% if not product.active %}selected{% endif %}>Ne</option>
+                    </select>
+                </div>
+            </div>
+            <hr>
+            <h6 class="mb-2">Ceny – přepis v DB</h6>
+            <p class="text-muted small mb-2">Přepsaná cena má přednost před importovanou. Při dodávce a importu se ověřuje vůči DB.</p>
+            <div class="table-responsive-wrap">
+            <table class="table table-sm mb-3">
+                <thead><tr><th>Pole</th><th>Z importu</th><th>Přepsaná (DB)</th><th>Použije se</th></tr></thead>
+                <tr>
+                    <td>Sales Price</td>
+                    <td>{{ product.sales_price_imported | price2 or '-' }}</td>
+                    <td><input type="text" name="sales_price_override" class="form-control form-control-sm" value="{{ (product.sales_price_override | price2) or '' }}" placeholder="prázdné = z importu"></td>
+                    <td>{{ product.effective_sales_price() | price2 or '-' }}</td>
+                </tr>
+                <tr>
+                    <td>Cena + doprava (Purchase)</td>
+                    <td>{{ product.purchase_price_imported | price2 or '-' }}</td>
+                    <td><input type="text" name="purchase_price_override" class="form-control form-control-sm" value="{{ (product.purchase_price_override | price2) or '' }}" placeholder="prázdné = z importu"></td>
+                    <td>{{ product.effective_purchase_price() | price2 or '-' }}</td>
+                </tr>
+                <tr>
+                    <td>7% marže + doprava</td>
+                    <td>{{ product.margin_7_imported | price2 or '-' }}</td>
+                    <td><input type="text" name="margin_7_override" class="form-control form-control-sm" value="{{ (product.margin_7_override | price2) or '' }}" placeholder="prázdné = z importu"></td>
+                    <td>{{ product.effective_margin_7() | price2 or '-' }}</td>
+                </tr>
+                <tr>
+                    <td>VIP Eur</td>
+                    <td>{{ product.vip_eur_imported | price2 or '-' }}</td>
+                    <td><input type="text" name="vip_eur_override" class="form-control form-control-sm" value="{{ (product.vip_eur_override | price2) or '' }}" placeholder="prázdné = z importu"></td>
+                    <td>{{ product.effective_vip_eur() | price2 or '-' }}</td>
+                </tr>
+                <tr>
+                    <td>VIP CZK</td>
+                    <td>{{ product.vip_czk_imported | price2 or '-' }}</td>
+                    <td><input type="text" name="vip_czk_override" class="form-control form-control-sm" value="{{ (product.vip_czk_override | price2) or '' }}" placeholder="prázdné = z importu"></td>
+                    <td>{{ product.effective_vip_czk() | price2 or '-' }}</td>
+                </tr>
+                <tr>
+                    <td>D1 (Cena obchod)</td>
+                    <td>{{ product.trade_price_imported | price2 or '-' }}</td>
+                    <td><input type="text" name="trade_price_override" class="form-control form-control-sm" value="{{ (product.trade_price_override | price2) or '' }}" placeholder="prázdné = z importu"></td>
+                    <td>{{ product.effective_trade_price() | price2 or '-' }}</td>
+                </tr>
+                <tr>
+                    <td>D4 (konkurence / ruční)</td>
+                    <td>{{ product.d4_price_imported | price2 or '-' }}</td>
+                    <td><input type="text" name="d4_price_override" class="form-control form-control-sm" value="{{ (product.d4_price_override | price2) or '' }}" placeholder="prázdné = z importu"></td>
+                    <td>{{ product.effective_d4_price() | price2 or '-' }}</td>
+                </tr>
+            </table>
+            </div>
+            {% set cost = product.effective_purchase_price() %}
+            <p class="small text-muted mb-2"><strong>Marže</strong> (náklad = Cena + doprava): VIP CZK {{ product.margin_percent(product.effective_vip_czk(), cost) or '-' }}% &nbsp;|&nbsp; D1 {{ product.margin_percent(product.effective_trade_price(), cost) or '-' }}% &nbsp;|&nbsp; D4 {{ product.margin_percent(product.effective_d4_price(), cost) or '-' }}%</p>
+            <button type="submit" class="btn btn-success">Uložit</button>
+        </form>
+    </div>
+</div>
+<h5>Importovaná data</h5>
+<table class="table table-sm">
+    <tr><th>EAN</th><td>{{ product.ean_code or '-' }}</td></tr>
+    <tr><th>VBN</th><td>{{ product.vbn_code or '-' }}</td></tr>
+    <tr><th>Plant Passport</th><td>{{ product.plant_passport_no or '-' }}</td></tr>
+    <tr><th>Qty / Ordered Qty</th><td>{{ product.qty }} / {{ product.ordered_qty }}</td></tr>
+    <tr><th>Per Unit</th><td>{{ product.per_unit or '-' }}</td></tr>
+    <tr><th>Amount (import)</th><td>{{ product.amount_imported }}</td></tr>
+    <tr><th>First/Last import</th><td>{{ product.first_imported_at }} / {{ product.last_imported_at }}</td></tr>
+</table>
+{% endblock %}

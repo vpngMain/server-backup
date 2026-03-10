@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">Dashboard</h1>
+<div class="row g-3">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Produkty</h5>
+                <p class="card-text display-6">{{ product_count }}</p>
+                <a href="{{ url_for('products.product_list') }}" class="btn btn-outline-success btn-sm">Přejít</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Odběratelé</h5>
+                <p class="card-text display-6">{{ customer_count }}</p>
+                <a href="{{ url_for('customers.customer_list') }}" class="btn btn-outline-success btn-sm">Přejít</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Dodací listy</h5>
+                <p class="card-text display-6">{{ delivery_count }}</p>
+                <a href="{{ url_for('delivery.list_') }}" class="btn btn-outline-success btn-sm">Přejít</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Poslední import</h5>
+                {% if last_import %}
+                <p class="card-text small">{{ last_import.imported_at.strftime('%d.%m.%Y %H:%M') if last_import.imported_at else '-' }}</p>
+                <p class="card-text small text-muted">{{ last_import.total_files }} souborů, {{ last_import.new_products }} nových</p>
+                <a href="{{ url_for('import.batch_detail', batch_id=last_import.id) }}" class="btn btn-outline-success btn-sm">Detail</a>
+                {% else %}
+                <p class="card-text">Žádný import</p>
+                <a href="{{ url_for('import.import_page') }}" class="btn btn-outline-success btn-sm">Importovat</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+<div class="mt-4">
+    <a href="{{ url_for('import.import_page') }}" class="btn btn-success">Import .xls / .xlsx</a>
+    <a href="{{ url_for('delivery.new') }}" class="btn btn-primary ms-2">Nový dodací list</a>
+</div>
+
+<section class="mt-5 pt-4 border-top">
+    <h2 class="h4 mb-4 text-success">Statistiky</h2>
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title text-success mb-3">Nejlepší odběratelé</h5>
+                    <p class="text-muted small mb-0">Podle celkových tržeb z dodacích listů</p>
+                    <div class="mt-3" style="min-height: 280px;">
+                        <canvas id="chartCustomers"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title text-success mb-3">Nejprodávanější produkty</h5>
+                    <p class="text-muted small mb-0">Podle množství na dodacích listech</p>
+                    <div class="mt-3" style="min-height: 280px;">
+                        <canvas id="chartProducts"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title text-success mb-3">Dodací listy a tržby v čase</h5>
+                    <p class="text-muted small mb-0">Počet listů a celkové tržby po měsících (posledních 12 měsíců)</p>
+                    <div class="mt-3" style="min-height: 220px;">
+                        <canvas id="chartMonthly"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  const green = '#2d5a3d';
+  const greenLight = '#3d7a52';
+  const greenPalette = ['#2d5a3d', '#3d7a52', '#4a9a5e', '#5bb878', '#7bc992', '#9bd9ac', '#b8e8c4', '#d4f5dc'];
+
+  const topCustomers = {{ stats_top_customers | tojson }};
+  const topProducts = {{ stats_top_products | tojson }};
+  const byMonth = {{ stats_by_month | tojson }};
+
+  if (topCustomers.length) {
+    new Chart(document.getElementById('chartCustomers'), {
+      type: 'bar',
+      data: {
+        labels: topCustomers.map(function(c) { return c.name; }),
+        datasets: [{
+          label: 'Tržby (Kč)',
+          data: topCustomers.map(function(c) { return c.revenue; }),
+          backgroundColor: greenPalette.slice(0, topCustomers.length).map(function(c, i) {
+            return c;
+          }),
+          borderColor: green,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) { return ctx.raw.toLocaleString('cs-CZ') + ' Kč'; }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { callback: function(v) { return v.toLocaleString('cs-CZ') + ' Kč'; } },
+            grid: { color: 'rgba(45, 90, 61, 0.08)' }
+          },
+          y: {
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  } else {
+    document.getElementById('chartCustomers').parentElement.innerHTML = '<p class="text-muted text-center py-4">Zatím žádná data z dodacích listů.</p>';
+  }
+
+  if (topProducts.length) {
+    new Chart(document.getElementById('chartProducts'), {
+      type: 'bar',
+      data: {
+        labels: topProducts.map(function(p) { return p.name; }),
+        datasets: [{
+          label: 'Množství',
+          data: topProducts.map(function(p) { return p.quantity; }),
+          backgroundColor: greenLight,
+          borderColor: green,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) { return ctx.raw.toLocaleString('cs-CZ') + ' ks'; }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { callback: function(v) { return v.toLocaleString('cs-CZ'); } },
+            grid: { color: 'rgba(45, 90, 61, 0.08)' }
+          },
+          y: {
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  } else {
+    document.getElementById('chartProducts').parentElement.innerHTML = '<p class="text-muted text-center py-4">Zatím žádné položky na dodacích listech.</p>';
+  }
+
+  if (byMonth.length) {
+    new Chart(document.getElementById('chartMonthly'), {
+      type: 'line',
+      data: {
+        labels: byMonth.map(function(m) { return m.label; }),
+        datasets: [
+          {
+            label: 'Počet dodacích listů',
+            data: byMonth.map(function(m) { return m.count; }),
+            borderColor: green,
+            backgroundColor: 'rgba(45, 90, 61, 0.15)',
+            fill: true,
+            tension: 0.3,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Tržby (Kč)',
+            data: byMonth.map(function(m) { return m.revenue; }),
+            borderColor: greenLight,
+            backgroundColor: 'rgba(61, 122, 82, 0.12)',
+            fill: true,
+            tension: 0.3,
+            yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                var v = ctx.raw;
+                return ctx.dataset.label + ': ' + (ctx.dataset.yAxisID === 'y1' ? v.toLocaleString('cs-CZ') + ' Kč' : v);
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            type: 'linear',
+            position: 'left',
+            title: { display: true, text: 'Počet listů' },
+            ticks: { stepSize: 1 },
+            grid: { color: 'rgba(45, 90, 61, 0.08)' }
+          },
+          y1: {
+            type: 'linear',
+            position: 'right',
+            title: { display: true, text: 'Tržby (Kč)' },
+            grid: { drawOnChartArea: false },
+            ticks: { callback: function(v) { return v.toLocaleString('cs-CZ'); } }
+          }
+        }
+      }
+    });
+  } else {
+    document.getElementById('chartMonthly').parentElement.innerHTML = '<p class="text-muted text-center py-4">Zatím žádné dodací listy v posledních 12 měsících.</p>';
+  }
+})();
+</script>
+{% endblock %}

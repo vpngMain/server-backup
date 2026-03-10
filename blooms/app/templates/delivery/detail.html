@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Dodací list {{ note.document_number }} – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">Dodací list {{ note.document_number }}</h1>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<a href="/delivery" class="btn btn-outline-secondary mb-2">Zpět na seznam</a>
+<a href="/delivery/{{ note.id }}/print" class="btn btn-outline-primary mb-2" target="_blank">Tisk</a>
+<a href="/delivery/{{ note.id }}/pdf" class="btn btn-outline-primary mb-2">Stáhnout PDF</a>
+{% if note.status == 'draft' %}
+<form method="post" action="/delivery/{{ note.id }}/issue" class="d-inline">{% include '_csrf.html' %}<button type="submit" class="btn btn-success mb-2">Vystavit</button></form>
+{% endif %}
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="post" action="/delivery/{{ note.id }}">
+            {% include '_csrf.html' %}
+            <div class="row mb-2">
+                <div class="col-md-6"><label class="form-label">Číslo dokladu</label><input type="text" name="document_number" class="form-control" value="{{ note.document_number }}" required></div>
+                <div class="col-md-6"><label class="form-label">Odběratel</label><select name="customer_id" class="form-select">{% for c in customers %}<option value="{{ c.id }}" {% if c.id == note.customer_id %}selected{% endif %}>{{ c.company_name }}</option>{% endfor %}</select></div>
+            </div>
+            <div class="row mb-2">
+                <div class="col-md-6"><label class="form-label">Datum vystavení</label><input type="date" name="issue_date" class="form-control" value="{{ note.issue_date.isoformat() }}" required></div>
+                <div class="col-md-6"><label class="form-label">Datum dodání</label><input type="date" name="delivery_date" class="form-control" value="{{ note.delivery_date.isoformat() }}" required></div>
+            </div>
+            <div class="mb-2"><label class="form-label">Poznámka</label><textarea name="note" class="form-control" rows="2">{{ note.note or '' }}</textarea></div>
+            <button type="submit" class="btn btn-primary">Uložit údaje</button>
+        </form>
+    </div>
+</div>
+<h5>Položky</h5>
+<table class="table table-bordered mb-4">
+    <thead><tr><th>Položka</th><th>Množství</th><th>Jedn.</th><th>Cena/jedn.</th><th>Celkem</th><th></th></tr></thead>
+    <tbody>
+        {% for item in note.items %}
+        <tr>
+            <td>{{ item.item_name }}{% if item.item_description %} – {{ item.item_description }}{% endif %}</td>
+            <td>{{ item.quantity }}</td>
+            <td>{{ item.unit or 'ks' }}</td>
+            <td>{{ item.unit_price }}</td>
+            <td>{{ item.line_total }}</td>
+            <td>
+                <form method="post" action="/delivery/{{ note.id }}/items/{{ item.id }}/delete" class="d-inline" onsubmit="return confirm('Smazat položku?');">{% include '_csrf.html' %}<button type="submit" class="btn btn-sm btn-outline-danger">Smazat</button></form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted">Žádné položky.</td></tr>
+        {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="4">Celkem</th><th>{{ note.total_amount or '0' }}</th><th></th></tr></tfoot>
+</table>
+<div class="row">
+    <div class="col-md-6 card">
+        <div class="card-body">
+            <h6>Přidat z katalogu produktů</h6>
+            <form method="post" action="/delivery/{{ note.id }}/items/add-product" id="form-add-product">
+                {% include '_csrf.html' %}
+                <input type="hidden" name="product_id" id="delivery-product-id" value="" required>
+                <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                    <span class="small"><strong>Vybráno:</strong> <span id="selected-product-name" class="text-muted">—</span></span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" id="btn-clear-product" style="display: none;">Zrušit výběr</button>
+                </div>
+                <input type="text" name="q" id="product-search" class="form-control mb-2" placeholder="Hledat produkt (min. 2 znaky)…" autocomplete="off">
+                <div id="product-results" class="border rounded p-2 bg-light" style="max-height: 200px; overflow-y: auto;"
+                     hx-get="/products/search"
+                     hx-include="[name='q']"
+                     hx-trigger="keyup from:#product-search delay:200ms, search from:#product-search"
+                     hx-swap="innerHTML">
+                    <p class="text-muted small mb-0">Napište alespoň 2 znaky – zobrazí se vyhovující produkty.</p>
+                </div>
+                <div class="row mt-2 g-2">
+                    <div class="col-4"><label class="form-label small">Množství</label><input type="text" name="quantity" class="form-control form-control-sm" value="1" placeholder="1"></div>
+                    <div class="col-4"><label class="form-label small">Jedn.</label><input type="text" name="unit" class="form-control form-control-sm" value="ks" placeholder="ks"></div>
+                    <div class="col-4 d-flex align-items-end"><button type="submit" class="btn btn-success btn-sm w-100">Přidat</button></div>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="col-md-6 card">
+        <div class="card-body">
+            <h6>Přidat ruční položku</h6>
+            <form method="post" action="/delivery/{{ note.id }}/items/add-manual">
+                {% include '_csrf.html' %}
+                <input type="text" name="item_name" class="form-control mb-2" placeholder="Název položky" required>
+                <input type="text" name="item_description" class="form-control mb-2" placeholder="Popis (volitelné)">
+                <input type="text" name="quantity" class="form-control mb-2" value="1" placeholder="Množství">
+                <input type="text" name="unit" class="form-control mb-2" value="ks" placeholder="Jednotka">
+                <input type="text" name="unit_price" class="form-control mb-2" value="0" placeholder="Cena za jednotku">
+                <button type="submit" class="btn btn-primary">Přidat</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.product-pick');
+    if (btn) {
+        e.preventDefault();
+        document.getElementById('delivery-product-id').value = btn.getAttribute('data-product-id');
+        document.getElementById('selected-product-name').textContent = btn.getAttribute('data-name');
+        document.getElementById('selected-product-name').classList.remove('text-muted');
+        document.getElementById('btn-clear-product').style.display = 'inline-block';
+        document.getElementById('product-results').innerHTML = '<p class="text-muted small mb-0">Vybráno. Můžete přidat nebo zrušit výběr.</p>';
+        return;
+    }
+    if (e.target.id === 'btn-clear-product') {
+        e.preventDefault();
+        document.getElementById('delivery-product-id').value = '';
+        document.getElementById('selected-product-name').textContent = '—';
+        document.getElementById('selected-product-name').classList.add('text-muted');
+        document.getElementById('product-search').value = '';
+        document.getElementById('btn-clear-product').style.display = 'none';
+        document.getElementById('product-results').innerHTML = '<p class="text-muted small mb-0">Napište alespoň 2 znaky – zobrazí se vyhovující produkty.</p>';
+    }
+});
+</script>
+{% endblock %}

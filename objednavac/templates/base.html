@@ -52,25 +52,25 @@
                 <span class="admin-nav-icon" aria-hidden="true">📋</span>
                 <span>Interní produkty</span>
             </a>
-            <a href="{{ url_for('admin_users') }}" class="admin-nav-item {% if request.endpoint == 'admin_users' %}active{% endif %}">
-                <span class="admin-nav-icon" aria-hidden="true">👥</span>
-                <span>Uživatelé</span>
-            </a>
-            <a href="{{ url_for('admin_branches') }}" class="admin-nav-item {% if request.endpoint == 'admin_branches' %}active{% endif %}">
-                <span class="admin-nav-icon" aria-hidden="true">🏢</span>
-                <span>Pobočky</span>
-            </a>
-            <a href="{{ url_for('admin_import') }}" class="admin-nav-item {% if request.endpoint == 'admin_import' %}active{% endif %}">
-                <span class="admin-nav-icon" aria-hidden="true">📥</span>
-                <span>Import</span>
+            <a href="{{ url_for('admin_management') }}" class="admin-nav-item {% if request.endpoint == 'admin_management' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">⚙️</span>
+                <span>Správa</span>
             </a>
             <a href="{{ url_for('admin_monthly_overview') }}" class="admin-nav-item {% if request.endpoint == 'admin_monthly_overview' %}active{% endif %}">
                 <span class="admin-nav-icon" aria-hidden="true">📊</span>
                 <span>Měsíční přehled</span>
             </a>
+            <a href="{{ url_for('admin_goods_receipts') }}" class="admin-nav-item {% if request.endpoint == 'admin_goods_receipts' or request.endpoint == 'admin_goods_receipt_detail' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📥</span>
+                <span>Příjmy zboží</span>
+            </a>
             <a href="{{ url_for('admin_act_as') }}" class="admin-nav-item {% if request.endpoint == 'admin_act_as' %}active{% endif %}">
                 <span class="admin-nav-icon" aria-hidden="true">👤</span>
                 <span>Působit jako…</span>
+            </a>
+            <a href="{{ url_for('admin_import') }}" class="admin-nav-item {% if request.endpoint == 'admin_import' or request.endpoint == 'admin_import_katalog_ean' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📥</span>
+                <span>Import</span>
             </a>
             {% elif current_user.role == 'branch' or acting_as_role == 'branch' %}
             {% if current_user.role == 'admin' and acting_as_role %}
@@ -124,8 +124,30 @@
             </a>
             <a href="{{ url_for('warehouse_orders') }}" class="admin-nav-item {% if request.endpoint == 'warehouse_orders' %}active{% endif %}">
                 <span class="admin-nav-icon" aria-hidden="true">📋</span>
-                <span>Objednávky</span>
+                <span>Objednávky (od poboček)</span>
             </a>
+            <a href="{{ url_for('warehouse_goods_receipts') }}" class="admin-nav-item {% if request.endpoint == 'warehouse_goods_receipts' or request.endpoint == 'warehouse_goods_receipt_detail' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📥</span>
+                <span>Příjmy zboží (od dodavatelů)</span>
+            </a>
+            <a href="{{ url_for('warehouse_branches') }}" class="admin-nav-item {% if request.endpoint == 'warehouse_branches' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">🏢</span>
+                <span>Odběratelé</span>
+            </a>
+            <a href="{{ url_for('warehouse_suppliers') }}" class="admin-nav-item {% if request.endpoint == 'warehouse_suppliers' %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">📦</span>
+                <span>Dodavatelé</span>
+            </a>
+            {% if user_warehouses and user_warehouses|length > 1 %}
+            <span class="admin-nav-section">Sklad</span>
+            <form method="post" action="{{ url_for('warehouse_switch') }}" class="branch-switch-form branch-switch-in-sidebar">
+                <select name="warehouse_id" onchange="this.form.submit()" class="branch-switch-select" aria-label="Zvolit sklad">
+                    {% for w in user_warehouses %}
+                    <option value="{{ w.id }}" {{ 'selected' if current_warehouse and w.id == current_warehouse.id else '' }}>{{ w.name }}{% if w.code %} ({{ w.code }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            {% endif %}
             {% endif %}
             <span class="admin-nav-section admin-nav-section-end">Účet</span>
             <a href="{{ url_for('logout') }}" class="admin-nav-item">
@@ -145,8 +167,8 @@
             <button type="button" class="admin-menu-toggle" id="admin-menu-toggle" aria-label="Otevřít menu" aria-expanded="false">
                 <span class="admin-menu-toggle-icon" aria-hidden="true"></span>
             </button>
-            <button type="button" class="smeros-btn" onclick="goToSmeros()">🚦 Směros</button>
-            <span class="admin-user">{{ current_user.username }} <span class="admin-role">{% if current_user.role == 'admin' and not acting_as_role %}admin{% elif current_user.role == 'warehouse' or acting_as_role == 'warehouse' %}sklad{% else %}pobočka{% endif %}{% if acting_as_branch %} – {{ acting_as_branch.name }}{% elif current_branch %} – {{ current_branch.name }}{% endif %}</span></span>
+            <button type="button" class="smeros-btn" onclick="goToSmeros()">Směrovač</button>
+            <span class="admin-user">{{ current_user.username }} <span class="admin-role">{% if current_user.role == 'admin' and not acting_as_role %}admin{% elif current_user.role == 'warehouse' or acting_as_role == 'warehouse' %}sklad{% else %}pobočka{% endif %}{% if acting_as_warehouse %} – {{ acting_as_warehouse.name }}{% elif current_warehouse %} – {{ current_warehouse.name }}{% elif acting_as_branch %} – {{ acting_as_branch.name }}{% elif current_branch %} – {{ current_branch.name }}{% endif %}</span></span>
         </header>
     {% else %}
     <header class="header">
@@ -167,8 +189,7 @@
             <a href="{{ url_for('admin_dashboard') }}">Přehled</a>
             <a href="{{ url_for('admin_orders') }}">Objednávky</a>
             <a href="{{ url_for('admin_products') }}">Produkty</a>
-            <a href="{{ url_for('admin_users') }}">Uživatelé</a>
-            <a href="{{ url_for('admin_branches') }}">Pobočky</a>
+            <a href="{{ url_for('admin_management') }}">Správa</a>
             <a href="{{ url_for('admin_import') }}">Import</a>
             <a href="{{ url_for('admin_monthly_overview') }}">Měsíční přehled</a>
             <a href="{{ url_for('admin_internal_products') }}">Interní produkty</a>
@@ -178,7 +199,7 @@
             <a href="{{ url_for('warehouse_orders') }}">Objednávky</a>
             {% endif %}
             <a href="{{ url_for('logout') }}">Odhlásit</a>
-            <button type="button" class="smeros-btn" onclick="goToSmeros()">🚦 Směros</button>
+            <button type="button" class="smeros-btn" onclick="goToSmeros()">Směrovač</button>
             <button type="button" id="dark-mode-toggle" class="theme-toggle" aria-label="Přepnout režim">
                 <span id="theme-icon">🌙</span>
                 <span id="theme-label">Tmavý režim</span>

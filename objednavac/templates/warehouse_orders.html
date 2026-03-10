@@ -1,27 +1,60 @@
 {% extends "base.html" %}
 {% block title %}Sklad – Objednávky{% endblock %}
 {% block content %}
-<h2>Příchozí objednávky</h2>
+<h2>Objednávky od poboček</h2>
 <p class="hint">
     <a href="{{ url_for('warehouse_order_new') }}" class="btn btn-primary">Vytvořit objednávku pro pobočku</a>
-    {% if status_filter %}
-    <span class="admin-orders-filter">Zobrazeny jen: <strong>{{ status_cz(status_filter) }}</strong> <a href="{{ url_for('warehouse_orders') }}">Zrušit filtr</a></span>
-    {% endif %}
 </p>
-{% if orders %}
+<form method="get" action="{{ url_for('warehouse_orders') }}" class="admin-orders-filters form-inline">
+    <label for="filter-status">Stav</label>
+    <select name="status" id="filter-status" class="admin-filter-select">
+        <option value="">— Všechny —</option>
+        <option value="pending" {{ 'selected' if status_filter == 'pending' else '' }}>Čeká</option>
+        <option value="partially_shipped" {{ 'selected' if status_filter == 'partially_shipped' else '' }}>Částečně odesláno</option>
+        <option value="shipped" {{ 'selected' if status_filter == 'shipped' else '' }}>Odesláno</option>
+        <option value="verified" {{ 'selected' if status_filter == 'verified' else '' }}>Zkontrolováno</option>
+        <option value="error" {{ 'selected' if status_filter == 'error' else '' }}>Chyba kontroly</option>
+    </select>
+    <label for="filter-branch">Odběratel (pobočka)</label>
+    <select name="branch_id" id="filter-branch" class="admin-filter-select">
+        <option value="">— Všechny —</option>
+        {% for b in branches %}
+        <option value="{{ b.id }}" {{ 'selected' if branch_filter == b.id else '' }}>{{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn">Filtrovat</button>
+    {% if status_filter or branch_filter %}
+    <a href="{{ url_for('warehouse_orders') }}" class="admin-orders-filter-clear">Zrušit filtry</a>
+    {% endif %}
+</form>
+{% if not has_warehouse %}
+<p class="hint">Nejprve zvolte sklad v hlavičce stránky.</p>
+{% elif orders %}
 <div class="order-list">
     {% for o in orders %}
     <a href="{{ url_for('warehouse_order_detail', order_id=o.id) }}" class="order-card order-card-link">
         <span class="order-card-id">Objednávka {{ o.id }}{% if o.created_by_warehouse_id %} <span class="badge-warehouse" title="Vytvořeno skladem">sklad</span>{% endif %}</span>
         <span class="order-card-meta">{{ o.branch.name if o.branch else '—' }}{% if o.branch and o.branch.code %} ({{ o.branch.code }}){% endif %}</span>
         <span class="order-card-meta">{{ o.created_at | format_datetime }}</span>
-        <span class="status-badge status-{{ o.status }}">{{ status_cz(o.status) }}</span>
-        <span class="order-card-invoice" title="Stav kontroly">{% if o.status == 'verified' %}✅ Cajk{% elif o.status == 'error' %}❌ Chyba{% elif o.invoice_ok == true %}✅ Cajk{% elif o.invoice_ok == false %}❌ Chyba{% else %}—{% endif %}</span>
+        {% set main_status = 'shipped' if o.status in ('verified','error') else o.status %}
+        <span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if o.check_status or o.status in ('verified','error') %}<span class="status-badge status-{{ o.check_status or o.status }}">{{ status_cz(o.check_status or o.status) }}</span>{% endif %}
+        <span class="order-card-invoice" title="Stav kontroly">{% if o.check_status == 'verified' or o.status == 'verified' %}✅ Cajk{% elif o.check_status == 'error' or o.status == 'error' %}❌ Chyba{% elif o.invoice_ok == true %}✅ Cajk{% elif o.invoice_ok == false %}❌ Chyba{% else %}—{% endif %}</span>
         <span class="order-card-count">{{ o.items|length }} položek</span>
         <span class="order-card-arrow" aria-hidden="true">→</span>
     </a>
     {% endfor %}
 </div>
+{% if total_pages > 1 %}
+<nav class="pagination" aria-label="Stránkování objednávek">
+    {% if page > 1 %}
+    <a href="{{ url_for('warehouse_orders', page=page-1, status=status_filter if status_filter else none, branch_id=branch_filter if branch_filter else none) }}" class="btn btn-sm">← Předchozí</a>
+    {% endif %}
+    <span class="pagination-info">Stránka {{ page }} / {{ total_pages }} (celkem {{ total }})</span>
+    {% if page < total_pages %}
+    <a href="{{ url_for('warehouse_orders', page=page+1, status=status_filter if status_filter else none, branch_id=branch_filter if branch_filter else none) }}" class="btn btn-sm">Další →</a>
+    {% endif %}
+</nav>
+{% endif %}
 {% else %}
 <p>Žádné objednávky.</p>
 {% endif %}

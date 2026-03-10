@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Nový dodací list – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">Nový dodací list</h1>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<form method="post" action="/delivery/new">
+    {% include '_csrf.html' %}
+    <div class="mb-3">
+        <label class="form-label">Číslo dokladu</label>
+        <input type="text" name="document_number" class="form-control" value="{{ document_number }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Odběratel *</label>
+        <select name="customer_id" class="form-select" required>
+            <option value="">-- vyberte --</option>
+            {% for c in customers %}
+            <option value="{{ c.id }}">{{ c.company_name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="row mb-3">
+        <div class="col-md-6"><label class="form-label">Datum vystavení</label><input type="date" name="issue_date" class="form-control" value="{{ today }}" required></div>
+        <div class="col-md-6"><label class="form-label">Datum dodání</label><input type="date" name="delivery_date" class="form-control" value="{{ today }}" required></div>
+    </div>
+    <div class="mb-3"><label class="form-label">Poznámka</label><textarea name="note" class="form-control" rows="2"></textarea></div>
+    <button type="submit" class="btn btn-success">Vytvořit</button>
+    <a href="/delivery" class="btn btn-outline-secondary">Zrušit</a>
+</form>
+{% endblock %}

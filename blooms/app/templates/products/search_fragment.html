@@ -1,0 +1,11 @@
+{% if products %}
+<div class="list-group list-group-flush mb-2" id="product-pick-list">
+  {% for p in products %}
+  <button type="button" class="list-group-item list-group-item-action product-pick text-start py-2" data-product-id="{{ p.id }}" data-name="{{ p.description }}{% if p.pot_size %} {{ p.pot_size }}{% endif %}">
+    <strong>{{ p.description }}</strong>{% if p.pot_size %} <span class="text-muted">({{ p.pot_size }})</span>{% endif %}
+  </button>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-muted small mb-0">Žádný produkt nevyhovuje „{{ q }}“.</p>
+{% endif %}

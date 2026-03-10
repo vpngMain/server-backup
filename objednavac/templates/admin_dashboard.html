@@ -53,12 +53,13 @@
                     {% if total_orders %}<span class="dashboard-stat-sublabel">{{ ((status_counts.get('partially_shipped', 0) / total) * 100) | int }} %</span>{% endif %}
                 </div>
             </a>
+            {% set shipped_total = status_counts.get('shipped', 0) + status_counts.get('verified', 0) + status_counts.get('error', 0) %}
             <a href="{{ url_for('admin_orders', status='shipped') }}" class="dashboard-stat-card dashboard-stat-shipped">
                 <span class="dashboard-stat-icon" aria-hidden="true">🚚</span>
                 <div class="dashboard-stat-content">
-                    <span class="dashboard-stat-value">{{ status_counts.get('shipped', 0) }}</span>
+                    <span class="dashboard-stat-value">{{ shipped_total }}</span>
                     <span class="dashboard-stat-label">Odesláno</span>
-                    {% if total_orders %}<span class="dashboard-stat-sublabel">{{ ((status_counts.get('shipped', 0) / total) * 100) | int }} %</span>{% endif %}
+                    {% if total_orders %}<span class="dashboard-stat-sublabel">{{ ((shipped_total / total) * 100) | int }} %</span>{% endif %}
                 </div>
             </a>
         </div>
@@ -66,7 +67,7 @@
         <div class="dashboard-progress" aria-hidden="true">
             <span class="dashboard-progress-segment dashboard-progress-pending" style="width: {{ (status_counts.get('pending', 0) / total) * 100 }}%"></span>
             <span class="dashboard-progress-segment dashboard-progress-partially" style="width: {{ (status_counts.get('partially_shipped', 0) / total) * 100 }}%"></span>
-            <span class="dashboard-progress-segment dashboard-progress-shipped" style="width: {{ (status_counts.get('shipped', 0) / total) * 100 }}%"></span>
+            <span class="dashboard-progress-segment dashboard-progress-shipped" style="width: {{ (shipped_total / total) * 100 }}%"></span>
         </div>
         {% endif %}
     </section>
@@ -100,7 +101,8 @@
                             <h3 class="dashboard-item-card-title">#{{ o.id }}</h3>
                             <p class="dashboard-item-card-meta">{{ o.branch.name if o.branch else '—' }}</p>
                             <p class="dashboard-item-card-meta">{{ o.created_at | format_datetime }}</p>
-                            <p><span class="status-badge status-{{ o.status }}">{{ status_cz(o.status) }}</span></p>
+                            {% set main_status = 'shipped' if o.status in ('verified','error') else o.status %}
+                            <p><span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if o.check_status or o.status in ('verified','error') %}<span class="status-badge status-{{ o.check_status or o.status }}">{{ status_cz(o.check_status or o.status) }}</span>{% endif %}</p>
                             <a href="{{ url_for('admin_order_detail', order_id=o.id) }}" class="btn btn-sm">Detail</a>
                         </div>
                     </article>
