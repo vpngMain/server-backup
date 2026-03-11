@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Product, ImportBatch, ImportFile, ImportRow
 from app.models.import_batch import ImportStatus, RowAction, MatchConfidence
-from app.utils.normalizer import product_key_normalized
+from app.utils.normalizer import product_key_normalized, base_description_for_key
 from app.services.import_parser import parse_xls_file, ParsedXlsResult, RowParseError
 from app.services.order_number_parser import extract_order_number
 from app.services.price_formulas import compute_prices_from_row as compute_prices_from_formulas
@@ -69,7 +69,7 @@ def _decimal(val) -> Optional[Decimal]:
 
 
 def _decimal2(val) -> Optional[Decimal]:
-    """Decimal zaokrouhlený na 2 desetinná místa (pro ceny)."""
+    """Decimal zaokrouhlený na 4 desetinná místa (pro přesnější interní ceny)."""
     d = _decimal(val)
     if d is None:
         return None
@@ -79,7 +79,7 @@ def _decimal2(val) -> Optional[Decimal]:
         return d
 
 
-_PRICE_QUANTIZE = Decimal("0.01")  # 2 desetinná místa (zápis do DB)
+_PRICE_QUANTIZE = Decimal("0.0001")  # 4 desetinná místa (zápis do DB), UI zobrazuje 2
 
 
 def _str(val) -> Optional[str]:
@@ -87,6 +87,17 @@ def _str(val) -> Optional[str]:
         return None
     s = str(val).strip()
     return s if s else None
+
+
+def _format_name_with_k(base_description: Optional[str], pot_size: Optional[str]) -> str:
+    base = _str(base_description) or ""
+    pot = _str(pot_size) or ""
+    if not pot:
+        return base
+    suffix = f"K{pot}"
+    if base.upper().endswith((" " + suffix).upper()) or base.upper().endswith(suffix.upper()):
+        return base
+    return f"{base} {suffix}".strip()
 
 
 def match_row_to_product(db: Session, row: dict) -> tuple[Optional[Product], MatchConfidence]:
@@ -170,6 +181,15 @@ def apply_import_to_products(db: Session, product: Product, row: dict, now: date
     """
     Aktualizuje produkt z importního řádku. Zapisuje POUZE *_imported, NIKDY nemění *_override.
     """
+    import_desc = _str(row.get("description"))
+    import_pot = _str(row.get("pot_size")) or product.pot_size
+    formatted_import_name = _format_name_with_k(import_desc, import_pot)
+    # Nepřepisuj ručně změněný název: pokud v DB není „formát importu“, nech ho být.
+    if import_desc and (not (product.description or "").strip() or (product.description or "").strip() == formatted_import_name):
+        product.description = formatted_import_name
+    if import_pot:
+        product.pot_size = import_pot
+
     product.description2 = _str(row.get("description2")) or product.description2
     product.ean_code = _str(row.get("ean_code")) or product.ean_code
     product.vbn_code = _str(row.get("vbn_code")) or product.vbn_code
@@ -260,9 +280,9 @@ def update_import_row_from_form(db: Session, row: ImportRow, form_data: dict) ->
     if product:
         desc = _str(row_data.get("description")) or product.description
         pot = _str(row_data.get("pot_size")) or product.pot_size
-        product.description = desc or ""
+        product.description = _format_name_with_k(desc, pot) if desc else ""
         product.pot_size = pot
-        product.product_key_normalized = product_key_normalized(desc, pot)
+        product.product_key_normalized = product_key_normalized(base_description_for_key(desc, pot), pot)
         product.description2 = _str(row_data.get("description2")) or product.description2
         product.ean_code = _str(row_data.get("ean_code"))
         product.vbn_code = _str(row_data.get("vbn_code"))
@@ -299,6 +319,14 @@ def update_import_row_from_form(db: Session, row: ImportRow, form_data: dict) ->
 
 def _update_product_from_row(product: Product, row: dict, now: datetime) -> None:
     """Aktualizuje existující produkt z importního řádku (row může obsahovat dopočítané ceny)."""
+    import_desc = _str(row.get("description"))
+    import_pot = _str(row.get("pot_size")) or product.pot_size
+    formatted_import_name = _format_name_with_k(import_desc, import_pot)
+    if import_desc and (not (product.description or "").strip() or (product.description or "").strip() == formatted_import_name):
+        product.description = formatted_import_name
+    if import_pot:
+        product.pot_size = import_pot
+
     product.description2 = _str(row.get("description2")) or product.description2
     product.ean_code = _str(row.get("ean_code")) or product.ean_code
     product.vbn_code = _str(row.get("vbn_code")) or product.vbn_code
@@ -325,9 +353,10 @@ def _update_product_from_row(product: Product, row: dict, now: datetime) -> None
 
 def _create_product_from_row(row: dict, now: datetime) -> Product:
     """Vytvoří nový produkt z importního řádku (row může obsahovat dopočítané ceny)."""
-    description = _str(row.get("description")) or ""
+    source_description = _str(row.get("description")) or ""
     pot_size = _str(row.get("pot_size"))
-    key = product_key_normalized(description, pot_size)
+    description = _format_name_with_k(source_description, pot_size)
+    key = product_key_normalized(source_description, pot_size)
     product = Product(
         description=description,
         description2=_str(row.get("description2")),
@@ -856,3 +885,39 @@ def apply_import_price(
         setattr(product, override_attr, None)
         return None
     return "Neznámé pole"
+
+
+def apply_all_import_prices_for_file(db: Session, import_file: ImportFile, only_conflicts: bool = False) -> tuple[int, int]:
+    """
+    Hromadně zapíše importní ceny do produktů pro matched řádky daného souboru.
+    Vrací (updated_count, skipped_count).
+    """
+    updated = 0
+    skipped = 0
+    for row in import_file.rows:
+        if row.action_taken != RowAction.matched.value or not row.matched_product_id:
+            continue
+        product = db.query(Product).filter(Product.id == row.matched_product_id).first()
+        if not product:
+            skipped += 1
+            continue
+        try:
+            data = json.loads(row.raw_data_json) if row.raw_data_json else {}
+        except Exception:
+            skipped += 1
+            continue
+        row_changed = False
+        for row_key, _label, imported_attr, override_attr, effective_attr in _PRICE_FIELD_MAP:
+            val_import = _decimal(data.get(row_key))
+            getter = getattr(product, effective_attr)
+            val_db = getter() if callable(getter) else getter
+            if only_conflicts and _prices_equal(val_import, val_db):
+                continue
+            setattr(product, imported_attr, val_import)
+            setattr(product, override_attr, None)
+            row_changed = True
+        if row_changed:
+            updated += 1
+        else:
+            skipped += 1
+    return updated, skipped

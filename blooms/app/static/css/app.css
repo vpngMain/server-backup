@@ -12,6 +12,21 @@
   --safe-right: env(safe-area-inset-right, 0);
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+html.ux-density-compact .table td,
+html.ux-density-compact .table th,
+html.ux-density-compact .tabulator .tabulator-cell,
+html.ux-density-compact .tabulator .tabulator-col-title {
+  padding-top: 0.3rem !important;
+  padding-bottom: 0.3rem !important;
+}
+html.ux-font-large {
+  font-size: 18px;
+}
+
 /* Základ – safe area pro výřezy a notche */
 body {
   background: linear-gradient(180deg, var(--blooms-sage) 0%, #f5f9f6 35%, #fafcfb 100%);
@@ -19,6 +34,9 @@ body {
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
   padding-bottom: var(--safe-bottom);
+  color: #21382a;
+  line-height: 1.45;
+  font-size: clamp(15px, 1.9vw, 16px);
 }
 
 /* Navbar – větší tap plocha na mobilu, barva */
@@ -75,7 +93,7 @@ body {
 
 /* Hlavní obsah – přehledné na mobilu i desktopu */
 .app-main {
-  max-width: 1200px;
+  max-width: 1540px;
   margin-left: auto;
   margin-right: auto;
   padding: 1rem 1rem 2rem;
@@ -83,6 +101,11 @@ body {
 @media (min-width: 768px) {
   .app-main {
     padding: 1.5rem 1.5rem 2.5rem;
+  }
+}
+@media (max-width: 767.98px) {
+  .app-main {
+    padding: 0.85rem 0.75rem calc(1.25rem + var(--safe-bottom));
   }
 }
 
@@ -183,6 +206,227 @@ body {
   border-radius: 0.75rem;
 }
 
+/* Tabulator toolbar - sticky a konzistentní mezi stránkami */
+.tab-grid-toolbar {
+  position: sticky;
+  top: calc(var(--safe-top) + 0.5rem);
+  z-index: 6;
+  background: rgba(250, 252, 251, 0.95);
+  backdrop-filter: blur(2px);
+  border: 1px solid rgba(45, 90, 61, 0.12);
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+}
+
+/* iOS banner k instalaci */
+.ios-install-hint {
+  position: fixed;
+  left: max(10px, var(--safe-left));
+  right: max(10px, var(--safe-right));
+  bottom: calc(10px + var(--safe-bottom));
+  z-index: 1200;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.7rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(45, 90, 61, 0.18);
+  background: rgba(248, 251, 249, 0.98);
+  box-shadow: 0 8px 22px rgba(45, 90, 61, 0.18);
+}
+.ios-install-hint__text {
+  font-size: 0.9rem;
+  color: #294434;
+  line-height: 1.35;
+}
+.ios-install-hint__close {
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid rgba(45, 90, 61, 0.25);
+  border-radius: 999px;
+  background: #fff;
+  color: #294434;
+  font-size: 1.1rem;
+}
+
+/* Mobilní spodní akční lišta */
+.mobile-action-bar {
+  display: none;
+}
+@media (max-width: 767.98px) {
+  .mobile-action-bar {
+    position: fixed;
+    left: max(8px, var(--safe-left));
+    right: max(8px, var(--safe-right));
+    bottom: calc(8px + var(--safe-bottom));
+    z-index: 1100;
+    display: flex;
+    gap: 0.45rem;
+    padding: 0.45rem;
+    border-radius: 0.9rem;
+    border: 1px solid rgba(45, 90, 61, 0.2);
+    background: rgba(250, 252, 251, 0.98);
+    box-shadow: 0 10px 24px rgba(45, 90, 61, 0.16);
+    backdrop-filter: blur(4px);
+  }
+  .mobile-action-bar .btn {
+    flex: 1 1 0;
+    min-height: 48px;
+    font-size: 0.92rem;
+    border-radius: 0.75rem;
+  }
+  .has-mobile-action-bar {
+    padding-bottom: calc(88px + var(--safe-bottom));
+  }
+}
+
+/* Skeleton loading */
+.skeleton-grid {
+  border-radius: 0.8rem;
+  border: 1px solid rgba(45, 90, 61, 0.12);
+  background: #fff;
+  padding: 0.7rem;
+}
+.skeleton-row {
+  height: 16px;
+  margin-bottom: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ecf2ee 25%, #f6faf7 50%, #ecf2ee 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s infinite linear;
+}
+.skeleton-row:last-child { margin-bottom: 0; }
+.skeleton-row.w-80 { width: 80%; }
+.skeleton-row.w-60 { width: 60%; }
+.skeleton-row.w-40 { width: 40%; }
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Mobilní card-list místo tabulky */
+.mobile-cards {
+  display: none;
+}
+@media (max-width: 767.98px) {
+  .mobile-cards {
+    display: grid;
+    gap: 0.55rem;
+  }
+  .mobile-card {
+    border: 1px solid rgba(45, 90, 61, 0.14);
+    border-radius: 0.8rem;
+    background: #fff;
+    padding: 0.62rem;
+    box-shadow: 0 1px 3px rgba(45, 90, 61, 0.06);
+  }
+  .mobile-card-title {
+    font-weight: 600;
+    line-height: 1.25;
+    margin-bottom: 0.35rem;
+  }
+  .mobile-card-sub {
+    color: #617066;
+    font-size: 0.85rem;
+    line-height: 1.25;
+    margin-bottom: 0.35rem;
+  }
+  .mobile-card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.3rem 0.55rem;
+    font-size: 0.86rem;
+    margin-bottom: 0.45rem;
+  }
+  .mobile-card-grid .k {
+    color: #607066;
+  }
+  .mobile-card-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+  }
+  .mobile-card-actions .btn {
+    min-height: 40px;
+    padding: 0 0.65rem;
+  }
+  .tab-grid-mobile-hidden {
+    display: none !important;
+  }
+}
+
+.tab-grid-toolbar .form-control {
+  min-height: 38px;
+}
+
+/* Tabulator - čistší vzhled */
+.tabulator {
+  border: 1px solid rgba(45, 90, 61, 0.14);
+  border-radius: 0.8rem;
+  overflow: hidden;
+  background: #fff;
+}
+.tabulator .tabulator-header {
+  background: #f3f8f5;
+  border-bottom: 1px solid rgba(45, 90, 61, 0.15);
+}
+.tabulator .tabulator-header .tabulator-col {
+  background: #f3f8f5;
+  border-right: 1px solid rgba(45, 90, 61, 0.08);
+}
+.tabulator .tabulator-row.tabulator-row-even {
+  background: #fcfefd;
+}
+.tabulator .tabulator-row:hover {
+  background: #eef6f1;
+}
+.tabulator .tabulator-footer {
+  background: #f8fbf9;
+}
+
+/* Dodák - položky čitelněji na mobilu */
+.delivery-total-box {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: baseline;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.65rem;
+  background: #f6faf7;
+  border: 1px solid rgba(45, 90, 61, 0.14);
+}
+.dn-item-title {
+  font-weight: 600;
+  line-height: 1.2;
+}
+.dn-item-sub {
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+  color: #65726b;
+  line-height: 1.25;
+}
+#delivery-items-grid .tabulator-cell {
+  white-space: normal;
+  line-height: 1.3;
+}
+@media (max-width: 767.98px) {
+  #delivery-items-grid .tabulator-col-title {
+    font-size: 0.8rem;
+  }
+  #delivery-items-grid .tabulator-row .tabulator-cell {
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+    font-size: 0.88rem;
+  }
+  #delivery-items-grid .tabulator-responsive-collapse {
+    border-top: 1px dashed rgba(45, 90, 61, 0.2);
+    background: #fbfdfc;
+  }
+  #delivery-items-grid .tabulator-responsive-collapse table {
+    margin: 0;
+  }
+}
+
 /* Paginace – větší tlačítka na dotyk */
 .pagination .page-link {
   min-height: 40px;
@@ -202,4 +446,81 @@ body.login-page {
 }
 .login-page .btn {
   min-height: var(--touch-min);
+}
+
+/* ----- Import – kompletní sekce ----- */
+.import-breadcrumb { font-size: 0.9rem; }
+.import-breadcrumb a:hover { color: var(--blooms-green) !important; }
+
+.import-page .import-upload-card .card-body {
+  border-radius: 0.9rem;
+}
+.import-upload-label {
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  background: var(--blooms-mint);
+  border-color: rgba(45, 90, 61, 0.2);
+}
+.import-upload-label:hover,
+.import-upload-label:focus-within {
+  background: rgba(61, 122, 82, 0.08);
+  border-color: var(--blooms-green-light);
+}
+.import-help summary {
+  list-style: none;
+  cursor: pointer;
+}
+.import-help summary::-webkit-details-marker { display: none; }
+
+.import-empty-state {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 0.9rem;
+  border: 1px dashed rgba(45, 90, 61, 0.25);
+}
+
+.import-detail-header .card-body { padding: 1.25rem; }
+.import-detail-page .card-body.p-0 .table { margin-bottom: 0; }
+
+.import-file-detail-page .import-file-header .card-body { padding: 1.25rem; }
+.import-metric .card-body { padding: 0.5rem 0.6rem; }
+.import-metrics .import-metric {
+  border-radius: 0.65rem;
+  border: 1px solid rgba(45, 90, 61, 0.1);
+}
+.import-filter-links a { text-decoration: none; }
+.import-filter-links a:hover { text-decoration: underline; }
+
+/* Sbalitelné sekce – mapování sloupců a detailní tabulka (výchozí = skryté) */
+.import-details-hidden { border: 1px solid rgba(45, 90, 61, 0.15); }
+.import-details-hidden summary { list-style: none; cursor: pointer; user-select: none; }
+.import-details-hidden summary::-webkit-details-marker { display: none; }
+.import-details-hidden[open] summary span:first-child { transform: rotate(90deg); display: inline-block; }
+
+.import-history-grid,
+.import-files-grid {
+  min-height: 320px;
+}
+
+/* Porovnání s DB – hromadný pruh a tabulka */
+.import-bulk-bar .btn { min-height: 40px; white-space: nowrap; }
+.import-comparison-card .card-header { border-bottom: 1px solid rgba(45, 90, 61, 0.1); }
+
+.import-comparison-table { border-collapse: collapse; table-layout: fixed; }
+.import-comparison-table th { white-space: nowrap; padding: 0.5rem 0.4rem; font-size: 0.85rem; }
+.import-comparison-table td { padding: 0.4rem; vertical-align: middle; font-size: 0.9rem; }
+.import-col-row { width: 3.5rem; }
+.import-col-product { width: 12rem; min-width: 10rem; }
+.import-col-price { width: 6.5rem; min-width: 5.5rem; }
+.import-col-save { width: 6rem; white-space: nowrap; }
+
+.import-price-cell { min-width: 5.5rem; }
+.import-price-db { line-height: 1.25; white-space: nowrap; }
+.import-price-input { width: 100%; max-width: 5.5rem; min-width: 4rem; display: block; }
+.import-price-cell--changed { background-color: rgba(255, 193, 7, 0.22) !important; }
+
+@media (max-width: 767.98px) {
+  .import-metrics .col-4 { flex: 0 0 33.333%; max-width: 33.333%; }
+  .import-filter-links { font-size: 0.8rem; }
+  .import-bulk-actions { flex-direction: column; }
+  .import-bulk-actions .btn { width: 100%; }
 }

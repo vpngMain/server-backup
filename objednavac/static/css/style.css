@@ -957,27 +957,6 @@ html.dark-mode .cart-qty-badge {
   border: 1px solid #a5b4fc;
   margin-left: 0.25rem;
 }
-.invoice-badge {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.invoice-badge.invoice-ok {
-  background: #d1fae5;
-  color: #065f46;
-  border: 1px solid #6ee7b7;
-}
-.invoice-badge.invoice-error {
-  background: #fee2e2;
-  color: #991b1b;
-  border: 1px solid #fca5a5;
-}
-.invoice-badge.invoice-none {
-  color: var(--text-muted);
-}
 html.dark-mode .status-pending {
   background: #78350f;
   color: #fde68a;
@@ -1008,7 +987,6 @@ html.dark-mode .status-error {
   color: #fca5a5;
   border-color: #dc2626;
 }
-
 /* Shipped item row / list item */
 .item-shipped {
   background: rgba(6, 95, 70, 0.06);
@@ -1241,10 +1219,6 @@ html.dark-mode .badge-unavailable {
   color: var(--text-muted);
   font-size: 0.9rem;
 }
-.order-card-invoice {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
 .order-card-count {
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -1307,6 +1281,71 @@ html.dark-mode .badge-unavailable {
   gap: 16px;
   flex-wrap: wrap;
   margin-bottom: 20px;
+}
+
+/* Chyby kontroly čtečkou – co bylo špatně */
+.check-errors-box {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: rgba(220, 53, 69, 0.08);
+  border: 1px solid rgba(220, 53, 69, 0.35);
+  border-radius: var(--radius-lg, 8px);
+}
+.check-errors-box .check-errors-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--danger, #dc3545);
+}
+.check-errors-box p {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.table-check-errors {
+  margin-bottom: 0;
+  font-size: 0.9rem;
+}
+.table-check-errors th,
+.table-check-errors td {
+  padding: 0.4rem 0.75rem;
+}
+
+/* Výsledek kontroly čtečkou – co bylo dobře / špatně */
+.check-results-box {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 8px);
+}
+.check-results-box .check-results-title {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.check-results-box .check-results-subtitle {
+  margin: 1rem 0 0.5rem 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.check-results-box .check-results-subtitle.check-ok {
+  color: var(--success, #198754);
+}
+.check-results-box .check-results-subtitle.check-error {
+  color: var(--danger, #dc3545);
+}
+.check-results-box .check-errors-desc {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.check-results-box .table-check-errors {
+  margin-bottom: 1rem;
+}
+.check-results-box .table-check-errors:last-of-type {
+  margin-bottom: 0;
 }
 
 /* Sekce Faktura v detailu objednávky – wrapper a karta */

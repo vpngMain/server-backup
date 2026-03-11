@@ -1,0 +1,14 @@
+<div class="tab-grid-toolbar d-flex flex-wrap gap-2 mb-2">
+    <input
+        id="{{ toolbar_prefix }}-search"
+        class="form-control form-control-sm"
+        style="max-width:320px;"
+        placeholder="{{ toolbar_placeholder | default('Rychlé hledání v gridu...') }}"
+    >
+    <button type="button" id="{{ toolbar_prefix }}-clear" class="btn btn-sm btn-outline-secondary">🧹 Vyčistit filtry</button>
+    <button type="button" id="{{ toolbar_prefix }}-reset" class="btn btn-sm btn-outline-secondary">↺ Reset gridu</button>
+    <button type="button" id="{{ toolbar_prefix }}-export-csv" class="btn btn-sm btn-outline-success">⬇ CSV</button>
+    {% if toolbar_show_xlsx is not defined or toolbar_show_xlsx %}
+    <button type="button" id="{{ toolbar_prefix }}-export-xlsx" class="btn btn-sm btn-outline-success">⬇ XLSX</button>
+    {% endif %}
+</div>

@@ -1,44 +1,143 @@
 {% extends "base.html" %}
-{% block title %}Detail importu – Blooms{% endblock %}
+{% block title %}Dávka importu – Blooms{% endblock %}
 {% block content %}
-<h1 class="mb-4">Detail importu</h1>
-<p><strong>Složka:</strong> {{ batch.source_folder }}</p>
-<p><strong>Datum:</strong> {{ batch.imported_at.strftime('%d.%m.%Y %H:%M') if batch.imported_at else '-' }}</p>
-<p><strong>Soubory:</strong> {{ batch.total_files }} | <strong>Řádky:</strong> {{ batch.total_rows }} | <strong>Nové produkty:</strong> {{ batch.new_products }} | <strong>Existující:</strong> {{ batch.existing_products }} | <strong>Chyby:</strong> {{ batch.error_rows }}</p>
-<p><strong>Status:</strong> {{ batch.status }}</p>
-<a href="/import/history" class="btn btn-outline-secondary mb-3">Zpět na historii</a>
-<h5>Soubory v dávce</h5>
-<table class="table table-sm">
-    <thead>
-        <tr>
-            <th>Soubor</th>
-            <th>Objednávka</th>
-            <th>Řádky</th>
-            <th>Nové</th>
-            <th>Exist.</th>
-            <th>Chyby</th>
-            <th>Status</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for f in batch.import_files %}
-        <tr>
-            <td>{{ f.filename }}</td>
-            <td>{{ f.order_number or '-' }}</td>
-            <td>{{ f.row_count }}</td>
-            <td>{{ f.new_products }}</td>
-            <td>{{ f.existing_products }}</td>
-            <td>{{ f.error_rows }}</td>
-            <td>{{ f.status }}</td>
-            <td><a href="/import/history/{{ batch.id }}/files/{{ f.id }}" class="btn btn-sm btn-outline-primary">Detail řádků</a></td>
-        </tr>
-        {% if f.report_text %}
-        <tr><td colspan="8" class="small text-muted"><pre class="mb-0 small">{{ f.report_text }}</pre></td></tr>
-        {% endif %}
-        {% else %}
-        <tr><td colspan="8" class="text-muted">Žádné soubory.</td></tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="import-detail-page">
+  {% set level = 'batch' %}{% set batch_id = batch.id %}
+  {% include "import/_import_breadcrumb.html" with context %}
+  <div class="import-detail-header card shadow-sm mb-4">
+    <div class="card-body">
+      <h1 class="h4 mb-3">Dávka importu</h1>
+      <div class="row g-3 small">
+        <div class="col-12 col-md-6">
+          <span class="text-muted">Složka:</span>
+          <span class="d-block fw-medium text-break">{{ batch.source_folder }}</span>
+        </div>
+        <div class="col-6 col-md-2">
+          <span class="text-muted">Datum</span>
+          <span class="d-block fw-medium">{{ batch.imported_at.strftime('%d.%m.%Y %H:%M') if batch.imported_at else '-' }}</span>
+        </div>
+        <div class="col-6 col-md-2">
+          <span class="text-muted">Status</span>
+          <span class="d-block"><span class="badge bg-{{ 'success' if batch.status == 'completed' else 'warning' if batch.status == 'running' else 'danger' }}">{{ batch.status }}</span></span>
+        </div>
+      </div>
+      <div class="d-flex flex-wrap gap-3 mt-3 pt-3 border-top border-secondary border-opacity-25">
+        <span><strong>{{ batch.total_files }}</strong> souborů</span>
+        <span><strong>{{ batch.total_rows }}</strong> řádků</span>
+        <span class="text-success"><strong>{{ batch.new_products }}</strong> nových</span>
+        <span class="text-primary"><strong>{{ batch.existing_products }}</strong> existujících</span>
+        <span class="text-danger"><strong>{{ batch.error_rows }}</strong> chyb</span>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="h5 mb-3">Soubory v dávce</h2>
+  {% if use_tabulator %}
+  {% set toolbar_prefix = "import-detail-grid" %}
+  {% set toolbar_placeholder = "Hledat v souborech..." %}
+  {% include "_tabulator_toolbar.html" %}
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div id="import-files-grid" class="import-files-grid"></div>
+    </div>
+  </div>
+  {% else %}
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Soubor</th>
+              <th>Objednávka</th>
+              <th>Řádky</th>
+              <th>Nové</th>
+              <th>Exist.</th>
+              <th>Chyby</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in batch.import_files %}
+            <tr>
+              <td class="fw-medium">{{ f.filename }}</td>
+              <td>{{ f.order_number or '-' }}</td>
+              <td class="text-end">{{ f.row_count }}</td>
+              <td class="text-end">{{ f.new_products }}</td>
+              <td class="text-end">{{ f.existing_products }}</td>
+              <td class="text-end">{{ f.error_rows }}</td>
+              <td><span class="badge bg-secondary">{{ f.status }}</span></td>
+              <td><a href="{{ url_for('import.file_detail', batch_id=batch.id, file_id=f.id) }}" class="btn btn-sm btn-outline-primary">Detail řádků</a></td>
+            </tr>
+            {% if f.report_text %}
+            <tr><td colspan="8" class="small text-muted bg-light"><details><summary>Log souboru</summary><pre class="mb-0 small mt-2">{{ f.report_text }}</pre></details></td></tr>
+            {% endif %}
+            {% else %}
+            <tr><td colspan="8" class="text-center py-4 text-muted">V této dávce nejsou žádné soubory.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  <div class="mt-3">
+    <a href="{{ url_for('import.history') }}" class="btn btn-outline-secondary">← Zpět na historii</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block head_scripts %}
+{{ super() }}
+{% if use_tabulator %}
+<link href="{{ url_for('main.tabulator_asset', filename='css/tabulator_bootstrap5.min.css') }}" rel="stylesheet">
+<script src="{{ url_for('main.tabulator_asset', filename='js/tabulator.min.js') }}"></script>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if use_tabulator %}
+<script>
+(function() {
+  const rows = {{ files_rows_compact | tojson }};
+  const el = document.getElementById("import-files-grid");
+  if (!el || !window.Tabulator) return;
+  const table = new Tabulator(el, {
+    data: rows,
+    layout: "fitDataStretch",
+    height: "560px",
+    movableColumns: true,
+    pagination: true,
+    paginationSize: 30,
+    paginationSizeSelector: [20, 30, 50, 100],
+    initialSort: [{column: "filename", dir: "asc"}],
+    columns: [
+      {title: "Soubor", field: "filename", minWidth: 260, headerFilter: "input"},
+      {title: "Objednávka", field: "order_number", width: 150, headerFilter: "input"},
+      {title: "Řádky", field: "row_count", width: 90, hozAlign: "right"},
+      {title: "Nové", field: "new_products", width: 90, hozAlign: "right"},
+      {title: "Exist.", field: "existing_products", width: 90, hozAlign: "right"},
+      {title: "Chyby", field: "error_rows", width: 90, hozAlign: "right"},
+      {title: "Status", field: "status", width: 110, headerFilter: "input"},
+      {title: "Log", field: "has_report", width: 90, hozAlign: "center", headerSort: false, formatter: function(cell){ return cell.getValue() ? '<span class="badge text-bg-secondary">Ano</span>' : '<span class="text-muted">-</span>'; }},
+      {title: "", field: "detail_url", width: 110, hozAlign: "center", headerSort: false, formatter: function(cell){ return '<a class="btn btn-sm btn-outline-primary" href="' + cell.getValue() + '">Detail řádků</a>'; }}
+    ]
+  });
+  if (window.BloomsTabulator) {
+    window.BloomsTabulator.wire(table, {
+      pageKey: "import_detail",
+      searchInputId: "import-detail-grid-search",
+      clearBtnId: "import-detail-grid-clear",
+      resetBtnId: "import-detail-grid-reset",
+      exportCsvBtnId: "import-detail-grid-export-csv",
+      exportXlsxBtnId: "import-detail-grid-export-xlsx",
+      exportPrefix: "import_davka_soubory_grid",
+      quickSearchFields: ["filename", "order_number", "status"],
+      mobileHideFields: ["order_number", "existing_products", "new_products", "error_rows"],
+    });
+  }
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Admin – Uživatelé{% endblock %}
+{% block content %}
+<h1>Uživatelé</h1>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Jméno</th>
+        <th>Pobočka</th>
+        <th>Role</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="users-tbody">
+      <tr><td colspan="4">Načítám…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section" style="max-width: 400px; margin-top: 1.5rem;">
+  <h2 id="user-form-title">Přidat uživatele</h2>
+  <form id="user-form">
+    <input type="hidden" id="user-id" value="">
+    <label style="display: block; margin-bottom: 0.5rem;">
+      Jméno
+      <input type="text" id="user-name" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem;">
+    </label>
+    <label style="display: block; margin-bottom: 0.5rem;">
+      Pobočka
+      <select id="user-branch" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem;">
+        <option value="">— žádná —</option>
+        {% for b in branches %}
+        <option value="{{ b.id }}">{{ b.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label style="display: block; margin-bottom: 0.5rem;">
+      Role
+      <select id="user-role" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem;">
+        <option value="user">Uživatel</option>
+        <option value="admin">Admin</option>
+      </select>
+    </label>
+    <label style="display: block; margin-bottom: 1rem;">
+      PIN <span id="pin-hint">(4–6 číslic)</span>
+      <input type="password" id="user-pin" class="input-pin" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" placeholder="Povinný u nového">
+    </label>
+    <button type="submit" class="btn btn-primary">Uložit</button>
+    <button type="button" id="user-cancel" class="btn btn-secondary" style="display: none;">Zrušit</button>
+  </form>
+</div>
+<div id="user-message" class="message" aria-live="polite"></div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin-users.js') }}"></script>
+{% endblock %}

@@ -29,9 +29,57 @@
 <p class="order-detail-meta">
     {% if order.created_by %}<span>Vytvořil: <strong>{{ order.created_by.username }}</strong></span>{% endif %}
     {% set main_status = 'shipped' if order.status in ('verified','error') else order.status %}
-    <span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if order.check_status or order.status in ('verified','error') %}<span class="status-badge status-{{ order.check_status or order.status }}">{{ status_cz(order.check_status or order.status) }}</span>{% endif %}
+    <span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if order_check_status == 'verified' or order_check_status == 'error' %}<span class="status-badge status-{{ order_check_status }}" title="Výsledek kontroly čtečkou">{% if order_check_status == 'verified' %}✅ Zkontrolováno{% else %}❌ Chyba kontroly{% endif %}</span>{% endif %}
     <span><strong>Celkem kusů:</strong> {{ total_qty | format_qty }} objednáno, {{ shipped_qty | format_qty }} odesláno</span>
 </p>
+{% if order_check_status == 'verified' or order_check_status == 'error' %}
+<div class="check-results-box" aria-label="Výsledek kontroly">
+    <h3 class="check-results-title">Výsledek kontroly čtečkou</h3>
+    {% if check_ok_items %}
+    <h4 class="check-results-subtitle check-ok">✅ Co bylo v pořádku</h4>
+    <table class="table table-check-errors">
+        <thead>
+            <tr>
+                <th>Produkt</th>
+                <th>Očekáváno (odesláno)</th>
+                <th>Naskenováno</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in check_ok_items %}
+            <tr>
+                <td>{{ row.item.display_name() }}</td>
+                <td>{{ row.expected | format_qty }}</td>
+                <td>{{ row.scanned | format_qty }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% if check_error_items %}
+    <h4 class="check-results-subtitle check-error">❌ Co bylo špatně</h4>
+    <p class="check-errors-desc">U následujících položek nesouhlasí naskenované množství s očekávaným (odeslaným):</p>
+    <table class="table table-check-errors">
+        <thead>
+            <tr>
+                <th>Produkt</th>
+                <th>Očekáváno (odesláno)</th>
+                <th>Naskenováno</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in check_error_items %}
+            <tr>
+                <td>{{ row.item.display_name() }}</td>
+                <td>{{ row.expected | format_qty }}</td>
+                <td>{{ row.scanned | format_qty }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endif %}
 <table class="table">
     <thead>
         <tr>

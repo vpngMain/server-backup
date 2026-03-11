@@ -14,6 +14,10 @@ except ImportError:
 import os
 import re
 import csv
+try:
+    import requests
+except ImportError:
+    requests = None
 
 # Načtení .env při spuštění přes python app.py (volitelné: pip install python-dotenv)
 try:
@@ -1844,6 +1848,25 @@ def _is_safe_redirect_url(target):
     return target.startswith('/') and not target.startswith('//')
 
 
+def _auth_api_login(username_val, pin_val):
+    """Ověří přihlášení přes centrální auth API. Vrátí (user_dict, None) při úspěchu nebo (None, chybová zpráva)."""
+    auth_url = (os.environ.get('AUTH_API_URL') or 'http://localhost:8080').rstrip('/')
+    if not requests:
+        return None, 'Modul requests není nainstalován (pip install requests).'
+    try:
+        r = requests.post(
+            auth_url + '/api/login',
+            json={'username': username_val, 'pin': pin_val, 'application': 'odberos'},
+            timeout=10,
+        )
+        data = r.json() if r.headers.get('content-type', '').startswith('application/json') else {}
+        if r.status_code == 200 and data.get('ok'):
+            return data, None
+        return None, data.get('error', 'Neplatné přihlašovací údaje.')
+    except requests.RequestException as e:
+        return None, f'Nepodařilo se spojit s centrálním přihlášením: {e}'
+
+
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
     if current_user.is_authenticated:
@@ -1854,30 +1877,65 @@ def admin_login():
 
     form = LoginForm()
     if form.validate_on_submit():
-        user = None
         pin_val = (form.pin.data or '').strip()
         username_val = (form.username.data or '').strip()
         password_val = (form.password.data or '').strip()
 
-        if pin_val:
-            user = User.query.filter_by(pin=pin_val).first()
-            if not user:
-                flash('Neplatný PIN.', 'danger')
+        # Preferujeme přihlášení přes centrální API (username + PIN)
+        if username_val and pin_val:
+            data, err = _auth_api_login(username_val, pin_val)
+            if err:
+                flash(err, 'danger')
+            else:
+                role = data.get('role', 'user')
+                branch_name = (data.get('branch') or '').strip()
+                pobocka = None
+                if branch_name:
+                    pobocka = Pobocka.query.filter_by(nazev=branch_name).first()
+                    if not pobocka and role == 'user':
+                        pobocka = Pobocka(nazev=branch_name)
+                        db.session.add(pobocka)
+                        db.session.commit()
+                user = User.query.filter_by(username=username_val).first()
+                if not user:
+                    user = User(
+                        username=username_val,
+                        password=generate_password_hash(os.urandom(16).hex()),
+                        pin=None,
+                        role=role,
+                        pobocka_id=pobocka.id if pobocka and role == 'user' else None,
+                    )
+                    db.session.add(user)
+                    db.session.commit()
+                    if pobocka and role == 'user':
+                        user.pobocky.append(pobocka)
+                        db.session.commit()
+                else:
+                    user.role = role
+                    user.pobocka_id = pobocka.id if pobocka and role == 'user' else None
+                    user.pobocky.clear()
+                    if pobocka and role == 'user':
+                        user.pobocky.append(pobocka)
+                    db.session.commit()
+                login_user(user)
+                flash(f'Vítejte, {user.jmeno or user.username}!', 'success')
+                next_url = request.args.get('next')
+                if next_url and _is_safe_redirect_url(next_url):
+                    return redirect(next_url)
+                return redirect(url_for('admin_dashboard') if user.is_admin() else url_for('index'))
         elif username_val and password_val:
+            # Zpětná kompatibilita: přihlášení heslem proti lokální DB
             user = User.query.filter_by(username=username_val).first()
-            if not user or not user.check_password(password_val):
-                flash('Neplatné uživatelské jméno nebo heslo.', 'danger')
-                user = None
+            if user and user.check_password(password_val):
+                login_user(user)
+                flash(f'Vítejte, {user.jmeno or user.username}!', 'success')
+                next_url = request.args.get('next')
+                if next_url and _is_safe_redirect_url(next_url):
+                    return redirect(next_url)
+                return redirect(url_for('admin_dashboard') if user.is_admin() else url_for('index'))
+            flash('Neplatné uživatelské jméno nebo heslo.', 'danger')
         else:
-            flash('Zadejte PIN.', 'danger')
-
-        if user:
-            login_user(user)
-            flash(f'Vítejte, {user.jmeno or user.username}!', 'success')
-            next_url = request.args.get('next')
-            if next_url and _is_safe_redirect_url(next_url):
-                return redirect(next_url)
-            return redirect(url_for('admin_dashboard') if user.is_admin() else url_for('index'))
+            flash('Zadejte uživatelské jméno a PIN (nebo jméno a heslo).', 'danger')
 
     return render_template('admin_login.html', form=form)
 

@@ -2,38 +2,95 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dodací list {{ note.document_number }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>@media print { .no-print { display: none; } } body { font-family: Arial, sans-serif; }</style>
+    <style>
+      :root { --g:#2d5a3d; --mut:#5f6f65; --bd:#c8d7cf; --bg:#f4f8f5; }
+      @media print {
+        @page { margin: 0; size: auto; }
+        .no-print { display: none !important; }
+        body { background: #fff; padding: 0.8cm; margin: 0; }
+        .print-sheet { box-shadow: none !important; margin: 0 !important; padding: 0.5cm !important; }
+      }
+      body { font-family: "DejaVu Sans", "Liberation Sans", Arial, sans-serif; font-size: 11px; background:#f2f6f3; padding:14px; }
+      .print-sheet { max-width: 980px; margin: 0 auto; background:#fff; border:1px solid var(--bd); border-radius:12px; padding:12px; box-shadow: 0 8px 24px rgba(45,90,61,.1); font-size: 10px; }
+      .meta { color: var(--mut); font-size:.85rem; }
+      .info-box { border:1px solid var(--bd); border-radius:8px; background:#f6faf7; padding:6px; font-size: 9px; }
+      .meta-box { border:1px solid var(--bd); border-radius:8px; background:#fff; padding:6px; font-size: 9px; }
+      .table-items { font-size: 8px; }
+      .table-items thead th { background: var(--bg); color:#244633; font-size: 8px; padding: 4px; }
+      .table-items tbody td { padding: 3px; }
+      .table-items tfoot th { background:#f4f8f5; color:#1f4330; font-size: 8px; padding: 4px; }
+      .label-small { color: var(--mut); font-size:.75rem; margin-bottom: 1px; }
+    </style>
 </head>
-<body class="p-4">
-    <div class="no-print mb-3"><a href="javascript:window.print()" class="btn btn-primary">Tisknout</a> <a href="/delivery/{{ note.id }}" class="btn btn-outline-secondary">Zpět</a></div>
-    <h2>DODACÍ LIST</h2>
-    <p><strong>Číslo dokladu:</strong> {{ note.document_number }}</p>
-    <p><strong>Datum vystavení:</strong> {{ note.issue_date }}</p>
-    <p><strong>Datum dodání:</strong> {{ note.delivery_date }}</p>
-    <h5 class="mt-4">Odběratel</h5>
+<body>
+  <div class="print-sheet">
+    <div class="no-print mb-3 d-flex gap-2 flex-wrap align-items-center">
+      <a href="javascript:window.print()" class="btn btn-primary">Tisknout</a>
+      <a href="/delivery/{{ note.id }}" class="btn btn-outline-secondary">Zpět</a>
+      <a href="/delivery/{{ note.id }}/pdf" class="btn btn-outline-success" target="_blank">PDF</a>
+      <span class="small text-muted ms-2">Pro tisk bez URL zrušte v dialogu tisku <strong>Záhlaví a zápatí</strong>.</span>
+    </div>
+
+    {# Hlavička – stejný layout jako PDF: dodavatel vlevo, číslo DL vpravo #}
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+      <div>
+        {% if company_profile and company_profile.name %}
+        <div class="meta"><strong>{{ company_profile.name }}</strong></div>
+        <div class="meta">
+          {% if company_profile.street %}{{ company_profile.street }}{% endif %}
+          {% if company_profile.zip or company_profile.city %} {{ company_profile.zip or '' }} {{ company_profile.city or '' }}{% endif %}
+          {% if company_profile.country %} {{ company_profile.country }}{% endif %}
+          {% if company_profile.ico %} | IČO: {{ company_profile.ico }}{% endif %}
+          {% if company_profile.dic %} | DIČ: {{ company_profile.dic }}{% endif %}
+        </div>
+        {% endif %}
+        <div class="label-small mt-2">Číslo dodacího listu</div>
+        <div><strong>{{ note.document_number }}</strong></div>
+      </div>
+      <div class="meta-box text-end">
+        <div class="label-small">Datum vystavení</div>
+        <div>{{ note.issue_date | czech_date }}</div>
+        <div class="label-small mt-1">Datum dodání</div>
+        <div>{{ note.delivery_date | czech_date }}</div>
+        <div class="label-small mt-1">Status</div>
+        <div><strong>{{ "Vystaveno" if note.status == "issued" else "Koncept" }}</strong></div>
+        <div class="label-small mt-1">Celkem</div>
+        <div><strong>{{ note.total_amount or '0' }}</strong></div>
+      </div>
+    </div>
+
+    {# Odběratel – stejně jako v PDF #}
     {% set c = note.customer %}
-    <p>{{ c.company_name }}<br>
-    {% if c.street %}{{ c.street }}<br>{% endif %}
-    {{ c.zip_code or '' }} {{ c.city or '' }}<br>
-    {% if c.country %}{{ c.country }}<br>{% endif %}
-    {% if c.ico %}IČO: {{ c.ico }}{% endif %}{% if c.dic %} DIČ: {{ c.dic }}{% endif %}</p>
-    <table class="table table-bordered">
-        <thead><tr><th>Položka</th><th>Množství</th><th>Jedn.</th><th>Cena/jedn.</th><th>Celkem</th></tr></thead>
-        <tbody>
-            {% for item in note.items %}
-            <tr>
-                <td>{{ item.item_name }}{% if item.item_description %} – {{ item.item_description }}{% endif %}</td>
-                <td>{{ item.quantity }}</td>
-                <td>{{ item.unit or 'ks' }}</td>
-                <td>{{ item.unit_price }}</td>
-                <td>{{ item.line_total }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-        <tfoot><tr><th colspan="4">Celkem</th><th>{{ note.total_amount or '0' }}</th></tr></tfoot>
+    <div class="info-box mb-3">
+      <div class="label-small">Odběratel</div>
+      <div><strong>{{ c.company_name }}</strong></div>
+      <div>{% if c.street %}{{ c.street }}{% endif %}</div>
+      <div>{{ c.zip_code or '' }} {{ c.city or '' }}</div>
+      <div>{% if c.country %}{{ c.country }}{% endif %}</div>
+      <div>{% if c.ico %}IČO: {{ c.ico }}{% endif %}{% if c.dic %} | DIČ: {{ c.dic }}{% endif %}</div>
+    </div>
+
+    {# Tabulka položek – stejné sloupce jako PDF včetně cen #}
+    <table class="table table-bordered table-items align-middle">
+      <thead><tr><th>Položka</th><th>Množství</th><th>Jedn.</th><th>Cena/jedn.</th><th>Celkem</th></tr></thead>
+      <tbody>
+        {% for item in sorted_items %}
+        <tr>
+          <td>{{ item.item_name }}{% if item.item_description %} – {{ item.item_description }}{% endif %}</td>
+          <td class="text-end">{{ item.quantity }}</td>
+          <td class="text-end">{{ item.unit or 'ks' }}</td>
+          <td class="text-end">{{ item.unit_price }}</td>
+          <td class="text-end">{{ item.line_total }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><th colspan="4" class="text-end">Celkem</th><th class="text-end">{{ note.total_amount or '0' }}</th></tr></tfoot>
     </table>
-    {% if note.note %}<p><strong>Poznámka:</strong> {{ note.note }}</p>{% endif %}
+    {% if note.note %}<p class="small mt-2"><strong>Poznámka:</strong> {{ note.note }}</p>{% endif %}
+    <p class="small text-muted mt-2">Vygenerováno v systému Blooms</p>
+  </div>
 </body>
 </html>

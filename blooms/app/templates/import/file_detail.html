@@ -1,183 +1,367 @@
 {% extends "base.html" %}
-{% block title %}Report souboru {{ import_file.filename }} – Blooms{% endblock %}
+{% block title %}Report: {{ import_file.filename }} – Blooms{% endblock %}
 {% block content %}
-{% if just_imported %}
-<div class="alert alert-success border-success shadow-sm mb-4" role="alert">
-    <h5 class="alert-heading mb-2">Import právě proběhl – zkontroluj vše tady</h5>
-    <p class="mb-2">Toto je stránka s <strong>všemi přesnými kontrolami</strong> pro tento soubor. Projděte níže: produkty už v DB (V DB vs import, úprava cen), případné rozdíly a řádky. U každé ceny můžeš upravit hodnotu a uložit do produktu.</p>
-    <p class="mb-0 small">Soubory v této dávce:
-    {% for f in batch.import_files %}
-        {% if f.id == file_id %}
-        <strong class="text-success">{{ f.filename }}</strong> (tento)
-        {% else %}
-        <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=f.id) }}" class="alert-link">{{ f.filename }}</a>
-        {% endif %}
-        {% if not loop.last %} | {% endif %}
-    {% endfor %}
+<div class="import-file-detail-page">
+  {% set level = 'file' %}{% set filename = import_file.filename %}
+  {% include "import/_import_breadcrumb.html" with context %}
+  <div class="mb-3 d-flex align-items-center gap-2">
+    <a href="{{ url_for('import.batch_detail', batch_id=batch_id) }}" class="btn btn-sm btn-outline-secondary">← Dávka</a>
+  </div>
+
+  {% if just_imported %}
+  <div class="alert alert-success border-success shadow-sm mb-4" role="alert">
+    <h5 class="alert-heading mb-2">Import právě proběhl – zkontroluj zde</h5>
+    <p class="mb-2">Projděte níže: produkty už v DB (V DB vs import, úprava cen), případné rozdíly a řádky. U každé ceny můžeš upravit hodnotu a uložit do produktu.</p>
+    <p class="mb-0 small">
+      Soubory v této dávce:
+      {% for f in batch.import_files %}
+      {% if f.id == file_id %}<strong class="text-success">{{ f.filename }}</strong> (tento){% else %}<a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=f.id) }}" class="alert-link">{{ f.filename }}</a>{% endif %}{% if not loop.last %} · {% endif %}
+      {% endfor %}
     </p>
-</div>
-{% endif %}
+  </div>
+  {% endif %}
 
-<h1 class="mb-4">Report importu: {{ import_file.filename }}</h1>
-<p class="text-muted">Dávka importu #{{ batch_id }} | Objednávka: {{ import_file.order_number or '-' }}</p>
-<p><strong>Řádků:</strong> {{ import_file.row_count }} | <strong>Nové:</strong> {{ import_file.new_products }} | <strong>Existující:</strong> {{ import_file.existing_products }} | <strong>Chyby:</strong> {{ import_file.error_rows }}</p>
-{% if query_error == 'apply_price' %}<p class="text-danger">Při aplikaci ceny došlo k chybě.</p>{% endif %}
-<a href="/import/history/{{ batch_id }}" class="btn btn-outline-secondary mb-3">Zpět na detail dávky</a>
-
-{% if import_file.report_text %}
-<div class="card mb-4">
-    <div class="card-header">Shrnutí, mapování sloupců a log</div>
-    <div class="card-body"><pre class="mb-0 small">{{ import_file.report_text }}</pre></div>
-    <div class="card-footer small text-muted">V horní části logu je, které názvy sloupců z souboru se namapovaly na které pole (pokud se názvy v Excelu mění, kontroluj zde).</div>
-</div>
-{% endif %}
-
-{% set has_comparisons = price_comparisons_by_row and price_comparisons_by_row|length > 0 %}
-{% set matched_count = price_comparisons_by_row|length if price_comparisons_by_row else 0 %}
-{% set conflicts_count = price_conflicts|length if price_conflicts else 0 %}
-{% if has_comparisons %}
-<div class="card mb-4 border-success shadow-sm">
-    <div class="card-header bg-success bg-opacity-15 py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <strong>Porovnání s DB – produkty už v databázi</strong>
-        <span class="badge bg-primary rounded-pill">{{ matched_count }} produktů z tohoto souboru už máš v DB</span>
-        {% if conflicts_count > 0 %}<span class="badge bg-warning text-dark rounded-pill">{{ conflicts_count }} cenových rozdílů (žlutě níže)</span>{% endif %}
-    </div>
-    <div class="card-body pt-3 pb-2">
-        <div class="alert alert-info mb-3 mb-md-4 py-2 small">
-            <strong>Hele, tyhle řádky = produkty, který už máš v databázi.</strong> U každého vidíš <strong>„V DB“</strong> – za kolik ho teď máš – a <strong>„Upravit a uložit“</strong> – pole s cenou z importu (můžeš ji změnit). Klik na <strong>Uložit</strong> zapíše hodnotu do produktu. Žlutě = import se liší od DB.
-        </div>
-        <div class="table-responsive">
-            <table class="table table-bordered table-hover mb-0 align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>Řádek</th>
-                        <th>Produkt</th>
-                        {% for _fk, label in price_field_labels %}
-                        <th class="text-end" style="min-width: 140px;">{{ label }}</th>
-                        {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                {% for item in rows_with_data %}
-                    {% set r = item.row %}
-                    {% if r.action_taken == 'matched' and r.id in price_comparisons_by_row %}
-                    {% set comps = price_comparisons_by_row[r.id] %}
-                    <tr>
-                        <td class="align-middle">{{ r.row_index + 1 }}</td>
-                        <td class="small align-middle fw-medium">{{ item.data.get('description', '-') }}{% if item.data.get('pot_size') %} <span class="text-muted">({{ item.data.get('pot_size') }})</span>{% endif %}</td>
-                        {% for pc in comps %}
-                        <td class="{% if pc.is_changed %}bg-warning bg-opacity-25{% endif %}">
-                            <div class="small text-muted mb-1">V DB: <strong>{{ pc.value_db or '-' }}</strong></div>
-                            <form method="post" action="{{ url_for('import.apply_import_price_route', batch_id=batch_id, file_id=file_id) }}" class="d-flex flex-wrap gap-1 align-items-center">
-                                {% include '_csrf.html' %}
-                                <input type="hidden" name="import_row_id" value="{{ r.id }}">
-                                <input type="hidden" name="field_key" value="{{ pc.field_key }}">
-                                <input type="text" name="value" class="form-control form-control-sm" style="width: 5.5rem;" value="{{ pc.value_import or '' }}" placeholder="–" inputmode="decimal" title="Uprav cenu a ulož do produktu">
-                                <button type="submit" class="btn btn-sm btn-success">Uložit</button>
-                            </form>
-                        </td>
-                        {% endfor %}
-                    </tr>
-                    {% endif %}
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-{% if price_conflicts %}
-<div class="card mb-4 border-warning">
-    <div class="card-header bg-warning bg-opacity-25"><strong>Jen rozdíly</strong> – přehled polí, kde import ≠ DB</div>
+  <div class="import-file-header card mb-4">
     <div class="card-body">
-        <table class="table table-sm">
-            <thead><tr><th>Řádek</th><th>Produkt</th><th>Pole</th><th>V DB máš</th><th>Upravit a uložit</th></tr></thead>
-            <tbody>
-            {% for c in price_conflicts %}
-                <tr>
-                    <td>{{ c.row_index + 1 }}</td>
-                    <td class="small">{{ c.product_description }}{% if c.pot_size %} ({{ c.pot_size }}){% endif %}</td>
-                    <td>{{ c.field_label }}</td>
-                    <td><strong>{{ c.value_db or '-' }}</strong></td>
-                    <td>
-                        <form method="post" action="{{ url_for('import.apply_import_price_route', batch_id=batch_id, file_id=file_id) }}" class="d-inline-flex gap-1 align-items-center">
-                            {% include '_csrf.html' %}
-                            <input type="hidden" name="import_row_id" value="{{ c.import_row_id }}">
-                            <input type="hidden" name="field_key" value="{{ c.field_key }}">
-                            <input type="text" name="value" class="form-control form-control-sm" style="width: 5rem;" value="{{ c.value_import or '' }}" inputmode="decimal">
-                            <button type="submit" class="btn btn-sm btn-success">Uložit</button>
-                        </form>
-                    </td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
+      <h1 class="h4 mb-2">Report: {{ import_file.filename }}</h1>
+      <p class="text-muted small mb-3">Dávka #{{ batch_id }} · Objednávka: {{ import_file.order_number or '-' }}</p>
+      {% set skipped_rows = rows_with_data|selectattr('row.action_taken', 'equalto', 'skipped')|list|length %}
+      <div class="import-metrics row g-2">
+        <div class="col-4 col-md-2">
+          <div class="import-metric card h-100">
+            <div class="card-body py-2 text-center">
+              <div class="small text-muted">Řádků</div>
+              <div class="fw-bold">{{ import_file.row_count }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-4 col-md-2">
+          <div class="import-metric card h-100 border-success border-opacity-50">
+            <div class="card-body py-2 text-center">
+              <div class="small text-muted">Nové</div>
+              <div class="fw-bold text-success">{{ import_file.new_products }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-4 col-md-2">
+          <div class="import-metric card h-100 border-primary border-opacity-50">
+            <div class="card-body py-2 text-center">
+              <div class="small text-muted">Existující</div>
+              <div class="fw-bold text-primary">{{ import_file.existing_products }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-4 col-md-2">
+          <div class="import-metric card h-100">
+            <div class="card-body py-2 text-center">
+              <div class="small text-muted">Přeskočeno</div>
+              <div class="fw-bold text-warning">{{ skipped_rows }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-4 col-md-2">
+          <div class="import-metric card h-100 border-danger border-opacity-50">
+            <div class="card-body py-2 text-center">
+              <div class="small text-muted">Chyby</div>
+              <div class="fw-bold text-danger">{{ import_file.error_rows }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-4 col-md-2">
+          <div class="import-metric card h-100">
+            <div class="card-body py-2 text-center">
+              <div class="small text-muted">Status</div>
+              <div class="fw-bold">{{ import_file.status or '-' }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-</div>
-{% endif %}
+  </div>
 
-<h5>Řádky (po řádcích)</h5>
-<p class="small text-muted">Description, Pot-Size, Qty, Sales Price, Amount atd. jsou pouze na zobrazení. V tabulce můžeš editovat jen <strong>ceny a EAN</strong> – změň hodnoty a klikni <strong>Uložit</strong>.</p>
-<p class="small mb-2">
-    <strong>Filtr review:</strong>
-    <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id) }}" class="me-2">Všechny</a>
-    <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id, filter_review='override_conflict') }}" class="me-2">Override konflikt</a>
-    <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id, filter_review='large_price_change_vip_eur') }}" class="me-2">Velká změna ceny</a>
-    <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id, filter_review='missing_unit_per_cc') }}" class="me-2">Chybí unit_per_cc</a>
-    <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id, filter_review='missing_sales_price') }}">Chybí sales price</a>
-</p>
-<div class="table-responsive">
-<table class="table table-sm table-bordered align-middle">
-    <thead class="table-light">
-        <tr>
-            <th>Řádek</th>
-            <th>Akce</th>
-            <th class="small">Match</th>
-            <th class="small">Review</th>
-            <th class="small">Zpráva</th>
-            {% for _key, label in row_display_only %}
-            <th class="small text-nowrap">{{ label }}</th>
+  {% if query_error == 'apply_price' %}
+  <div class="alert alert-danger">Při aplikaci ceny došlo k chybě.</div>
+  {% endif %}
+
+  {% if use_tabulator %}
+  <div class="card mb-4">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <strong>Rychlý přehled řádků</strong>
+      <span class="small text-muted">Řazení, filtry, export</span>
+    </div>
+    <div class="card-body">
+      {% set toolbar_prefix = "import-file-grid" %}
+      {% set toolbar_placeholder = "Hledat v řádcích..." %}
+      {% include "_tabulator_toolbar.html" %}
+      <div id="import-rows-grid"></div>
+      <p class="small text-muted mt-2 mb-0">Detailní editace řádku v akci „Otevřít“.</p>
+    </div>
+  </div>
+  {% endif %}
+
+  {% set has_comparisons = price_comparisons_by_row and price_comparisons_by_row|length > 0 %}
+  {% set matched_count = price_comparisons_by_row|length if price_comparisons_by_row else 0 %}
+  {% set conflicts_count = price_conflicts|length if price_conflicts else 0 %}
+
+  {% if has_comparisons %}
+  <div class="card mb-4 border-success shadow-sm import-comparison-card">
+    <div class="card-body p-0">
+      <div class="import-bulk-bar bg-success bg-opacity-10 px-3 py-3 border-bottom border-success border-opacity-25">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <span class="fw-semibold me-2">Hromadné uložení:</span>
+          <form method="post" action="{{ apply_all_import_prices_url }}" class="d-inline">
+            {% include '_csrf.html' %}
+            <input type="hidden" name="mode" value="all">
+            <button type="submit" class="btn btn-success">Uložit vše z importu do DB</button>
+          </form>
+          <form method="post" action="{{ apply_all_import_prices_url }}" class="d-inline">
+            {% include '_csrf.html' %}
+            <input type="hidden" name="mode" value="conflicts">
+            <button type="submit" class="btn btn-warning text-dark">Uložit jen rozdíly ({{ conflicts_count }})</button>
+          </form>
+        </div>
+        <p class="small text-muted mb-0">{{ matched_count }} produktů v DB · Žlutě = jiná cena než v DB. Jednotlivě: uprav hodnotu a klikni „Uložit řádek“.</p>
+      </div>
+    </div>
+    <div class="card-header bg-white border-0 py-2">
+      <strong>Porovnání s DB</strong>
+      <span class="badge bg-primary rounded-pill ms-2">{{ matched_count }} produktů</span>
+      {% if conflicts_count > 0 %}<span class="badge bg-warning text-dark rounded-pill ms-1">{{ conflicts_count }} rozdílů</span>{% endif %}
+    </div>
+    <div class="card-body pt-2 pb-3">
+      <div class="table-responsive">
+        <table class="table table-bordered align-middle import-comparison-table mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="import-col-row">Řádek</th>
+              <th class="import-col-product">Produkt</th>
+              {% for _fk, label in price_field_labels %}
+              <th class="text-end import-col-price">{{ label }}</th>
+              {% endfor %}
+              <th class="import-col-save">Uložit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in rows_with_data %}
+            {% set r = item.row %}
+            {% if r.action_taken == 'matched' and r.id in price_comparisons_by_row %}
+            {% set comps = price_comparisons_by_row[r.id] %}
+            <tr>
+              <td class="align-middle text-nowrap">{{ r.row_index + 1 }}</td>
+              <td class="align-middle fw-medium">{{ item.data.get('description', '-') }}{% if item.data.get('pot_size') %} <span class="text-muted">({{ item.data.get('pot_size') }})</span>{% endif %}</td>
+              {% for pc in comps %}
+              <td class="import-price-cell {% if pc.is_changed %}import-price-cell--changed{% endif %}">
+                <div class="import-price-db small text-muted">V DB: {{ (pc.value_db | round(4)) if pc.value_db is not none else '–' }}</div>
+                <input type="text" form="form-row-save-{{ r.id }}" name="value_{{ pc.field_key }}" class="form-control form-control-sm import-price-input mt-1" value="{{ (pc.value_import | round(4)) if pc.value_import is not none else '' }}" placeholder="–" inputmode="decimal" title="Import (uprav a ulož řádek)">
+              </td>
+              {% endfor %}
+              <td class="import-col-save align-middle">
+                <button type="submit" form="form-row-save-{{ r.id }}" class="btn btn-success btn-sm">Uložit řádek</button>
+              </td>
+            </tr>
+            {% endif %}
             {% endfor %}
-            {% for _key, label in row_edit_fields %}
-            <th class="small text-nowrap">{{ label }}</th>
-            {% endfor %}
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for item in rows_with_data %}
-        {% set r = item.row %}
-        {% set data = item.data %}
-        {% set form_id = 'form-row-' ~ r.id %}
-        <tr class="{% if r.action_taken == 'error' or r.action_taken == 'skipped' %}table-warning{% elif r.action_taken == 'new' %}table-success{% endif %}">
-            <td class="text-nowrap">{{ r.row_index + 1 }}</td>
-            <td class="text-nowrap"><span class="badge bg-{% if r.action_taken == 'new' %}success{% elif r.action_taken == 'matched' %}primary{% elif r.action_taken == 'skipped' %}secondary{% else %}danger{% endif %}">{{ r.action_taken }}</span></td>
-            <td class="text-nowrap">{% if r.match_confidence %}<span class="badge bg-{% if r.match_confidence == 'exact_match' %}success{% elif r.match_confidence == 'probable_match' %}info{% else %}secondary{% endif %}" title="EAN/VBN = exact, Description+Pot = probable">{{ r.match_confidence }}</span>{% else %}–{% endif %}</td>
-            <td class="small">{% for flag in item.review_flags %}<span class="badge bg-warning text-dark me-1" title="{{ flag }}">{{ {'override_conflict': 'Override', 'large_price_change_vip_eur': 'Δ VIP Eur', 'large_price_change_vip_czk': 'Δ VIP CZK', 'large_price_change_d1': 'Δ D1', 'missing_unit_per_cc': 'Chybí unit/cc', 'missing_sales_price': 'Chybí cena', 'no_product': 'Bez produktu'}.get(flag, flag) }}</span>{% endfor %}{% if not item.review_flags %}–{% endif %}</td>
-            <td class="small text-muted text-nowrap">{{ r.message or '-' }}</td>
-            {% for key, _label in row_display_only %}
-            <td class="small text-nowrap">{{ data.get(key, '') or '–' }}</td>
-            {% endfor %}
-            {% for key, _label in row_edit_fields %}
-            <td class="p-1">
+          </tbody>
+        </table>
+      </div>
+      {% for item in rows_with_data %}
+      {% set r = item.row %}
+      {% if r.action_taken == 'matched' and r.id in price_comparisons_by_row %}
+      <form id="form-row-save-{{ r.id }}" method="post" action="{{ url_for('import.apply_import_row_route', batch_id=batch_id, file_id=file_id) }}" class="d-none">
+        {% include '_csrf.html' %}
+        <input type="hidden" name="import_row_id" value="{{ r.id }}">
+      </form>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if price_conflicts %}
+  <div class="card mb-4 border-warning">
+    <div class="card-header bg-warning bg-opacity-25"><strong>Jen rozdíly</strong> – import ≠ DB</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Řádek</th><th>Produkt</th><th>Pole</th><th>V DB</th><th>Upravit a uložit</th></tr></thead>
+          <tbody>
+          {% for c in price_conflicts %}
+          <tr>
+            <td>{{ c.row_index + 1 }}</td>
+            <td class="small">{{ c.product_description }}{% if c.pot_size %} ({{ c.pot_size }}){% endif %}</td>
+            <td>{{ c.field_label }}</td>
+            <td><strong>{{ c.value_db or '-' }}</strong></td>
+            <td>
+              <form method="post" action="{{ url_for('import.apply_import_price_route', batch_id=batch_id, file_id=file_id) }}" class="d-inline-flex gap-1 align-items-center">
+                {% include '_csrf.html' %}
+                <input type="hidden" name="import_row_id" value="{{ c.import_row_id }}">
+                <input type="hidden" name="field_key" value="{{ c.field_key }}">
+                <input type="text" name="value" class="form-control form-control-sm" style="width: 5rem;" value="{{ c.value_import or '' }}" inputmode="decimal">
+                <button type="submit" class="btn btn-sm btn-success">Uložit</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <details class="card mb-4 import-details-hidden">
+    <summary class="card-header d-flex align-items-center cursor-pointer list-style-none">
+      <span class="me-2">▸</span>
+      <strong>Řádky (detailní tabulka)</strong>
+      <span class="small text-muted ms-2">– filtry, editace cen a EAN</span>
+    </summary>
+    <div class="card-body">
+      <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+        <span class="small text-muted">Filtr review:</span>
+        <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id) }}" class="btn btn-sm btn-outline-secondary">Všechny</a>
+        <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id, filter_review='override_conflict') }}" class="btn btn-sm btn-outline-secondary">Override konflikt</a>
+        <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id, filter_review='large_price_change_vip_eur') }}" class="btn btn-sm btn-outline-secondary">Δ VIP Eur</a>
+        <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id, filter_review='missing_unit_per_cc') }}" class="btn btn-sm btn-outline-secondary">Chybí unit/cc</a>
+        <a href="{{ url_for('import.file_detail', batch_id=batch_id, file_id=file_id, filter_review='missing_sales_price') }}" class="btn btn-sm btn-outline-secondary">Chybí cena</a>
+      </div>
+      <p class="small text-muted mb-3">Description, Pot-Size, Qty atd. jen na zobrazení. Editovat můžeš jen ceny a EAN – změň a klikni Uložit.</p>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Řádek</th>
+              <th>Akce</th>
+              <th class="small">Match</th>
+              <th class="small">Review</th>
+              <th class="small">Zpráva</th>
+              {% for _key, label in row_display_only %}
+              <th class="small text-nowrap">{{ label }}</th>
+              {% endfor %}
+              {% for _key, label in row_edit_fields %}
+              <th class="small text-nowrap">{{ label }}</th>
+              {% endfor %}
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in rows_with_data %}
+            {% set r = item.row %}
+            {% set data = item.data %}
+            {% set form_id = 'form-row-' ~ r.id %}
+            <tr class="{% if r.action_taken == 'error' or r.action_taken == 'skipped' %}table-warning{% elif r.action_taken == 'new' %}table-success{% endif %}">
+              <td class="text-nowrap">{{ r.row_index + 1 }}</td>
+              <td class="text-nowrap"><span class="badge bg-{% if r.action_taken == 'new' %}success{% elif r.action_taken == 'matched' %}primary{% elif r.action_taken == 'skipped' %}secondary{% else %}danger{% endif %}">{{ r.action_taken }}</span></td>
+              <td class="text-nowrap">{% if r.match_confidence %}<span class="badge bg-{% if r.match_confidence == 'exact_match' %}success{% elif r.match_confidence == 'probable_match' %}info{% else %}secondary{% endif %}">{{ r.match_confidence }}</span>{% else %}–{% endif %}</td>
+              <td class="small">{% for flag in item.review_flags %}<span class="badge bg-warning text-dark me-1">{{ {'override_conflict': 'Override', 'large_price_change_vip_eur': 'Δ VIP Eur', 'large_price_change_vip_czk': 'Δ VIP CZK', 'large_price_change_d1': 'Δ D1', 'missing_unit_per_cc': 'Chybí unit/cc', 'missing_sales_price': 'Chybí cena', 'no_product': 'Bez produktu'}.get(flag, flag) }}</span>{% endfor %}{% if not item.review_flags %}–{% endif %}</td>
+              <td class="small text-muted text-nowrap">{{ r.message or '-' }}</td>
+              {% for key, _label in row_display_only %}
+              <td class="small text-nowrap">{{ data.get(key, '') or '–' }}</td>
+              {% endfor %}
+              {% for key, _label in row_edit_fields %}
+              <td class="p-1">
                 <input type="text" class="form-control form-control-sm" form="{{ form_id }}" name="{{ key }}" value="{{ data.get(key, '') }}" placeholder="–" style="min-width: 4.5rem;">
-            </td>
-            {% endfor %}
-            <td class="text-nowrap p-1">
+              </td>
+              {% endfor %}
+              <td class="text-nowrap p-1">
                 <button type="submit" form="{{ form_id }}" class="btn btn-sm btn-success">Uložit</button>
-            </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="{{ 5 + row_display_only|length + row_edit_fields|length + 1 }}" class="text-muted">Žádné řádky.</td></tr>
-        {% endfor %}
-    </tbody>
-</table>
-</div>
-{% for item in rows_with_data %}
-{% set r = item.row %}
-<form id="form-row-{{ r.id }}" method="post" action="{{ url_for('import.row_edit', batch_id=batch_id, file_id=file_id, row_id=r.id) }}" class="d-none">
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="{{ 5 + row_display_only|length + row_edit_fields|length + 1 }}" class="text-muted text-center py-4">Žádné řádky.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  {% for item in rows_with_data %}
+  {% set r = item.row %}
+  <form id="form-row-{{ r.id }}" method="post" action="{{ url_for('import.row_edit', batch_id=batch_id, file_id=file_id, row_id=r.id) }}" class="d-none">
     {% include '_csrf.html' %}
-</form>
-{% endfor %}
+  </form>
+  {% endfor %}
+
+  {% if import_file.report_text %}
+  <details class="card mt-4 import-details-hidden border-0 bg-light">
+    <summary class="card-body py-2 small text-muted cursor-pointer list-style-none">
+      <span class="me-2">▸</span> Technický log (mapování sloupců a řádkové hlášky)
+    </summary>
+    <div class="card-body pt-0 py-2">
+      <pre class="mb-0 small p-2 bg-white rounded border" style="max-height: 320px; overflow: auto;">{{ import_file.report_text }}</pre>
+    </div>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block head_scripts %}
+{{ super() }}
+{% if use_tabulator %}
+<link href="{{ url_for('main.tabulator_asset', filename='css/tabulator_bootstrap5.min.css') }}" rel="stylesheet">
+<script src="{{ url_for('main.tabulator_asset', filename='js/tabulator.min.js') }}"></script>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if use_tabulator %}
+<script>
+(function() {
+  const rows = {{ rows_compact | tojson }};
+  const el = document.getElementById("import-rows-grid");
+  if (!el || !window.Tabulator) return;
+  const table = new Tabulator(el, {
+    data: rows,
+    layout: "fitDataStretch",
+    height: "420px",
+    pagination: true,
+    paginationSize: 20,
+    paginationSizeSelector: [20, 50, 100],
+    movableColumns: true,
+    columnHeaderSortMulti: true,
+    initialSort: [{column: "row_no", dir: "asc"}],
+    columns: [
+      {title: "Řádek", field: "row_no", width: 80, hozAlign: "right"},
+      {title: "Akce", field: "action", width: 100, headerFilter: "input",
+       formatter: function(cell){
+         if (!window.BloomsTabulator) return cell.getValue();
+         return window.BloomsTabulator.statusFormatter({
+           "matched": {label: "matched", className: "text-bg-primary"},
+           "new": {label: "new", className: "text-bg-success"},
+           "skipped": {label: "skipped", className: "text-bg-secondary"},
+           "error": {label: "error", className: "text-bg-danger"}
+         })(cell);
+       }},
+      {title: "Popis", field: "description", minWidth: 240, headerFilter: "input"},
+      {title: "Pot", field: "pot_size", width: 110, headerFilter: "input"},
+      {title: "Sales", field: "sales_price", width: 100, hozAlign: "right"},
+      {title: "Purchase", field: "purchase_price", width: 110, hozAlign: "right"},
+      {title: "7%+dopr.", field: "margin_7", width: 110, hozAlign: "right"},
+      {title: "VIP CZK", field: "vip_czk", width: 110, hozAlign: "right"},
+      {title: "D1", field: "d1", width: 110, hozAlign: "right"},
+      {title: "D4", field: "d4", width: 110, hozAlign: "right"},
+      {title: "Review", field: "review", minWidth: 150, headerFilter: "input"},
+      {title: "Zpráva", field: "message", minWidth: 180, headerFilter: "input"},
+      {title: "", field: "edit_url", width: 110, formatter: function(cell){
+        const url = cell.getValue() || "#";
+        return '<a class="btn btn-sm btn-outline-primary" href="' + url + '">Otevřít</a>';
+      }, hozAlign: "center", headerSort: false}
+    ]
+  });
+  if (window.BloomsTabulator) {
+    window.BloomsTabulator.wire(table, {
+      pageKey: "import_file_detail",
+      searchInputId: "import-file-grid-search",
+      clearBtnId: "import-file-grid-clear",
+      resetBtnId: "import-file-grid-reset",
+      exportCsvBtnId: "import-file-grid-export-csv",
+      exportXlsxBtnId: "import-file-grid-export-xlsx",
+      exportPrefix: "import_soubor_radky_grid",
+      quickSearchFields: ["description", "pot_size", "action", "review", "message"],
+      mobileHideFields: ["message", "review", "vip_czk", "d1", "d4"],
+    });
+  }
+})();
+</script>
+{% endif %}
 {% endblock %}

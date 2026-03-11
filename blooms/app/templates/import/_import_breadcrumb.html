@@ -1,0 +1,22 @@
+<nav class="import-breadcrumb mb-3" aria-label="Import">
+  <a href="{{ url_for('import.import_page') }}" class="text-decoration-none text-muted small">Import</a>
+  {% if level == 'history' %}
+  <span class="text-muted small mx-1">/</span>
+  <span class="small fw-medium">Historie</span>
+  {% elif level == 'batch' and batch_id %}
+  <span class="text-muted small mx-1">/</span>
+  <a href="{{ url_for('import.history') }}" class="text-decoration-none text-muted small">Historie</a>
+  <span class="text-muted small mx-1">/</span>
+  <span class="small fw-medium">Dávka #{{ batch_id }}</span>
+  {% elif level == 'file' and batch_id %}
+  <span class="text-muted small mx-1">/</span>
+  <a href="{{ url_for('import.history') }}" class="text-decoration-none text-muted small">Historie</a>
+  <span class="text-muted small mx-1">/</span>
+  <a href="{{ url_for('import.batch_detail', batch_id=batch_id) }}" class="text-decoration-none text-muted small">Dávka #{{ batch_id }}</a>
+  <span class="text-muted small mx-1">/</span>
+  <span class="small fw-medium text-truncate d-inline-block" style="max-width:180px" title="{{ filename or 'Soubor' }}">{{ filename or 'Report' }}</span>
+  {% else %}
+  <span class="text-muted small mx-1">/</span>
+  <span class="small fw-medium">Nový import</span>
+  {% endif %}
+</nav>

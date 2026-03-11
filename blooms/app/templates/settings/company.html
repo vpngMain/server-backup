@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Nastavení firmy – Blooms{% endblock %}
+{% block content %}
+<h1 class="mb-4">Nastavení firmy</h1>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <h6 class="mb-2">Načíst údaje z ARES</h6>
+    <form method="post" class="row g-2 align-items-end">
+      {% include "_csrf.html" %}
+      <input type="hidden" name="action" value="load_ares">
+      <div class="col-12 col-md-4">
+        <label class="form-label small">IČO</label>
+        <input type="text" name="ico" class="form-control" value="{{ profile.ico or '' }}" placeholder="např. 12345678">
+      </div>
+      <div class="col-12 col-md-3 d-flex">
+        <button type="submit" class="btn btn-outline-primary w-100">Načíst z ARES</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <h6 class="mb-3">Firemní údaje pro hlavičku dodáků/PDF</h6>
+    <form method="post" class="row g-3">
+      {% include "_csrf.html" %}
+      <input type="hidden" name="action" value="save">
+      <div class="col-12 col-md-6">
+        <label class="form-label">Název firmy</label>
+        <input type="text" name="name" class="form-control" value="{{ profile.name or '' }}">
+      </div>
+      <div class="col-12 col-md-6">
+        <label class="form-label">Ulice</label>
+        <input type="text" name="street" class="form-control" value="{{ profile.street or '' }}">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">PSČ</label>
+        <input type="text" name="zip" class="form-control" value="{{ profile.zip or '' }}">
+      </div>
+      <div class="col-6 col-md-5">
+        <label class="form-label">Město</label>
+        <input type="text" name="city" class="form-control" value="{{ profile.city or '' }}">
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label">Stát</label>
+        <input type="text" name="country" class="form-control" value="{{ profile.country or '' }}">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">IČO</label>
+        <input type="text" name="ico" class="form-control" value="{{ profile.ico or '' }}">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">DIČ</label>
+        <input type="text" name="dic" class="form-control" value="{{ profile.dic or '' }}">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label">Telefon</label>
+        <input type="text" name="phone" class="form-control" value="{{ profile.phone or '' }}">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label">E-mail</label>
+        <input type="text" name="email" class="form-control" value="{{ profile.email or '' }}">
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-success">Uložit nastavení</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

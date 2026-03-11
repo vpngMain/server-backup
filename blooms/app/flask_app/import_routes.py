@@ -3,7 +3,7 @@ import json
 import logging
 from decimal import Decimal
 
-from flask import Blueprint, flash, g, redirect, render_template, request, url_for, abort
+from flask import Blueprint, flash, g, redirect, render_template, request, url_for, abort, current_app
 from flask_login import login_required, current_user
 
 from app.services.import_service import (
@@ -11,6 +11,7 @@ from app.services.import_service import (
     get_price_conflicts_for_file,
     get_price_comparisons_for_file,
     apply_import_price,
+    apply_all_import_prices_for_file,
     PRICE_FIELD_LABELS,
     ROW_DISPLAY_ONLY,
     ROW_EDIT_FIELDS,
@@ -98,14 +99,61 @@ def import_page():
 @login_required
 def history():
     batches = g.db.query(ImportBatch).order_by(ImportBatch.imported_at.desc()).limit(100).all()
-    return render_template("import/history.html", **_ctx(), batches=batches, success=request.args.get("success"))
+    use_tabulator = bool(current_app.config.get("USE_TABULATOR", True))
+    batches_rows_compact = []
+    if use_tabulator:
+        for b in batches:
+            batches_rows_compact.append({
+                "id": b.id,
+                "imported_at": b.imported_at.strftime("%d.%m.%Y %H:%M") if b.imported_at else "-",
+                "imported_at_sort": b.imported_at.isoformat() if b.imported_at else "",
+                "source_folder": b.source_folder or "",
+                "total_files": b.total_files or 0,
+                "total_rows": b.total_rows or 0,
+                "new_products": b.new_products or 0,
+                "existing_products": b.existing_products or 0,
+                "error_rows": b.error_rows or 0,
+                "status": b.status or "",
+                "detail_url": url_for("import.batch_detail", batch_id=b.id),
+            })
+    return render_template(
+        "import/history.html",
+        **_ctx(),
+        batches=batches,
+        success=request.args.get("success"),
+        use_tabulator=use_tabulator,
+        batches_rows_compact=batches_rows_compact,
+    )
 
 
 @import_bp.route("/history/<int:batch_id>")
 @login_required
 def batch_detail(batch_id):
     batch = get_import_batch_or_404(g.db, batch_id)
-    return render_template("import/detail.html", **_ctx(), batch=batch)
+    use_tabulator = bool(current_app.config.get("USE_TABULATOR", True))
+    files_rows_compact = []
+    if use_tabulator:
+        for f in batch.import_files:
+            files_rows_compact.append({
+                "id": f.id,
+                "filename": f.filename or "",
+                "order_number": f.order_number or "-",
+                "row_count": f.row_count or 0,
+                "new_products": f.new_products or 0,
+                "existing_products": f.existing_products or 0,
+                "error_rows": f.error_rows or 0,
+                "status": f.status or "",
+                "detail_url": url_for("import.file_detail", batch_id=batch.id, file_id=f.id),
+                "has_report": bool(f.report_text),
+                "report_text": f.report_text or "",
+            })
+    return render_template(
+        "import/detail.html",
+        **_ctx(),
+        batch=batch,
+        use_tabulator=use_tabulator,
+        files_rows_compact=files_rows_compact,
+    )
 
 
 @import_bp.route("/history/<int:batch_id>/files/<int:file_id>/apply-import-price", methods=["POST"])
@@ -135,6 +183,63 @@ def apply_import_price_route(batch_id, file_id):
     return redirect(url_for("import.file_detail", batch_id=batch_id, file_id=file_id))
 
 
+@import_bp.route("/history/<int:batch_id>/files/<int:file_id>/apply-import-row", methods=["POST"])
+@login_required
+def apply_import_row_route(batch_id, file_id):
+    """Uloží všechny cenové hodnoty jednoho řádku najednou (pole value_<field_key>)."""
+    from decimal import Decimal
+    get_import_batch_or_404(g.db, batch_id)
+    get_import_file_or_404(g.db, batch_id, file_id)
+    import_row_id = request.form.get("import_row_id")
+    if not import_row_id:
+        flash("Chyba: chybí identifikace řádku.", "danger")
+        return redirect(url_for("import.file_detail", batch_id=batch_id, file_id=file_id))
+    try:
+        import_row_id = int(import_row_id)
+    except ValueError:
+        flash("Chyba: neplatné ID řádku.", "danger")
+        return redirect(url_for("import.file_detail", batch_id=batch_id, file_id=file_id))
+    saved = 0
+    errors = []
+    for key in request.form:
+        if not key.startswith("value_"):
+            continue
+        field_key = key[6:]  # len("value_") == 6
+        raw = (request.form.get(key) or "").strip().replace(",", ".")
+        value_override = None
+        if raw:
+            try:
+                value_override = Decimal(raw)
+            except Exception:
+                errors.append(f"{field_key}: neplatné číslo")
+                continue
+        err = apply_import_price(g.db, import_row_id, field_key, value_override=value_override)
+        if err:
+            errors.append(f"{field_key}: {err}")
+        else:
+            saved += 1
+    g.db.commit()
+    if errors:
+        flash(f"Řádek uložen částečně ({saved} polí). Chyby: {'; '.join(errors[:3])}{'…' if len(errors) > 3 else ''}.", "warning")
+    else:
+        flash(f"Řádek uložen: {saved} cenových polí zapsáno do produktu.", "success")
+    return redirect(url_for("import.file_detail", batch_id=batch_id, file_id=file_id))
+
+
+@import_bp.route("/history/<int:batch_id>/files/<int:file_id>/apply-all-import-prices", methods=["POST"])
+@login_required
+def apply_all_import_prices_route(batch_id, file_id):
+    get_import_batch_or_404(g.db, batch_id)
+    ifile = get_import_file_or_404(g.db, batch_id, file_id)
+    mode = (request.form.get("mode") or "all").strip().lower()
+    only_conflicts = mode == "conflicts"
+    updated, skipped = apply_all_import_prices_for_file(g.db, ifile, only_conflicts=only_conflicts)
+    g.db.commit()
+    mode_txt = "jen rozdíly" if only_conflicts else "vše"
+    flash(f"Hromadné uložení ({mode_txt}): upraveno {updated}, přeskočeno {skipped}.", "success")
+    return redirect(url_for("import.file_detail", batch_id=batch_id, file_id=file_id))
+
+
 @import_bp.route("/history/<int:batch_id>/files/<int:file_id>")
 @login_required
 def file_detail(batch_id, file_id):
@@ -158,6 +263,43 @@ def file_detail(batch_id, file_id):
     price_conflicts = get_price_conflicts_for_file(g.db, ifile)
     price_comparisons_by_row = get_price_comparisons_for_file(g.db, ifile)
     just_imported = request.args.get("just_imported") == "1"
+    use_tabulator = bool(current_app.config.get("USE_TABULATOR", True))
+
+    def _s(v):
+        return "" if v is None else str(v)
+
+    def _s4(v):
+        """Na 4 desetinná místa (pro zobrazení v rychlém přehledu)."""
+        if v is None:
+            return ""
+        try:
+            return "{:.4f}".format(float(str(v).replace(",", ".")))
+        except (ValueError, TypeError):
+            return _s(v)
+
+    rows_compact = []
+    for item in rows_with_data:
+        r = item["row"]
+        if r.action_taken not in ("new", "matched"):
+            continue
+        data = item["data"]
+        rows_compact.append({
+            "row_no": (r.row_index + 1),
+            "action": r.action_taken or "",
+            "match": r.match_confidence or "",
+            "review": ", ".join(item.get("review_flags", [])) if item.get("review_flags") else "",
+            "message": r.message or "",
+            "description": data.get("description") or "",
+            "pot_size": data.get("pot_size") or "",
+            "sales_price": _s4(data.get("sales_price")),
+            "purchase_price": _s4(data.get("purchase_price_imported")),
+            "margin_7": _s4(data.get("margin_7_imported")),
+            "vip_czk": _s4(data.get("vip_czk_imported")),
+            "d1": _s4(data.get("trade_price_imported")),
+            "d4": _s4(data.get("d4_price_imported")),
+            "edit_url": url_for("import.row_edit", batch_id=batch_id, file_id=file_id, row_id=r.id),
+        })
+
     return render_template(
         "import/file_detail.html", **_ctx(),
         batch_id=batch_id, file_id=file_id, import_file=ifile, batch=batch,
@@ -168,6 +310,9 @@ def file_detail(batch_id, file_id):
         row_display_only=ROW_DISPLAY_ONLY,
         row_edit_fields=ROW_EDIT_FIELDS,
         just_imported=just_imported,
+        use_tabulator=use_tabulator,
+        rows_compact=rows_compact,
+        apply_all_import_prices_url=url_for("import.apply_all_import_prices_route", batch_id=batch_id, file_id=file_id),
     )
 
 

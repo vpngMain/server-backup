@@ -88,8 +88,7 @@
                             <h3 class="dashboard-item-card-title">#{{ o.id }}</h3>
                             <p class="dashboard-item-card-meta">{{ o.created_at | format_datetime }}</p>
                             {% set main_status = 'shipped' if o.status in ('verified','error') else o.status %}
-                            <p><span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if o.check_status or o.status in ('verified','error') %}<span class="status-badge status-{{ o.check_status or o.status }}">{{ status_cz(o.check_status or o.status) }}</span>{% endif %}</p>
-                            <p><span class="invoice-badge invoice-{{ 'ok' if o.check_status == 'verified' or o.status == 'verified' or o.invoice_ok == true else ('error' if o.check_status == 'error' or o.status == 'error' or o.invoice_ok == false else 'none') }}">{% if o.check_status == 'verified' or o.status == 'verified' %}✅ Cajk{% elif o.check_status == 'error' or o.status == 'error' %}❌ Chyba{% elif o.invoice_ok == true %}✅ Cajk{% elif o.invoice_ok == false %}❌ Chyba{% else %}—{% endif %}</span></p>
+                            <p><span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if o.check_status == 'verified' or o.check_status == 'error' %}<span class="status-badge status-{{ o.check_status }}" title="Výsledek kontroly čtečkou">{% if o.check_status == 'verified' %}✅ Zkontrolováno{% else %}❌ Chyba kontroly{% endif %}</span>{% endif %}</p>
                             <a href="{{ url_for('branch_order_detail', order_id=o.id) }}" class="btn btn-sm">Detail</a>
                         </div>
                     </article>

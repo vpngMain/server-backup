@@ -18,6 +18,7 @@ from flask import (
 )
 import click
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func as sql_func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -30,10 +31,14 @@ if os.environ.get("TESTING"):
     app.config["TESTING"] = True
 else:
     # V produkci lze nastavit SQLALCHEMY_DATABASE_URI nebo DATABASE_URI (např. sqlite:////srv/http/objednavac/data/warehouse.db)
+    _project_root = os.path.dirname(os.path.abspath(__file__))
+    _data_dir = os.path.join(_project_root, "data")
+    _default_db_path = os.path.join(_data_dir, "warehouse.db")
+    os.makedirs(_data_dir, exist_ok=True)
     app.config["SQLALCHEMY_DATABASE_URI"] = (
         os.environ.get("SQLALCHEMY_DATABASE_URI")
         or os.environ.get("DATABASE_URI")
-        or (("sqlite:///" + os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "warehouse.db"))).replace("\\", "/"))
+        or (("sqlite:///" + os.path.abspath(_default_db_path)).replace("\\", "/"))
     )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["UPLOAD_FOLDER"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
@@ -206,6 +211,45 @@ def _ensure_warehouse_code_column():
         db.session.rollback()
 
 
+def _ensure_order_warehouse_id_for_created_by_warehouse():
+    """Doplní warehouse_id u objednávek, které vytvořil skladový uživatel a které mají warehouse_id NULL.
+    Pouze pokud má uživatel přiřazen právě jeden sklad (jednoznačné přiřazení)."""
+    if getattr(_ensure_order_warehouse_id_for_created_by_warehouse, "_done", False):
+        return
+    _ensure_order_warehouse_id_for_created_by_warehouse._done = True
+    try:
+        orders = Order.query.filter(
+            Order.warehouse_id.is_(None),
+            Order.created_by_warehouse_id.isnot(None),
+        ).all()
+        for order in orders:
+            user = User.query.get(order.created_by_warehouse_id)
+            if not user:
+                continue
+            ids = user.get_warehouse_ids()
+            if len(ids) == 1:
+                order.warehouse_id = ids[0]
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_orders_drop_invoice_columns():
+    """Odstraní sloupce invoice_ok a invoice_note z orders (SQLite 3.35+). U starších SQLite se sloupce ponechají v DB, model je již nepoužívá."""
+    if getattr(_ensure_orders_drop_invoice_columns, "_done", False):
+        return
+    _ensure_orders_drop_invoice_columns._done = True
+    try:
+        r = db.session.execute(text("PRAGMA table_info(orders)"))
+        cols = [row[1] for row in r.fetchall()]
+        for col in ("invoice_ok", "invoice_note"):
+            if col in cols:
+                db.session.execute(text(f"ALTER TABLE orders DROP COLUMN {col}"))
+                db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _ensure_suppliers_table():
     """Vytvoří tabulku dodavatelů, pokud neexistuje."""
     try:
@@ -233,6 +277,8 @@ def _run_migrations():
     _ensure_goods_receipt_supplier_id_column()
     _ensure_order_supplier_id_column()
     _ensure_warehouse_code_column()
+    _ensure_order_warehouse_id_for_created_by_warehouse()
+    _ensure_orders_drop_invoice_columns()
 
 
 @app.before_request
@@ -240,8 +286,9 @@ def _run_migrations_request():
     _run_migrations()
 
 
-# Při načtení modulu spustit migrace v app context, aby byl schéma aktuální dřív než první request (důležité pro gunicorn)
+# Při načtení modulu nejdřív vytvořit tabulky (create_all), pak migrace (důležité pro gunicorn a pro testy s prázdnou DB)
 with app.app_context():
+    db.create_all()
     _run_migrations()
 
 
@@ -416,8 +463,6 @@ class Order(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_by = db.relationship("User", foreign_keys=[created_by_id])
-    invoice_ok = db.Column(db.Boolean, nullable=True)
-    invoice_note = db.Column(db.Text, nullable=True)
     items = db.relationship("OrderItem", backref="order", cascade="all, delete-orphan")
     order_type = db.Column(db.String(30), default="normal", nullable=False)
     created_by_warehouse_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
@@ -793,16 +838,87 @@ def inject_user():
     }
 
 
+def _auth_api_login(username, pin):
+    """Ověří přihlášení přes centrální auth API (application=objednavac). Vrátí (data, None) nebo (None, error)."""
+    auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
+    try:
+        r = requests.post(
+            auth_url + "/api/login",
+            json={"username": username, "pin": pin, "application": "objednavac"},
+            timeout=10,
+        )
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if r.status_code == 200 and data.get("ok"):
+            return data, None
+        return None, data.get("error", "Neplatné přihlašovací údaje.")
+    except requests.RequestException as e:
+        return None, str(e)
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
+        pin = request.form.get("pin", "").strip()
         password = request.form.get("password", "")
-        user = User.query.filter_by(username=username).first()
-        if user and user.check_password(password):
+        # Centrální API: username + PIN
+        if username and pin:
+            data, err = _auth_api_login(username, pin)
+            if err:
+                flash(err if "spojit" not in err else f"Nepodařilo se spojit s centrálním přihlášením: {err}", "error")
+                return render_template("login.html")
+            role = data.get("role", "user")
+            branch_name = (data.get("branch") or "").strip()
+            warehouse_name = (data.get("warehouse") or "").strip()
+            branch = None
+            if branch_name:
+                branch = Branch.query.filter_by(name=branch_name).first()
+                if not branch:
+                    branch = Branch(name=branch_name)
+                    db.session.add(branch)
+                    db.session.flush()
+            warehouse = None
+            if warehouse_name:
+                warehouse = Warehouse.query.filter_by(name=warehouse_name).first()
+                if not warehouse:
+                    warehouse = Warehouse(name=warehouse_name)
+                    db.session.add(warehouse)
+                    db.session.flush()
+            user = User.query.filter_by(username=username).first()
+            if not user:
+                user = User(
+                    username=username,
+                    password_hash=generate_password_hash(os.urandom(16).hex()),
+                    role=role,
+                    branch_id=branch.id if branch and role == "branch" else None,
+                    warehouse_id=warehouse.id if warehouse and role == "warehouse" else None,
+                )
+                db.session.add(user)
+                db.session.commit()
+                if branch and role == "branch":
+                    user.branches.append(branch)
+                if warehouse and role == "warehouse":
+                    user.warehouses.append(warehouse)
+                db.session.commit()
+            else:
+                user.role = role
+                user.branch_id = branch.id if branch and role == "branch" else None
+                user.warehouse_id = warehouse.id if warehouse and role == "warehouse" else None
+                for b in list(user.branches):
+                    user.branches.remove(b)
+                if branch and role == "branch":
+                    user.branches.append(branch)
+                for w in list(user.warehouses):
+                    user.warehouses.remove(w)
+                if warehouse and role == "warehouse":
+                    user.warehouses.append(warehouse)
+                db.session.commit()
             session["user_id"] = user.id
             session.pop("current_branch_id", None)
             session.pop("current_warehouse_id", None)
+            session.pop("acting_as_role", None)
+            session.pop("acting_as_branch_id", None)
+            session.pop("acting_as_warehouse_id", None)
             if user.role == "branch":
                 ids = user.get_branch_ids()
                 if ids:
@@ -818,7 +934,29 @@ def login():
             if user.role == "branch":
                 return redirect(url_for("branch_dashboard"))
             return redirect(url_for("index"))
-        flash("Neplatné přihlašovací údaje.", "error")
+        # Zpětná kompatibilita: heslo proti lokální DB
+        if username and password:
+            user = User.query.filter_by(username=username).first()
+            if user and user.check_password(password):
+                session["user_id"] = user.id
+                session.pop("current_branch_id", None)
+                session.pop("current_warehouse_id", None)
+                if user.role == "branch":
+                    ids = user.get_branch_ids()
+                    if ids:
+                        session["current_branch_id"] = ids[0]
+                if user.role == "warehouse":
+                    ids = user.get_warehouse_ids()
+                    if ids:
+                        session["current_warehouse_id"] = ids[0]
+                if user.role == "admin":
+                    return redirect(url_for("admin_dashboard"))
+                if user.role == "warehouse":
+                    return redirect(url_for("warehouse_dashboard"))
+                if user.role == "branch":
+                    return redirect(url_for("branch_dashboard"))
+                return redirect(url_for("index"))
+        flash("Zadejte uživatelské jméno a PIN (nebo jméno a heslo).", "error")
     return render_template("login.html")
 
 
@@ -1035,7 +1173,7 @@ def _product_brand(name):
 @login_required
 @role_required("branch")
 def index():
-    """Běžné produkty (ne interní) – samostatná stránka. Vyhledávání prohledává celý katalog (název, EAN, kód zboží, skupina)."""
+    """Běžné produkty (ne interní) – samostatná stránka. Vyhledávání je live (bez refresh), filtruje v rámci načtených produktů."""
     from collections import defaultdict
     from sqlalchemy import or_
     session["order_type"] = "normal"
@@ -1045,7 +1183,7 @@ def index():
     brand_filter = request.args.get("brand", "").strip() or None
     category_filter = request.args.get("category", "").strip() or None  # 10mg | 20mg
     page = request.args.get("page", 1, type=int)
-    per_page = 50
+    per_page = 300
     if page < 1:
         page = 1
     base = Product.query.filter(
@@ -1078,9 +1216,11 @@ def index():
     if page > total_pages:
         page = total_pages
     products = base.offset((page - 1) * per_page).limit(per_page).all()
-    brands = sorted({_product_brand(p.nazev) for p in products if _product_brand(p.nazev)})
+    # Dropdown možnosti z celého filtrovaného výsledku (ne jen z aktuální stránky)
     groups_query = base.with_entities(Product.naz_skup).distinct().all()
     groups = sorted({r[0] for r in groups_query if r and r[0]})
+    nazev_for_brands = base.with_entities(Product.nazev).distinct().limit(15000).all()
+    brands = sorted({_product_brand(r[0]) for r in nazev_for_brands if r and r[0] and _product_brand(r[0])})
     categories = PRODUCT_MG_OPTIONS.copy()
     by_brand = defaultdict(list)
     for p in products:
@@ -1754,6 +1894,9 @@ def admin_order_detail(order_id):
     )
     order_total_selling = _order_total_selling(order)
     warehouses = Warehouse.query.order_by(Warehouse.name).all()
+    order_check_status = getattr(order, "check_status", None) or ""
+    check_ok_items, check_error_items = _order_check_results(order) if order_check_status in ("verified", "error") else ([], [])
+    item_scanned_qty = _order_item_scanned_qtys(order)
     return render_template(
         "admin_order_detail.html",
         order=order,
@@ -1764,6 +1907,10 @@ def admin_order_detail(order_id):
         order_audit_log=order_audit_log,
         order_total_selling=order_total_selling,
         warehouses=warehouses,
+        check_ok_items=check_ok_items,
+        check_error_items=check_error_items,
+        order_check_status=order_check_status,
+        item_scanned_qty=item_scanned_qty,
     )
 
 
@@ -2243,9 +2390,15 @@ def admin_products():
     if page > total_pages:
         page = total_pages
     products = base.offset((page - 1) * per_page).limit(per_page).all()
-    all_for_options = Product.query.filter(Product.nazev != "[Vlastní – produkt mimo katalog]").limit(5000).all()
-    groups = sorted({p.naz_skup for p in all_for_options if p.naz_skup})
-    brands = sorted({_product_brand(p.nazev) for p in all_for_options if _product_brand(p.nazev)})
+    # Dropdown možnosti z celého katalogu (ne jen z jedné stránky)
+    catalog = Product.query.filter(Product.nazev != "[Vlastní – produkt mimo katalog]")
+    if internal_filter == "1":
+        catalog = catalog.filter(Product.is_internal == True)
+    elif internal_filter == "0":
+        catalog = catalog.filter(db.or_(Product.is_internal == False, Product.is_internal.is_(None)))
+    groups = sorted({r[0] for r in catalog.with_entities(Product.naz_skup).distinct().all() if r and r[0]})
+    nazev_for_brands = catalog.with_entities(Product.nazev).distinct().limit(15000).all()
+    brands = sorted({_product_brand(r[0]) for r in nazev_for_brands if r and r[0] and _product_brand(r[0])})
     categories = PRODUCT_MG_OPTIONS.copy()
     return render_template(
         "admin_products.html",
@@ -2379,7 +2532,8 @@ def _parse_katalog_xlsx(path):
         ean_cols = [i for i, h in enumerate(headers) if h and "ean" in h.lower()]
     idx_nazev = next((i for i, h in enumerate(headers) if h == "nazev"), None)
     idx_kod = next((i for i, h in enumerate(headers) if h == "kod_zbozi"), None)
-    idx_naz_skup = next((i for i, h in enumerate(headers) if h in ("naz_skup", "naz_skupiny")), None)
+    # Skupina: sloupec naz_skup
+    idx_naz_skup = next((i for i, h in enumerate(headers) if h == "naz_skup"), None) or next((i for i, h in enumerate(headers) if h == "naz_skupiny"), None)
     idx_mj = next((i for i, h in enumerate(headers) if h == "mj"), None)
     idx_nc = next((i for i, h in enumerate(headers) if h == "nc"), None)
     idx_pc = next((i for i, h in enumerate(headers) if h == "pc"), None)
@@ -2431,14 +2585,14 @@ def _product_field_empty(val):
 
 
 def _update_product_only_missing(existing, name, sku, unit, group_name, pc_float, ean, nc_float=None):
-    """Aktualizuje existující produkt jen v polích, která jsou prázdná. Zachová stávající data v DB."""
+    """Aktualizuje existující produkt: prázdná pole doplní; naz_skup se při importu vždy přepíše, pokud je v souboru."""
     if name and _product_field_empty(existing.nazev):
         existing.nazev = name
     if sku is not None and _product_field_empty(existing.kod_zbozi):
         existing.kod_zbozi = sku
     if unit is not None and _product_field_empty(existing.mj):
         existing.mj = unit
-    if group_name is not None and _product_field_empty(existing.naz_skup):
+    if group_name is not None:
         existing.naz_skup = group_name
     if pc_float is not None and existing.pc is None:
         existing.pc = pc_float
@@ -2466,7 +2620,7 @@ def _import_csv(path):
                 sku = _norm(row.get("sku") or row.get("code") or row.get("kod") or row.get("kod_zbozi"))
                 unit = _norm(row.get("ks") or row.get("mj"))  # jednotka: ks, ml, balení
                 group_name = _norm(
-                    row.get("název_skupiny") or row.get("nazev_skupiny") or row.get("naz_skupiny") or row.get("group_name")
+                    row.get("naz_skup") or row.get("naz_skupiny") or row.get("název_skupiny") or row.get("nazev_skupiny") or row.get("group_name")
                 )
                 pc = _norm(row.get("pc"))
                 ean = _norm(row.get("ean"))
@@ -2514,7 +2668,7 @@ def _import_internal_csv(path):
             try:
                 sku = _norm(row.get("sku") or row.get("code") or row.get("kod"))
                 unit = _norm(row.get("ks"))
-                group_name = _norm(row.get("název_skupiny") or row.get("nazev_skupiny") or row.get("group_name"))
+                group_name = _norm(row.get("naz_skup") or row.get("naz_skupiny") or row.get("název_skupiny") or row.get("nazev_skupiny") or row.get("group_name"))
                 pc = _norm(row.get("pc"))
                 existing = InternalProduct.query.filter_by(sku=sku).first() if sku else None
                 if not existing:
@@ -2548,7 +2702,7 @@ def _excel_row_to_product(d):
     if not unit and d.get("col2") is not None:
         unit = _norm(d.get("col2"))
     group_name = _norm(
-        d.get("název_skupiny") or d.get("nazev_skupiny") or d.get("naz_skupiny") or d.get("group_name") or d.get("col0")
+        d.get("naz_skup") or d.get("naz_skupiny") or d.get("název_skupiny") or d.get("nazev_skupiny") or d.get("group_name") or d.get("col0")
     )
     pc = _norm(d.get("pc") or d.get("col3"))
     ean = _norm(d.get("ean"))
@@ -3221,7 +3375,13 @@ def warehouse_orders():
         page = 1
     q = Order.query
     if wid:
-        q = q.filter(Order.warehouse_id == wid)
+        # Sklad vidí: přiřazené svému skladu NEBO nepřiřazené (čekající od pobočky / staré bez warehouse_id)
+        q = q.filter(
+            db.or_(
+                Order.warehouse_id == wid,
+                Order.warehouse_id.is_(None),
+            )
+        )
     else:
         q = q.filter(False)
     if status_filter:
@@ -3247,6 +3407,7 @@ def warehouse_orders():
         page = total_pages
     orders = q.offset((page - 1) * per_page).limit(per_page).all()
     branches = Branch.query.order_by(Branch.name).all()
+    order_check_status_map = {o.id: (getattr(o, "check_status", None) or "") for o in orders}
     return render_template(
         "warehouse_orders.html",
         orders=orders,
@@ -3258,6 +3419,7 @@ def warehouse_orders():
         total_pages=total_pages,
         total=total,
         has_warehouse=bool(wid),
+        order_check_status_map=order_check_status_map,
     )
 
 
@@ -3280,6 +3442,83 @@ def warehouse_order_new():
             return render_template("warehouse_order_new.html", branches=branches, suppliers=suppliers, products=base_products, user=get_current_user())
         supplier_id = request.form.get("supplier_id", type=int) or None
         user = get_current_user()
+        create_from_file = request.form.get("create_from_file") == "1"
+        # „Vytvořit z převodky“: pouze branch + supplier + file, žádný grid → malé tělo požadavku (žádný 413)
+        if create_from_file:
+            f = request.files.get("file")
+            if not f or not f.filename or os.path.splitext(f.filename)[1].lower() not in (".xls", ".xlsx"):
+                flash("Pro vytvoření z převodky vyberte soubor .xls nebo .xlsx.", "error")
+                return render_template("warehouse_order_new.html", branches=branches, suppliers=suppliers, products=base_products, user=get_current_user())
+            order = Order(
+                branch_id=branch.id,
+                status="pending",
+                created_by_id=None,
+                order_type="normal",
+                created_by_warehouse_id=user.id if user else None,
+                supplier_id=supplier_id,
+            )
+            wid = get_current_warehouse_id()
+            if wid:
+                order.warehouse_id = wid
+            db.session.add(order)
+            db.session.flush()
+            path = os.path.join(app.config["UPLOAD_FOLDER"], f.filename)
+            try:
+                f.save(path)
+            except Exception as e:
+                db.session.rollback()
+                app.logger.exception("Warehouse order from XLS: uložení souboru selhalo")
+                flash("Soubor se nepodařilo nahrát.", "error")
+                return redirect(url_for("warehouse_orders"))
+            try:
+                if not _validate_warehouse_xls_headers(path):
+                    db.session.rollback()
+                    flash("Neplatná struktura XLS – očekávány sloupce EAN nebo kód zboží (kod_zbozi).", "error")
+                    if os.path.exists(path):
+                        os.remove(path)
+                    return render_template("warehouse_order_new.html", branches=branches, suppliers=suppliers, products=base_products, user=get_current_user())
+                rows = _parse_warehouse_xls(path)
+                if not rows:
+                    db.session.rollback()
+                    flash("V souboru nebyly nalezeny žádné řádky s EAN nebo kódem zboží.", "error")
+                    if os.path.exists(path):
+                        os.remove(path)
+                    return render_template("warehouse_order_new.html", branches=branches, suppliers=suppliers, products=base_products, user=get_current_user())
+                product_quantities = {}
+                import_skipped = 0
+                for row in rows:
+                    product = find_product_by_ean_or_code(row.get("ean"), row.get("kod_zbozi"))
+                    if not product:
+                        import_skipped += 1
+                        continue
+                    qty = row.get("quantity") or 1.0
+                    product_quantities[product.id] = product_quantities.get(product.id, 0) + qty
+                for product_id, qty in product_quantities.items():
+                    db.session.add(OrderItem(
+                        order_id=order.id,
+                        product_id=product_id,
+                        ordered_quantity=qty,
+                        shipped_quantity=qty,
+                    ))
+                db.session.commit()
+                _update_order_status_from_items(order)
+                audit_log("order_created", "order", order.id, f"Sklad vytvořil objednávku z převodky pro pobočku {branch.name} (#{branch.id})")
+                flash(f"Objednávka #{order.id} pro pobočku {branch.name} vytvořena z převodky. Přidáno {len(product_quantities)} položek, přeskočeno (produkt nenalezen): {import_skipped}.", "success")
+                if import_skipped and not product_quantities:
+                    flash("Žádný produkt z XLS nebyl nalezen v katalogu. Zkontrolujte EAN a kód zboží.", "error")
+            except Exception as e:
+                db.session.rollback()
+                app.logger.exception("Import XLS on order create from file failed: %s", e)
+                flash("Soubor se nepodařilo přečíst nebo má neplatný formát.", "error")
+            finally:
+                if path and os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+            return redirect(url_for("warehouse_order_detail", order_id=order.id))
+
+        # Klasický formulář: grid produktů + volitelný XLS
         order = Order(
             branch_id=branch.id,
             status="pending",
@@ -3288,6 +3527,9 @@ def warehouse_order_new():
             created_by_warehouse_id=user.id if user else None,
             supplier_id=supplier_id,
         )
+        wid = get_current_warehouse_id()
+        if wid:
+            order.warehouse_id = wid
         db.session.add(order)
         db.session.flush()
         added = 0
@@ -3345,9 +3587,16 @@ def warehouse_order_new():
                                 existing = OrderItem.query.filter_by(order_id=order.id, product_id=product_id).first()
                                 if existing:
                                     existing.ordered_quantity = (existing.ordered_quantity or 0) + qty
+                                    existing.shipped_quantity = (existing.shipped_quantity or 0) + qty
                                 else:
-                                    db.session.add(OrderItem(order_id=order.id, product_id=product_id, ordered_quantity=qty))
+                                    db.session.add(OrderItem(
+                                        order_id=order.id,
+                                        product_id=product_id,
+                                        ordered_quantity=qty,
+                                        shipped_quantity=qty,
+                                    ))
                             db.session.commit()
+                            _update_order_status_from_items(order)
                             import_added = len(product_quantities)
                             app.logger.info("Warehouse order import: přidáno %s produktů, přeskočeno %s", import_added, import_skipped)
                             if import_added or import_skipped:
@@ -3383,6 +3632,9 @@ def warehouse_order_detail(order_id):
         .all()
     )
     order_total_selling = _order_total_selling(order)
+    order_check_status = getattr(order, "check_status", None) or ""
+    check_ok_items, check_error_items = _order_check_results(order) if order_check_status in ("verified", "error") else ([], [])
+    item_scanned_qty = _order_item_scanned_qtys(order)
     return render_template(
         "warehouse_order_detail.html",
         order=order,
@@ -3392,6 +3644,10 @@ def warehouse_order_detail(order_id):
         shipped_qty=shipped_qty,
         order_audit_log=order_audit_log,
         order_total_selling=order_total_selling,
+        check_ok_items=check_ok_items,
+        check_error_items=check_error_items,
+        order_check_status=order_check_status,
+        item_scanned_qty=item_scanned_qty,
     )
 
 
@@ -3438,8 +3694,14 @@ def _kod_zbozi_from_row(d):
 
 
 def _parse_warehouse_xls(path):
-    """Parsuje .xls/.xlsx z externího skladu. Sloupce: naz_skup, kod_zbozi, nazev, ean, pc, množství (mnozstvi/ks/quantity).
+    """Parsuje .xls/.xlsx z externího skladu. Podporované sloupce: naz_skupiny/naz_skup, kod_zbozi, nazev, ean, mnozstvi/ks/quantity, pc/pc_bez.
     Hlavičky se normalizují (odstraní diakritika). Řádek musí mít alespoň ean nebo kod_zbozi. Vrací seznam dict včetně klíče quantity."""
+    def _naz_skup(d):
+        return _norm(d.get("naz_skupiny") or d.get("naz_skup"))
+
+    def _pc_val(d):
+        return _norm(d.get("pc") or d.get("pc_bez"))
+
     rows = []
     ext = os.path.splitext(path)[1].lower()
     try:
@@ -3459,11 +3721,11 @@ def _parse_warehouse_xls(path):
                     continue
                 qty = _parse_quantity_from_row(d)
                 rows.append({
-                    "naz_skup": _norm(d.get("naz_skup")),
+                    "naz_skup": _naz_skup(d),
                     "kod_zbozi": kod_zbozi,
                     "nazev": _norm(d.get("nazev")),
                     "ean": ean,
-                    "pc": _norm(d.get("pc")),
+                    "pc": _pc_val(d),
                     "quantity": qty,
                 })
             wb.close()
@@ -3488,11 +3750,11 @@ def _parse_warehouse_xls(path):
                     continue
                 qty = _parse_quantity_from_row(d)
                 rows.append({
-                    "naz_skup": _norm(d.get("naz_skup")),
+                    "naz_skup": _naz_skup(d),
                     "kod_zbozi": kod_zbozi,
                     "nazev": _norm(d.get("nazev")),
                     "ean": ean,
-                    "pc": _norm(d.get("pc")),
+                    "pc": _pc_val(d),
                     "quantity": qty,
                 })
     except Exception:
@@ -3529,7 +3791,7 @@ def _validate_warehouse_xls_headers(path):
 @login_required
 @role_required("warehouse", "admin")
 def warehouse_order_import_xls(order_id):
-    """Import položek z .xls/.xlsx. Match podle EAN nebo kod_zbozi. Množství z XLS se sčítá k existujícím položkám."""
+    """Import převodky: množství z XLS doplní odeslané množství u existujících položek; chybějící produkty se přidají do objednávky."""
     order = Order.query.get_or_404(order_id)
     f = request.files.get("file")
     if not f or not f.filename:
@@ -3559,21 +3821,22 @@ def warehouse_order_import_xls(order_id):
                 continue
             qty = row.get("quantity") or 1.0
             product_quantities[product.id] = product_quantities.get(product.id, 0) + qty
-        added = 0
-        updated = 0
+        updated = 0  # počet existujících položek, u kterých bylo doplněno odeslané množství
+        added = 0    # počet nových položek přidaných do objednávky
         for product_id, qty in product_quantities.items():
             existing_item = OrderItem.query.filter_by(order_id=order.id, product_id=product_id).first()
             if existing_item:
-                existing_item.ordered_quantity = (existing_item.ordered_quantity or 0) + qty
+                existing_item.shipped_quantity = qty
                 updated += 1
             else:
-                db.session.add(OrderItem(order_id=order.id, product_id=product_id, ordered_quantity=qty))
+                db.session.add(OrderItem(order_id=order.id, product_id=product_id, ordered_quantity=qty, shipped_quantity=qty))
                 added += 1
+        _update_order_status_from_items(order)
         db.session.commit()
-        msg = f"Import dokončen. Přidáno {added} položek, aktualizováno (sloučeno množství) {updated} položek."
+        msg = f"Převodka načtena. Doplněno odeslané množství u {updated} položek, přidáno {added} nových položek z převodky."
         if skipped:
-            msg += f" Přeskočeno (produkt nenalezen): {skipped}."
-        audit_log("order_import_xls", "order", order.id, f"Import .xls: přidáno {added}, aktualizováno {updated}, přeskočeno {skipped}")
+            msg += f" Přeskočeno (produkt nenalezen v katalogu): {skipped}."
+        audit_log("order_import_xls", "order", order.id, f"Převodka: doplněno odeslané u {updated} položek, přidáno {added} nových, přeskočeno {skipped}")
         flash(msg)
     except Exception as e:
         db.session.rollback()
@@ -3583,6 +3846,56 @@ def warehouse_order_import_xls(order_id):
         if os.path.exists(path):
             os.remove(path)
     return redirect(url_for("warehouse_order_detail", order_id=order_id))
+
+
+def _order_item_scanned_qtys(order):
+    """Vrátí dict { order_item_id: celkové naskenované množství } pro všechny položky objednávky (pro sloupec Dorazilo produktů)."""
+    try:
+        result = {}
+        for item in order.items:
+            total = (
+                db.session.query(sql_func.coalesce(sql_func.sum(OrderItemCheck.scanned_quantity), 0))
+                .filter(OrderItemCheck.order_item_id == item.id)
+                .scalar()
+                or 0
+            )
+            result[item.id] = float(total)
+        return result
+    except Exception:
+        app.logger.exception("_order_item_scanned_qtys failed for order %s", order.id)
+        return {}
+
+
+def _order_check_errors(order):
+    """Vrátí seznam položek, u kterých kontrola nesedí (skenované množství != očekávané). Pro zobrazení „co bylo špatně“."""
+    _, errors = _order_check_results(order)
+    return errors
+
+
+def _order_check_results(order):
+    """Vrátí (ok_items, error_items): položky kde sken sedí a kde nesedí. Pro zobrazení výsledku kontroly (co bylo dobře/špatně)."""
+    try:
+        ok_items = []
+        error_items = []
+        for item in order.items:
+            total_scanned = (
+                db.session.query(sql_func.coalesce(sql_func.sum(OrderItemCheck.scanned_quantity), 0))
+                .filter(OrderItemCheck.order_item_id == item.id)
+                .scalar()
+                or 0
+            )
+            expected = item.shipped_quantity or 0
+            scanned_f = float(total_scanned)
+            expected_f = float(expected)
+            row = {"item": item, "expected": expected_f, "scanned": scanned_f}
+            if abs(scanned_f - expected_f) >= 0.001:
+                error_items.append(row)
+            elif scanned_f > 0:
+                ok_items.append(row)
+        return (ok_items, error_items)
+    except Exception:
+        app.logger.exception("_order_check_results failed for order %s", order.id)
+        return ([], [])
 
 
 def _order_check_view(order_id, redirect_back_route, for_branch=False):
@@ -3657,7 +3970,7 @@ def warehouse_order_check_scan(order_id):
     order_item = OrderItem.query.filter(OrderItem.order_id == order.id, OrderItem.product_id == product.id).first()
     if not order_item:
         return jsonify({"ok": False, "error": "Tento produkt není v objednávce"}), 404
-    expected = order_item.ordered_quantity or 0
+    expected = order_item.shipped_quantity if order_item.shipped_quantity is not None else 0
     from sqlalchemy import func
     total_already = db.session.query(func.coalesce(func.sum(OrderItemCheck.scanned_quantity), 0)).filter(
         OrderItemCheck.order_item_id == order_item.id
@@ -3682,7 +3995,7 @@ def warehouse_order_check_scan(order_id):
         item_totals[it.id] = s
     all_checked = all(item_totals.get(it.id, 0) > 0 for it in all_items_with_product)
     all_correct = all(
-        abs((item_totals.get(it.id) or 0) - (it.ordered_quantity or 0)) < 0.001
+        abs((item_totals.get(it.id) or 0) - (it.shipped_quantity or 0)) < 0.001
         for it in all_items_with_product
     )
     if all_checked:
@@ -3694,11 +4007,6 @@ def warehouse_order_check_scan(order_id):
             order.check_status = "error"
             db.session.commit()
             audit_log("order_check_error", "order", order.id, "Kontrola odhalila chybu")
-            try:
-                branch = order.branch
-                notify_worker(order.id, branch.name if branch else f"ID {order.branch_id}")
-            except Exception:
-                pass
     return jsonify({
         "ok": True,
         "order_item_id": order_item.id,
@@ -3718,10 +4026,16 @@ def warehouse_order_check_scan(order_id):
 @login_required
 @role_required("warehouse", "admin")
 def warehouse_order_status(order_id):
+    """Změna stavu objednávky. verified/error nelze nastavit ručně – vyhodnotí se automaticky z kontroly pobočky."""
     order = Order.query.get_or_404(order_id)
     status = request.form.get("status")
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
-    if status in ORDER_STATUSES:
+    if status in ("verified", "error"):
+        if is_ajax:
+            return jsonify({"ok": False, "error": "Stav „Zkontrolováno“ a „Chyba kontroly“ se nastavuje automaticky podle kontroly pobočky."}), 400
+        flash("Stav „Zkontrolováno“ a „Chyba kontroly“ se nastavuje automaticky podle kontroly pobočky.", "error")
+        return redirect(url_for("warehouse_order_detail", order_id=order_id))
+    if status in ("pending", "partially_shipped", "shipped"):
         order.status = status
         db.session.commit()
         audit_log("order_status", "order", order.id, f"Objednávka #{order_id} → {status}")
@@ -3825,6 +4139,47 @@ def warehouse_item_available(order_id, item_id):
     return redirect(url_for("warehouse_order_detail", order_id=order_id))
 
 
+@app.route("/warehouse/order/<int:order_id>/create-order-from-unavailable", methods=["POST"])
+@login_required
+@role_required("admin")
+def warehouse_order_create_from_unavailable(order_id):
+    """Vytvoří novou objednávku pro stejnou pobočku z položek označených jako „Nemám“."""
+    order = Order.query.get_or_404(order_id)
+    unavailable_items = [i for i in order.items if i.unavailable and i.product_id]
+    if not unavailable_items:
+        flash("Žádné položky označené jako „Nemám“. Označte nejprve položky tlačítkem Nemám.", "error")
+        return redirect(url_for("warehouse_order_detail", order_id=order_id))
+    user = get_current_user()
+    new_order = Order(
+        branch_id=order.branch_id,
+        status="pending",
+        order_type="normal",
+        created_by_warehouse_id=user.id if user else None,
+        supplier_id=order.supplier_id,
+    )
+    # nová objednávka je přiřazena stejnému skladu jako původní, nebo aktuálnímu skladu admina
+    if order.warehouse_id:
+        new_order.warehouse_id = order.warehouse_id
+    else:
+        wid_new = get_current_warehouse_id()
+        if wid_new:
+            new_order.warehouse_id = wid_new
+    db.session.add(new_order)
+    db.session.flush()
+    for it in unavailable_items:
+        db.session.add(OrderItem(
+            order_id=new_order.id,
+            product_id=it.product_id,
+            ordered_quantity=it.ordered_quantity or 0,
+            shipped_quantity=None,
+            branch_note=it.branch_note,
+        ))
+    db.session.commit()
+    audit_log("order_created_from_unavailable", "order", new_order.id, f"Z objednávky #{order_id}: {len(unavailable_items)} položek (Nemám) → nová objednávka #{new_order.id}")
+    flash(f"Nová objednávka #{new_order.id} vytvořena z {len(unavailable_items)} nedostupných položek. Stejná pobočka: {order.branch.name if order.branch else '—'}.")
+    return redirect(url_for("warehouse_order_detail", order_id=new_order.id))
+
+
 @app.route("/warehouse/order/<int:order_id>/item/<int:item_id>/note", methods=["POST"])
 @login_required
 @role_required("warehouse", "admin")
@@ -3839,61 +4194,6 @@ def warehouse_item_note(order_id, item_id):
         return jsonify({"ok": True, "warehouse_note": note or ""})
     flash("Poznámka skladu uložena." if note else "Poznámka skladu odebrána.")
     return redirect(url_for("warehouse_order_detail", order_id=order_id))
-
-
-def _order_invoice_update(order_id):
-    """Společná logika nastavení faktury (volá sklad i pobočka). Vrací True pokud byla změna."""
-    order = Order.query.get_or_404(order_id)
-    ok_val = request.form.get("invoice_ok")
-    note = request.form.get("invoice_note", "").strip() or None
-    if ok_val == "1":
-        order.invoice_ok = True
-        order.invoice_note = None
-        db.session.commit()
-        audit_log("invoice_ok", "order", order.id, f"Objednávka #{order_id} – Vše cajk")
-        return True
-    if ok_val == "0":
-        if not note:
-            return False
-        order.invoice_ok = False
-        order.invoice_note = note
-        db.session.commit()
-        audit_log("invoice_error", "order", order.id, f"Objednávka #{order_id}: {note[:200]}")
-        return True
-    return False
-
-
-@app.route("/warehouse/order/<int:order_id>/invoice", methods=["POST"])
-@login_required
-@role_required("warehouse", "admin")
-def warehouse_order_invoice(order_id):
-    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
-    if not _order_invoice_update(order_id):
-        if is_ajax:
-            return jsonify({"ok": False, "error": "U stavu „Chyba“ je poznámka povinná."}), 400
-        flash("U stavu „Chyba“ je poznámka povinná.", "error")
-        return redirect(url_for("warehouse_order_detail", order_id=order_id))
-    if is_ajax:
-        order = Order.query.get_or_404(order_id)
-        return jsonify({
-            "ok": True,
-            "invoice_ok": order.invoice_ok,
-            "invoice_note": order.invoice_note or "",
-        })
-    return redirect(url_for("warehouse_order_detail", order_id=order_id))
-
-
-@app.route("/branch/order/<int:order_id>/invoice", methods=["POST"])
-@login_required
-@role_required("branch")
-def branch_order_invoice(order_id):
-    order = Order.query.get_or_404(order_id)
-    if order.branch_id != get_current_branch_id():
-        flash("Objednávka nepatří vaší pobočce.", "error")
-        return redirect(url_for("branch_orders"))
-    if not _order_invoice_update(order_id):
-        flash("U stavu „Chyba“ je poznámka povinná.", "error")
-    return redirect(url_for("branch_order_detail", order_id=order_id))
 
 
 with app.app_context():
@@ -3939,8 +4239,6 @@ with app.app_context():
         "ALTER TABLE products ADD COLUMN unit VARCHAR(50)",
         "ALTER TABLE products ADD COLUMN is_internal INTEGER DEFAULT 0",
         "ALTER TABLE orders ADD COLUMN created_by_id INTEGER REFERENCES users(id)",
-        "ALTER TABLE orders ADD COLUMN invoice_ok INTEGER",
-        "ALTER TABLE orders ADD COLUMN invoice_note TEXT",
         "ALTER TABLE orders ADD COLUMN order_type VARCHAR(30) DEFAULT 'normal'",
         "ALTER TABLE orders ADD COLUMN created_by_warehouse_id INTEGER REFERENCES users(id)",
     ):

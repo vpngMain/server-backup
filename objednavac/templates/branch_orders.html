@@ -16,8 +16,7 @@
         <span class="order-card-id">Objednávka {{ o.id }}{% if o.created_by_warehouse_id %} <span class="badge-warehouse" title="Vytvořeno skladem">sklad</span>{% endif %}</span>
         <span class="order-card-meta">{{ o.created_at | format_datetime }}</span>
         {% set main_status = 'shipped' if o.status in ('verified','error') else o.status %}
-        <span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if o.check_status or o.status in ('verified','error') %}<span class="status-badge status-{{ o.check_status or o.status }}">{{ status_cz(o.check_status or o.status) }}</span>{% endif %}
-        <span class="order-card-invoice" title="Stav kontroly">{% if o.check_status == 'verified' or o.status == 'verified' %}✅ Cajk{% elif o.check_status == 'error' or o.status == 'error' %}❌ Chyba{% elif o.invoice_ok == true %}✅ Cajk{% elif o.invoice_ok == false %}❌ Chyba{% else %}—{% endif %}</span>
+        <span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if o.check_status == 'verified' or o.check_status == 'error' %}<span class="status-badge status-{{ o.check_status }}" title="Výsledek kontroly čtečkou">{% if o.check_status == 'verified' %}✅ Zkontrolováno{% else %}❌ Chyba kontroly{% endif %}</span>{% endif %}
         <span class="order-card-count">{{ o.items|length }} položek</span>
         <span class="order-card-arrow" aria-hidden="true">→</span>
     </a>

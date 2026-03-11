@@ -102,7 +102,7 @@
                             <p class="dashboard-item-card-meta">{{ o.branch.name if o.branch else '—' }}</p>
                             <p class="dashboard-item-card-meta">{{ o.created_at | format_datetime }}</p>
                             {% set main_status = 'shipped' if o.status in ('verified','error') else o.status %}
-                            <p><span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if o.check_status or o.status in ('verified','error') %}<span class="status-badge status-{{ o.check_status or o.status }}">{{ status_cz(o.check_status or o.status) }}</span>{% endif %}</p>
+                            <p><span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if o.check_status == 'verified' or o.check_status == 'error' %}<span class="status-badge status-{{ o.check_status }}" title="Výsledek kontroly čtečkou">{% if o.check_status == 'verified' %}✅ Zkontrolováno{% else %}❌ Chyba kontroly{% endif %}</span>{% endif %}</p>
                             <a href="{{ url_for('admin_order_detail', order_id=o.id) }}" class="btn btn-sm">Detail</a>
                         </div>
                     </article>

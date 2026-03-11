@@ -1,11 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Dodací list {{ note.document_number }} – Blooms{% endblock %}
+{% block head_scripts %}
+{{ super() }}
+{% if use_tabulator %}
+<link href="{{ url_for('main.tabulator_asset', filename='css/tabulator_bootstrap5.min.css') }}" rel="stylesheet">
+<script src="{{ url_for('main.tabulator_asset', filename='js/tabulator.min.js') }}"></script>
+{% endif %}
+{% endblock %}
 {% block content %}
+<div class="has-mobile-action-bar">
+{% if company_profile and company_profile.name %}
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="fw-semibold">{{ company_profile.name }}</div>
+        <div class="small text-muted">
+            {% if company_profile.street %}{{ company_profile.street }}, {% endif %}
+            {{ company_profile.zip or '' }} {{ company_profile.city or '' }}
+            {% if company_profile.country %}, {{ company_profile.country }}{% endif %}
+            {% if company_profile.ico %} | IČO: {{ company_profile.ico }}{% endif %}
+            {% if company_profile.dic %} | DIČ: {{ company_profile.dic }}{% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
 <h1 class="mb-4">Dodací list {{ note.document_number }}</h1>
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 <a href="/delivery" class="btn btn-outline-secondary mb-2">Zpět na seznam</a>
 <a href="/delivery/{{ note.id }}/print" class="btn btn-outline-primary mb-2" target="_blank">Tisk</a>
-<a href="/delivery/{{ note.id }}/pdf" class="btn btn-outline-primary mb-2">Stáhnout PDF</a>
+<a href="/delivery/{{ note.id }}/pdf" class="btn btn-outline-primary mb-2" target="_blank">PDF</a>
+<button type="button" id="share-pdf-btn" class="btn btn-outline-success mb-2">Sdílet PDF</button>
 {% if note.status == 'draft' %}
 <form method="post" action="/delivery/{{ note.id }}/issue" class="d-inline">{% include '_csrf.html' %}<button type="submit" class="btn btn-success mb-2">Vystavit</button></form>
 {% endif %}
@@ -27,15 +50,39 @@
     </div>
 </div>
 <h5>Položky</h5>
+{% if use_tabulator %}
+{% set toolbar_prefix = "delivery-items-grid" %}
+{% set toolbar_placeholder = "Hledat v položkách dodáku..." %}
+{% include "_tabulator_toolbar.html" %}
+<p class="small text-muted mb-2">Sloupce <strong>#</strong> rozlišuje řádky. <strong>Množství</strong> a <strong>Cena/jedn.</strong> upravíte dvojklikem do buňky, změna se uloží po odchodu z buňky.</p>
+<div id="delivery-items-skeleton" class="skeleton-grid mb-3">
+    <div class="skeleton-row"></div>
+    <div class="skeleton-row w-80"></div>
+    <div class="skeleton-row"></div>
+    <div class="skeleton-row w-60"></div>
+</div>
+<div id="delivery-items-mobile-cards" class="mobile-cards mb-3 d-none"></div>
+<div id="delivery-items-grid" class="mb-4"></div>
+<div class="mb-4 delivery-total-box"><strong>Celkem:</strong> <span id="delivery-note-total">{{ note.total_amount or '0' }}</span></div>
+<form id="delivery-item-delete-form" method="post" action="" class="d-none">
+    {% include '_csrf.html' %}
+</form>
+{% else %}
 <table class="table table-bordered mb-4">
     <thead><tr><th>Položka</th><th>Množství</th><th>Jedn.</th><th>Cena/jedn.</th><th>Celkem</th><th></th></tr></thead>
     <tbody>
-        {% for item in note.items %}
+        {% for item in sorted_items %}
         <tr>
             <td>{{ item.item_name }}{% if item.item_description %} – {{ item.item_description }}{% endif %}</td>
             <td>{{ item.quantity }}</td>
             <td>{{ item.unit or 'ks' }}</td>
-            <td>{{ item.unit_price }}</td>
+            <td>
+                <form method="post" action="/delivery/{{ note.id }}/items/{{ item.id }}/update-price" class="d-flex gap-1 align-items-center">
+                    {% include '_csrf.html' %}
+                    <input type="text" name="unit_price" class="form-control form-control-sm" value="{{ item.unit_price }}" style="max-width: 130px;">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Uložit</button>
+                </form>
+            </td>
             <td>{{ item.line_total }}</td>
             <td>
                 <form method="post" action="/delivery/{{ note.id }}/items/{{ item.id }}/delete" class="d-inline" onsubmit="return confirm('Smazat položku?');">{% include '_csrf.html' %}<button type="submit" class="btn btn-sm btn-outline-danger">Smazat</button></form>
@@ -47,29 +94,33 @@
     </tbody>
     <tfoot><tr><th colspan="4">Celkem</th><th>{{ note.total_amount or '0' }}</th><th></th></tr></tfoot>
 </table>
-<div class="row">
+{% endif %}
+<div class="row" id="add-item-section">
     <div class="col-md-6 card">
         <div class="card-body">
             <h6>Přidat z katalogu produktů</h6>
             <form method="post" action="/delivery/{{ note.id }}/items/add-product" id="form-add-product">
                 {% include '_csrf.html' %}
                 <input type="hidden" name="product_id" id="delivery-product-id" value="" required>
+                <input type="hidden" name="customer_id" id="delivery-customer-id" value="{{ note.customer_id }}">
                 <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
                     <span class="small"><strong>Vybráno:</strong> <span id="selected-product-name" class="text-muted">—</span></span>
                     <button type="button" class="btn btn-outline-secondary btn-sm py-0" id="btn-clear-product" style="display: none;">Zrušit výběr</button>
                 </div>
                 <input type="text" name="q" id="product-search" class="form-control mb-2" placeholder="Hledat produkt (min. 2 znaky)…" autocomplete="off">
+                <div class="small text-muted mb-2">Ve výsledku vidíte název, velikost květináče a obchodní cenu D1.</div>
                 <div id="product-results" class="border rounded p-2 bg-light" style="max-height: 200px; overflow-y: auto;"
                      hx-get="/products/search"
-                     hx-include="[name='q']"
+                     hx-include="[name='q'],[name='customer_id']"
                      hx-trigger="keyup from:#product-search delay:200ms, search from:#product-search"
                      hx-swap="innerHTML">
                     <p class="text-muted small mb-0">Napište alespoň 2 znaky – zobrazí se vyhovující produkty.</p>
                 </div>
                 <div class="row mt-2 g-2">
-                    <div class="col-4"><label class="form-label small">Množství</label><input type="text" name="quantity" class="form-control form-control-sm" value="1" placeholder="1"></div>
-                    <div class="col-4"><label class="form-label small">Jedn.</label><input type="text" name="unit" class="form-control form-control-sm" value="ks" placeholder="ks"></div>
-                    <div class="col-4 d-flex align-items-end"><button type="submit" class="btn btn-success btn-sm w-100">Přidat</button></div>
+                    <div class="col-6 col-md-3"><label class="form-label small">Množství</label><input type="text" id="delivery-quantity" name="quantity" class="form-control form-control-sm" value="1" placeholder="1"></div>
+                    <div class="col-6 col-md-3"><label class="form-label small">Jedn.</label><input type="text" name="unit" class="form-control form-control-sm" value="ks" placeholder="ks"></div>
+                    <div class="col-6 col-md-3"><label class="form-label small">Cena/jedn. (volitelně)</label><input type="text" name="unit_price" class="form-control form-control-sm" placeholder="automaticky dle cenové hladiny"></div>
+                    <div class="col-6 col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-success btn-sm w-100">Přidat</button></div>
                 </div>
             </form>
         </div>
@@ -89,9 +140,423 @@
         </div>
     </div>
 </div>
+<div class="mobile-action-bar">
+    <a href="/delivery" class="btn btn-outline-secondary">Seznam</a>
+    <a href="#add-item-section" class="btn btn-outline-primary">Přidat položku</a>
+    {% if note.status == 'draft' %}
+    <form method="post" action="/delivery/{{ note.id }}/issue" class="d-inline-flex flex-grow-1">{% include '_csrf.html' %}
+        <button type="submit" class="btn btn-success w-100">Vystavit</button>
+    </form>
+    {% endif %}
+</div>
+
+<div class="card mt-3">
+    <div class="card-body">
+        <h6 class="mb-2">Předvolby zobrazení (zařízení)</h6>
+        <div class="row g-2 align-items-end mb-3">
+            <div class="col-6 col-md-3">
+                <label class="form-label small">Layout</label>
+                <select id="ux-layout" class="form-select form-select-sm">
+                    <option value="auto">Auto</option>
+                    <option value="grid">Grid</option>
+                    <option value="cards">Karty</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label small">Hustota</label>
+                <select id="ux-density" class="form-select form-select-sm">
+                    <option value="normal">Normální</option>
+                    <option value="compact">Kompaktní</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label small">Písmo</label>
+                <select id="ux-font" class="form-select form-select-sm">
+                    <option value="normal">Normální</option>
+                    <option value="large">Větší</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-3 d-flex">
+                <button type="button" id="ux-save-btn" class="btn btn-outline-success w-100">Uložit předvolby</button>
+            </div>
+        </div>
+
+        <h6 class="mb-2">Bulk edit položek</h6>
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-3">
+                <label class="form-label small">Množství (nastavit)</label>
+                <input type="text" id="bulk-quantity-set" class="form-control form-control-sm" placeholder="např. 10">
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label small">Cena/jedn. (nastavit)</label>
+                <input type="text" id="bulk-price-set" class="form-control form-control-sm" placeholder="např. 89.90">
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label small">Sleva %</label>
+                <input type="text" id="bulk-discount-pct" class="form-control form-control-sm" placeholder="např. 5">
+            </div>
+            <div class="col-12 col-md-3 d-flex">
+                <button type="button" id="bulk-apply-btn" class="btn btn-success w-100">Aplikovat na vybrané</button>
+            </div>
+        </div>
+        <div class="small text-muted mt-2">Vyberte položky v tabulce (checkbox vlevo) nebo v mobilních kartách a aplikujte hromadně změnu množství/ceny/slevy.</div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-body">
+        <h6 class="mb-2">Historie změn cen (audit)</h6>
+        {% if price_audit_rows %}
+        <div class="table-responsive-wrap">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Kdy</th>
+                        <th>Uživatel</th>
+                        <th>Akce</th>
+                        <th>Detail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in price_audit_rows %}
+                    <tr>
+                        <td>{{ r.changed_at }}</td>
+                        <td>{{ r.user }}</td>
+                        <td>{{ r.action }}</td>
+                        <td><code class="small">{{ r.details }}</code></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="small text-muted mb-0">Zatím bez změn cen.</p>
+        {% endif %}
+    </div>
+</div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
+{% if use_tabulator %}
+(function() {
+    var rows = {{ items_rows_compact | tojson }};
+    var bulkUpdateUrl = {{ bulk_update_url | tojson }};
+    var gridEl = document.getElementById('delivery-items-grid');
+    var skeletonEl = document.getElementById('delivery-items-skeleton');
+    var mobileCardsEl = document.getElementById('delivery-items-mobile-cards');
+    if (!gridEl || !window.Tabulator) return;
+    var isMobile = window.matchMedia('(max-width: 767.98px)').matches;
+    var uxPrefs = window.BloomsUX ? window.BloomsUX.loadPrefs("delivery_detail") : {};
+    if (window.BloomsUX) window.BloomsUX.applyVisualPrefs(uxPrefs);
+    var forcedLayout = (uxPrefs.layout || "auto");
+    var useCardsLayout = forcedLayout === "cards" || (forcedLayout === "auto" && isMobile);
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+    function fmt4(v) {
+        var n = Number(v);
+        if (!isFinite(n)) return v == null ? "" : String(v);
+        return n.toFixed(4);
+    }
+
+    function escapeHtml(s) {
+        return String(s || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function renderMobileCards(data, searchTerm) {
+        if (!mobileCardsEl) return;
+        var q = String(searchTerm || "").toLowerCase().trim();
+        var filtered = data.filter(function (r) {
+            if (!q) return true;
+            var hay = [r.item_name, r.item_description, r.unit].join(" ").toLowerCase();
+            return hay.indexOf(q) !== -1;
+        });
+        if (!filtered.length) {
+            mobileCardsEl.innerHTML = '<div class="mobile-card"><div class="mobile-card-sub">Žádné položky.</div></div>';
+            return;
+        }
+        mobileCardsEl.innerHTML = filtered.map(function (r) {
+            return (
+                '<div class="mobile-card">' +
+                '<div class="mobile-card-title">' + escapeHtml(r.item_name || "") + '</div>' +
+                '<div class="mobile-card-sub">' + escapeHtml(r.item_description || "") + '</div>' +
+                '<div class="mobile-card-grid">' +
+                '<div class="k">Množství</div><div>' + escapeHtml(r.quantity || "") + " " + escapeHtml(r.unit || "ks") + '</div>' +
+                '<div class="k">Cena/jedn.</div><div>' + fmt4(r.unit_price) + '</div>' +
+                '<div class="k">Celkem</div><div><strong>' + fmt4(r.line_total) + '</strong></div>' +
+                '</div>' +
+                '<form class="mobile-card-actions d-flex" method="post" action="' + escapeHtml(r.update_price_url || "#") + '">' +
+                '<input type="hidden" name="csrf_token" value="' + escapeHtml(csrfToken) + '">' +
+                '<input type="text" name="unit_price" value="' + escapeHtml(r.unit_price || "") + '" class="form-control form-control-sm" style="max-width:120px;">' +
+                '<button class="btn btn-sm btn-outline-primary" type="submit">Uložit</button>' +
+                '<button class="btn btn-sm btn-outline-success" type="button" data-quick-action="qty_plus" data-url="' + escapeHtml(r.quick_action_url || "") + '">+1 ks</button>' +
+                '<button class="btn btn-sm btn-outline-secondary" type="button" data-quick-action="qty_minus" data-url="' + escapeHtml(r.quick_action_url || "") + '">-1 ks</button>' +
+                '<button class="btn btn-sm btn-outline-warning" type="button" data-quick-action="discount_pct" data-url="' + escapeHtml(r.quick_action_url || "") + '">Sleva %</button>' +
+                '<button class="btn btn-sm btn-outline-info" type="button" data-quick-action="copy" data-url="' + escapeHtml(r.quick_action_url || "") + '">Kopie</button>' +
+                '<button class="btn btn-sm btn-outline-danger" type="button" data-delete-url="' + escapeHtml(r.delete_url || "") + '">Smazat</button>' +
+                '</form>' +
+                '<label class="form-check small mt-2 mb-0"><input type="checkbox" class="form-check-input bulk-select-mobile" value="' + escapeHtml(r.id) + '"> Vybrat do bulk editu</label>' +
+                '<div class="small text-muted mt-1">Doporučená: <button type="button" class="btn btn-link btn-sm p-0 align-baseline set-suggested-price" data-price="' + escapeHtml(r.recommended_price || "") + '">' + escapeHtml(r.recommended_price || "-") + '</button> | Poslední: ' + escapeHtml(r.last_customer_price || "-") + ' | Min marže: ' + escapeHtml(r.min_margin_price || "-") + '</div>' +
+                '</div>'
+            );
+        }).join("");
+    }
+
+    var table = new Tabulator(gridEl, {
+        data: rows,
+        layout: useCardsLayout ? "fitColumns" : "fitDataStretch",
+        height: useCardsLayout ? "58vh" : "420px",
+        responsiveLayout: useCardsLayout ? "collapse" : false,
+        responsiveLayoutCollapseStartOpen: false,
+        responsiveLayoutCollapseUseFormatters: true,
+        movableColumns: true,
+        selectableRows: true,
+        initialSort: [{column: "item_name", dir: "asc"}],
+        columns: [
+            {formatter: "rowSelection", titleFormatter: "rowSelection", headerSort: false, hozAlign: "center", width: 44, responsive: 0},
+            {title: "#", width: 42, headerSort: false, hozAlign: "center", formatter: function(cell) { return cell.getRow().getPosition(true); }, responsive: 0},
+            {
+                title: "Položka",
+                field: "item_name",
+                minWidth: 260,
+                headerFilter: "input",
+                responsive: 0,
+                formatter: function(cell) {
+                    var row = cell.getRow().getData();
+                    var name = escapeHtml(row.item_name || "");
+                    var desc = escapeHtml(row.item_description || "");
+                    if (!desc) return '<div class="dn-item-title">' + name + '</div>';
+                    return '<div class="dn-item-title">' + name + '</div><div class="dn-item-sub">' + desc + '</div>';
+                }
+            },
+            {title: "Množství", field: "quantity", width: 95, hozAlign: "right", responsive: 0, editor: "input", editorParams: { elementAttributes: { maxlength: "14", placeholder: "dvojklik" } }, formatter: function(cell){ var v = cell.getValue(); return v !== "" && v != null ? fmt4(v) : v; }},
+            {title: "Jedn.", field: "unit", width: 70, responsive: 3},
+            {title: "Cena/jedn.", field: "unit_price", width: 120, hozAlign: "right", editor: "input", responsive: 0, editorParams: { elementAttributes: { maxlength: "14", placeholder: "dvojklik" } }, formatter: function(cell){ return fmt4(cell.getValue()); }},
+            {title: "Celkem", field: "line_total", width: 120, hozAlign: "right", responsive: 1, formatter: function(cell){ return fmt4(cell.getValue()); }},
+            {
+                title: "",
+                field: "delete_url",
+                width: 260,
+                hozAlign: "center",
+                headerSort: false,
+                responsive: 0,
+                formatter: function() {
+                    return '' +
+                        '<button class="btn btn-sm btn-outline-success me-1 tab-qa" data-qa="qty_plus">+1</button>' +
+                        '<button class="btn btn-sm btn-outline-secondary me-1 tab-qa" data-qa="qty_minus">-1</button>' +
+                        '<button class="btn btn-sm btn-outline-warning me-1 tab-qa" data-qa="discount_pct">Sleva%</button>' +
+                        '<button class="btn btn-sm btn-outline-info me-1 tab-qa" data-qa="copy">Kopie</button>' +
+                        '<button class="btn btn-sm btn-outline-danger tab-delete-item">Smazat</button>';
+                },
+                cellClick: function(e, cell) {
+                    e.preventDefault();
+                    var trg = e.target;
+                    var rowData = cell.getRow().getData();
+                    if (trg && trg.closest('.tab-delete-item')) {
+                        if (!confirm('Smazat položku?')) return;
+                        var form = document.getElementById('delivery-item-delete-form');
+                        if (!form) return;
+                        form.setAttribute('action', rowData.delete_url);
+                        form.submit();
+                        return;
+                    }
+                    var qaBtn = trg && trg.closest('.tab-qa');
+                    if (!qaBtn) return;
+                    var action = qaBtn.getAttribute('data-qa') || '';
+                    var body = new URLSearchParams();
+                    body.append("action", action);
+                    body.append("csrf_token", csrfToken);
+                    if (action === "discount_pct") {
+                        var pct = window.prompt("Sleva v %:", "5");
+                        if (pct === null) return;
+                        body.append("discount_pct", pct);
+                    }
+                    fetch(rowData.quick_action_url, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        body: body.toString()
+                    }).then(function(){ window.location.reload(); }).catch(function(){ window.location.reload(); });
+                }
+            }
+        ],
+        cellEdited: function(cell) {
+            var field = cell.getField();
+            if (field !== "unit_price" && field !== "quantity") return;
+            var row = cell.getRow();
+            var data = row.getData();
+            var body = new URLSearchParams();
+            body.append("unit_price", data.unit_price != null ? data.unit_price : "");
+            body.append("quantity", data.quantity != null ? data.quantity : "");
+            if (csrfToken) body.append("csrf_token", csrfToken);
+
+            fetch(data.update_price_url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body: body.toString()
+            })
+            .then(function(res) {
+                if (!res.ok) throw new Error("bad");
+                return res.json();
+            })
+            .then(function(payload) {
+                if (!payload || !payload.ok) throw new Error(payload.error || "invalid");
+                row.update({
+                    quantity: payload.quantity != null ? payload.quantity : data.quantity,
+                    unit_price: payload.unit_price != null ? payload.unit_price : data.unit_price,
+                    line_total: payload.line_total != null ? payload.line_total : data.line_total
+                });
+                window.location.reload();
+            })
+            .catch(function(err) {
+                alert(err.message || "Nepodařilo se uložit. Zkontrolujte hodnotu.");
+                window.location.reload();
+            });
+        }
+    });
+
+    if (window.BloomsTabulator) {
+        window.BloomsTabulator.wire(table, {
+            pageKey: "delivery_detail_items",
+            searchInputId: "delivery-items-grid-search",
+            clearBtnId: "delivery-items-grid-clear",
+            resetBtnId: "delivery-items-grid-reset",
+            exportCsvBtnId: "delivery-items-grid-export-csv",
+            exportXlsxBtnId: "delivery-items-grid-export-xlsx",
+            exportPrefix: "dodak_polozky_grid",
+            quickSearchFields: ["item_name", "item_description", "unit"],
+            mobileHideFields: ["unit"],
+        });
+    }
+    if (skeletonEl) skeletonEl.classList.add('d-none');
+
+    var bulkBtn = document.getElementById("bulk-apply-btn");
+    if (bulkBtn) {
+        bulkBtn.addEventListener("click", function () {
+            var ids = [];
+            if (!useCardsLayout) {
+                ids = table.getSelectedData().map(function (r) { return r.id; });
+            } else {
+                document.querySelectorAll(".bulk-select-mobile:checked").forEach(function (c) { ids.push(c.value); });
+            }
+            if (!ids.length) {
+                alert("Vyberte alespoň jednu položku.");
+                return;
+            }
+            var body = new URLSearchParams();
+            ids.forEach(function (id) { body.append("item_ids", id); });
+            body.append("csrf_token", csrfToken);
+            var q = document.getElementById("bulk-quantity-set");
+            var p = document.getElementById("bulk-price-set");
+            var d = document.getElementById("bulk-discount-pct");
+            if (q && q.value.trim()) body.append("quantity_set", q.value.trim());
+            if (p && p.value.trim()) body.append("unit_price_set", p.value.trim());
+            if (d && d.value.trim()) body.append("discount_pct", d.value.trim());
+            fetch(bulkUpdateUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body: body.toString()
+            }).then(function(){ window.location.reload(); }).catch(function(){ window.location.reload(); });
+        });
+    }
+
+    document.addEventListener("click", function (evt) {
+        var qa = evt.target.closest("[data-quick-action]");
+        if (!qa) return;
+        evt.preventDefault();
+        var action = qa.getAttribute("data-quick-action");
+        var url = qa.getAttribute("data-url");
+        if (!url) return;
+        var body = new URLSearchParams();
+        body.append("action", action);
+        body.append("csrf_token", csrfToken);
+        if (action === "discount_pct") {
+            var pct = window.prompt("Sleva v %:", "5");
+            if (pct === null) return;
+            body.append("discount_pct", pct);
+        }
+        fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                "X-Requested-With": "XMLHttpRequest"
+            },
+            body: body.toString()
+        }).then(function(){ window.location.reload(); }).catch(function(){ window.location.reload(); });
+    });
+
+    document.addEventListener("click", function (evt) {
+        var btn = evt.target.closest(".set-suggested-price");
+        if (!btn) return;
+        evt.preventDefault();
+        var price = btn.getAttribute("data-price");
+        if (!price) return;
+        var container = btn.closest(".mobile-card");
+        if (!container) return;
+        var input = container.querySelector("input[name='unit_price']");
+        if (input) input.value = price;
+    });
+
+    if (useCardsLayout) {
+        gridEl.classList.add("tab-grid-mobile-hidden");
+        var toolbar = document.getElementById("delivery-items-grid-search");
+        if (mobileCardsEl) mobileCardsEl.classList.remove("d-none");
+        renderMobileCards(rows, toolbar ? toolbar.value : "");
+        if (toolbar) {
+            toolbar.addEventListener("input", function () {
+                renderMobileCards(rows, toolbar.value);
+            });
+        }
+        document.addEventListener("click", function (evt) {
+            var delBtn = evt.target.closest("[data-delete-url]");
+            if (!delBtn) return;
+            evt.preventDefault();
+            if (!confirm("Smazat položku?")) return;
+            var form = document.getElementById('delivery-item-delete-form');
+            if (!form) return;
+            form.setAttribute('action', delBtn.getAttribute('data-delete-url'));
+            form.submit();
+        });
+    }
+
+    var layoutSel = document.getElementById("ux-layout");
+    var densitySel = document.getElementById("ux-density");
+    var fontSel = document.getElementById("ux-font");
+    var saveBtn = document.getElementById("ux-save-btn");
+    if (layoutSel) layoutSel.value = forcedLayout;
+    if (densitySel) densitySel.value = uxPrefs.density || "normal";
+    if (fontSel) fontSel.value = uxPrefs.font || "normal";
+    if (saveBtn) {
+        saveBtn.addEventListener("click", function () {
+            var nextPrefs = {
+                layout: layoutSel ? layoutSel.value : "auto",
+                density: densitySel ? densitySel.value : "normal",
+                font: fontSel ? fontSel.value : "normal"
+            };
+            if (window.BloomsUX) {
+                window.BloomsUX.savePrefs("delivery_detail", nextPrefs);
+                window.BloomsUX.applyVisualPrefs(nextPrefs);
+            }
+            window.location.reload();
+        });
+    }
+})();
+{% endif %}
+
 document.addEventListener('click', function(e) {
     var btn = e.target.closest('.product-pick');
     if (btn) {
@@ -101,6 +566,11 @@ document.addEventListener('click', function(e) {
         document.getElementById('selected-product-name').classList.remove('text-muted');
         document.getElementById('btn-clear-product').style.display = 'inline-block';
         document.getElementById('product-results').innerHTML = '<p class="text-muted small mb-0">Vybráno. Můžete přidat nebo zrušit výběr.</p>';
+        var qtyInput = document.getElementById('delivery-quantity');
+        if (qtyInput) {
+            qtyInput.focus();
+            qtyInput.select();
+        }
         return;
     }
     if (e.target.id === 'btn-clear-product') {
@@ -113,5 +583,32 @@ document.addEventListener('click', function(e) {
         document.getElementById('product-results').innerHTML = '<p class="text-muted small mb-0">Napište alespoň 2 znaky – zobrazí se vyhovující produkty.</p>';
     }
 });
+
+(function() {
+    var shareBtn = document.getElementById("share-pdf-btn");
+    if (!shareBtn) return;
+    var pdfUrl = "/delivery/{{ note.id }}/pdf?download=0";
+    var downloadUrl = "/delivery/{{ note.id }}/pdf";
+    shareBtn.addEventListener("click", async function () {
+        try {
+            var res = await fetch(pdfUrl, { credentials: "same-origin" });
+            if (!res.ok) throw new Error("PDF fetch failed");
+            var blob = await res.blob();
+            var file = new File([blob], "dodaci-list-{{ note.document_number }}.pdf", { type: "application/pdf" });
+            if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+                await navigator.share({
+                    title: "Dodací list {{ note.document_number }}",
+                    text: "Dodací list z Blooms",
+                    files: [file]
+                });
+                return;
+            }
+            // Fallback: otevřít standardní stažení
+            window.location.href = downloadUrl;
+        } catch (_e) {
+            window.location.href = downloadUrl;
+        }
+    });
+})();
 </script>
 {% endblock %}

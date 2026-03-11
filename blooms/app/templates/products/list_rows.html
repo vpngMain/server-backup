@@ -1,11 +1,17 @@
 {% for p in products %}
 <tr>
-    <td>{{ p.description }}</td>
-    <td>{{ p.description2 or '-' }}</td>
-    <td>{{ p.pot_size or '-' }}</td>
-    <td>{% if p.active %}Ano{% else %}Ne{% endif %}</td>
+    {% if "description" in selected_columns %}<td>{{ p.description }}</td>{% endif %}
+    {% if "description2" in selected_columns %}<td>{{ p.description2 or '-' }}</td>{% endif %}
+    {% if "pot_size" in selected_columns %}<td>{{ p.pot_size or '-' }}</td>{% endif %}
+    {% if "ean_code" in selected_columns %}<td>{{ p.ean_code or '-' }}</td>{% endif %}
+    {% if "vbn_code" in selected_columns %}<td>{{ p.vbn_code or '-' }}</td>{% endif %}
+    {% if "sales_price" in selected_columns %}<td>{{ p.effective_sales_price() | price2 or '-' }}</td>{% endif %}
+    {% if "purchase_price" in selected_columns %}<td>{{ p.effective_purchase_price() | price2 or '-' }}</td>{% endif %}
+    {% if "vip_czk" in selected_columns %}<td>{{ p.effective_vip_czk() | price2 or '-' }}</td>{% endif %}
+    {% if "trade_price" in selected_columns %}<td>{{ p.effective_trade_price() | price2 or '-' }}</td>{% endif %}
+    {% if "d4_price" in selected_columns %}<td>{{ p.effective_d4_price() | price2 or '-' }}</td>{% endif %}
     <td><a href="/products/{{ p.id }}" class="btn btn-sm btn-outline-primary">Detail</a></td>
 </tr>
 {% else %}
-<tr><td colspan="5" class="text-muted">Žádné produkty nevyhovují filtru.</td></tr>
+<tr><td colspan="{{ selected_columns|length + 1 }}" class="text-muted">Žádné produkty nevyhovují filtru.</td></tr>
 {% endfor %}

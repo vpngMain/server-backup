@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Admin – Evidence hotovosti{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="view-tabs" style="margin-bottom: 1rem;">
+  <button type="button" class="btn btn-small view-tab active" data-view="weekly">Přehled po týdnech</button>
+  <button type="button" class="btn btn-small view-tab" data-view="monthly">Měsíční přehled</button>
+</div>
+
+<div id="view-weekly" class="view-panel">
+  <div class="filters">
+    <label>
+      Pobočka
+      <select id="filter-branch">
+        <option value="">Všechny</option>
+        {% for b in branches %}
+        <option value="{{ b.id }}">{{ b.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Týden (pondělí)
+      <input type="date" id="filter-tyden">
+    </label>
+    <button type="button" id="btn-refresh" class="btn btn-primary">Obnovit</button>
+    <a href="{{ url_for('api_admin_export') }}" id="export-link" class="btn btn-secondary">Export CSV</a>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Datum</th>
+          <th>Týden</th>
+          <th>Pobočka</th>
+          <th>K zaplacení</th>
+          <th>V hotovosti (Obálka)</th>
+          <th>Zbylo v kasičce</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="entries-tbody">
+        <tr><td colspan="7">Načítám…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="view-monthly" class="view-panel" style="display: none;">
+  <div class="filters">
+    <label>
+      Měsíc
+      <input type="month" id="filter-mesic">
+    </label>
+    <button type="button" id="btn-load-month" class="btn btn-primary">Načíst</button>
+  </div>
+  <div id="monthly-content"></div>
+</div>
+
+<div id="detail-modal" class="modal" aria-hidden="true">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Detail evidence</h2>
+      <button type="button" class="modal-close" aria-label="Zavřít">&times;</button>
+    </div>
+    <div id="detail-modal-body" class="modal-body"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+{% endblock %}

@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-Import XLS/XLSX/CSV/TSV do databáze skladové aplikace (warehouse.db, tabulka products).
+Import XLS/XLSX/CSV/TSV do databáze skladové aplikace (data/warehouse.db, tabulka products).
 Řádky se stejným názvem nebo SKU aktualizuje, nové přidá.
 
 Použití:
-    python scripts/import_xls.py <soubor.xls|xlsx|csv|tsv> [database.db]
+    python scripts/import_xls.py <soubor.xls|xlsx|csv|tsv> [cesta_k_db]
+
+Výchozí databáze: data/warehouse.db
 
 Příklad:
     python scripts/import_xls.py data.xls
     python scripts/import_xls.py data.csv
-    python scripts/import_xls.py data.xlsx warehouse.db
+    python scripts/import_xls.py data.xlsx data/warehouse.db
 """
 
 import os
@@ -90,12 +92,12 @@ def main():
     DB_FILE = sys.argv[2] if len(sys.argv) > 2 else None
 
     if not INPUT_FILE or not os.path.isfile(INPUT_FILE):
-        print("Použití: python scripts/import_xls.py <soubor.xls|xlsx|csv|tsv> [warehouse.db]")
+        print("Použití: python scripts/import_xls.py <soubor.xls|xlsx|csv|tsv> [data/warehouse.db]")
         print("Soubor nebyl zadán nebo neexistuje.")
         sys.exit(1)
 
     if DB_FILE is None:
-        DB_FILE = os.path.join(PROJECT_ROOT, "warehouse.db")
+        DB_FILE = os.path.join(PROJECT_ROOT, "data", "warehouse.db")
     elif not os.path.isabs(DB_FILE):
         DB_FILE = os.path.join(PROJECT_ROOT, DB_FILE)
 

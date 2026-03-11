@@ -13,11 +13,16 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 
 from app.models import DeliveryNote
 
-# Font s českou diakritikou – první dostupný se použije
+# Font s českou diakritikou – první dostupný se použije (Windows, Debian, Arch/CachyOS)
 _CZECH_FONT_PATHS = [
     os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "arial.ttf"),
+    os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "Arial.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/TTF/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/google-noto-fonts/NotoSans-Regular.ttf",
 ]
 _CZECH_FONT_NAME = None
 
@@ -44,7 +49,18 @@ def _decimal_str(d: Decimal | None) -> str:
     return str(d)
 
 
-def generate_delivery_note_pdf(note: DeliveryNote) -> bytes:
+def _esc(text: str | None) -> str:
+    return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _czech_date(d) -> str:
+    """Formát data pro češtinu: 10. 3. 2026."""
+    if d is None:
+        return ""
+    return f"{d.day}. {d.month}. {d.year}"
+
+
+def generate_delivery_note_pdf(note: DeliveryNote, company_profile: dict | None = None) -> bytes:
     """Vygeneruje PDF dodacího listu do bytes."""
     font_name = _get_czech_font()
     buffer = BytesIO()
@@ -60,66 +76,156 @@ def generate_delivery_note_pdf(note: DeliveryNote) -> bytes:
     title_style = ParagraphStyle(
         "Title",
         parent=styles["Heading1"],
-        fontSize=14,
+        fontSize=11,
         fontName=font_name,
+        textColor=colors.HexColor("#1f4330"),
+        spaceAfter=1 * mm,
     )
-    normal_style = ParagraphStyle("NormalCzech", parent=styles["Normal"], fontName=font_name)
+    normal_style = ParagraphStyle("NormalCzech", parent=styles["Normal"], fontName=font_name, leading=10)
+    label_style = ParagraphStyle(
+        "Label",
+        parent=normal_style,
+        textColor=colors.HexColor("#4b6256"),
+        fontSize=7,
+        leading=9,
+    )
+    item_style = ParagraphStyle(
+        "ItemName",
+        parent=normal_style,
+        fontSize=7,
+        leading=8,
+    )
 
     story = []
-    story.append(Paragraph("DODACÍ LIST", title_style))
-    story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph(f"<b>Číslo dokladu:</b> {note.document_number}", normal_style))
-    story.append(Paragraph(f"<b>Datum vystavení:</b> {note.issue_date}", normal_style))
-    story.append(Paragraph(f"<b>Datum dodání:</b> {note.delivery_date}", normal_style))
+    cp = company_profile or {}
+    # Layout jako tisk: vlevo firma + číslo DL, vpravo meta box
+    company_block = []
+    if cp.get("name"):
+        company_block.append(Paragraph(_esc(cp.get("name")), title_style))
+    if cp.get("street") or cp.get("city") or cp.get("zip") or cp.get("country") or cp.get("ico") or cp.get("dic"):
+        addr_parts = []
+        if cp.get("street"):
+            addr_parts.append(cp.get("street"))
+        if cp.get("zip") or cp.get("city"):
+            addr_parts.append(f"{cp.get('zip') or ''} {cp.get('city') or ''}".strip())
+        if cp.get("country"):
+            addr_parts.append(cp.get("country"))
+        if cp.get("ico"):
+            addr_parts.append(f"IČO: {cp.get('ico')}")
+        if cp.get("dic"):
+            addr_parts.append(f"DIČ: {cp.get('dic')}")
+        company_block.append(Paragraph("<br/>".join(_esc(x) for x in addr_parts if x), normal_style))
+    if not company_block:
+        company_block.append(Paragraph("Dodavatel", title_style))
+    company_block.append(Paragraph("Číslo dodacího listu", label_style))
+    company_block.append(Paragraph(f"<b>{_esc(note.document_number)}</b>", normal_style))
+    left_data = [[p] for p in company_block]
+    left_box = Table(left_data, colWidths=[100 * mm])
+    left_box.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fafcfb")),
+        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#c8d7cf")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("FONTNAME", (0, 0), (-1, -1), font_name),
+    ]))
+
+    meta_rows = [
+        [Paragraph("Datum vystavení", label_style), Paragraph(_esc(_czech_date(note.issue_date)), normal_style)],
+        [Paragraph("Datum dodání", label_style), Paragraph(_esc(_czech_date(note.delivery_date)), normal_style)],
+        [Paragraph("Status", label_style), Paragraph("Vystaveno" if note.status == "issued" else "Koncept", normal_style)],
+        [Paragraph("Celkem", label_style), Paragraph(f"<b>{_esc(_decimal_str(note.total_amount))}</b>", normal_style)],
+    ]
+    right_box = Table(meta_rows, colWidths=[42 * mm, 38 * mm])
+    right_box.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#c8d7cf")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#e2ebe5")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("FONTNAME", (0, 0), (-1, -1), font_name),
+    ]))
+
+    top = Table([[left_box, right_box]], colWidths=[100 * mm, 80 * mm])
+    top.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    story.append(top)
     story.append(Spacer(1, 4 * mm))
 
+    # Odběratel – box na celou šířku jako v tisku
     c = note.customer
-    story.append(Paragraph("<b>Odběratel</b>", normal_style))
-    story.append(Paragraph((c.company_name or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), normal_style))
-    addr = []
+    customer_lines = []
     if c.street:
-        addr.append(c.street)
+        customer_lines.append(c.street)
     if c.zip_code or c.city:
-        addr.append(f"{c.zip_code or ''} {c.city or ''}".strip())
+        customer_lines.append(f"{c.zip_code or ''} {c.city or ''}".strip())
     if c.country:
-        addr.append(c.country)
+        customer_lines.append(c.country)
     if c.ico:
-        addr.append(f"IČO: {c.ico}")
+        customer_lines.append(f"IČO: {c.ico}")
     if c.dic:
-        addr.append(f"DIČ: {c.dic}")
-    if addr:
-        story.append(Paragraph("<br/>".join(a.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") for a in addr), normal_style))
-    story.append(Spacer(1, 6 * mm))
+        customer_lines.append(f"DIČ: {c.dic}")
+    cust_data = [
+        [Paragraph("Odběratel", label_style)],
+        [Paragraph(f"<b>{_esc(c.company_name or '')}</b>", normal_style)],
+        [Paragraph("<br/>".join(_esc(x) for x in customer_lines), normal_style)],
+    ]
+    cust_box = Table(cust_data, colWidths=[180 * mm])
+    cust_box.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f6faf7")),
+        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#c8d7cf")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("FONTNAME", (0, 0), (-1, -1), font_name),
+    ]))
+    story.append(cust_box)
+    story.append(Spacer(1, 4 * mm))
 
     # Tabulka položek
     data = [["Položka", "Množství", "Jedn.", "Cena/jedn.", "Celkem"]]
-    for item in note.items:
+    items_sorted = sorted(note.items, key=lambda i: ((i.item_name or "").casefold(), i.id or 0))
+    for item in items_sorted:
+        # Paragraph sám zalamuje text v rámci sloupce – zabrání přetékání do Množství/Jedn.
+        name = _esc(item.item_name or "") + (_esc(f" – {item.item_description}") if item.item_description else "")
         data.append([
-            item.item_name + (f" – {item.item_description}" if item.item_description else ""),
+            Paragraph(name, item_style),
             _decimal_str(item.quantity),
             item.unit or "ks",
             _decimal_str(item.unit_price),
             _decimal_str(item.line_total),
         ])
     if note.note:
-        data.append(["Poznámka:", note.note, "", "", ""])
+        data.append(["Poznámka:", _esc(note.note), "", "", ""])
     data.append(["", "", "", "Celkem:", _decimal_str(note.total_amount)])
 
-    t = Table(data, colWidths=[70 * mm, 20 * mm, 20 * mm, 25 * mm, 30 * mm])
+    t = Table(data, colWidths=[75 * mm, 22 * mm, 18 * mm, 28 * mm, 32 * mm])
     t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf3ee")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#244633")),
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
         ("FONTNAME", (0, 0), (-1, -1), font_name),
-        ("FONTSIZE", (0, 0), (-1, 0), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
-        ("BACKGROUND", (0, 1), (-1, -1), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#fbfdfc")]),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#c8d7cf")),
         ("FONTNAME", (0, -1), (-1, -1), font_name),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#f4f8f5")),
+        ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("#1f4330")),
     ]))
     story.append(t)
+
+    story.append(Spacer(1, 2 * mm))
+    story.append(Paragraph("Vygenerováno v systému Blooms", label_style))
 
     doc.build(story)
     buffer.seek(0)

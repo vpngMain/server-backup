@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Uživatelé</h1>
+<p><a href="{{ url_for('admin.user_add') }}" class="btn btn-green">Přidat uživatele</a></p>
+<table>
+    <thead>
+        <tr>
+            <th>Jméno</th>
+            <th>Role</th>
+            <th>Pobočka</th>
+            <th>Objednávač role</th>
+            <th>Sklad</th>
+            <th>Aktivní</th>
+            <th>Akce</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.username }}</td>
+            <td>{{ u.role }}</td>
+            <td>{{ u.branch or '—' }}</td>
+            <td>{{ u.objednavac_role or '—' }}</td>
+            <td>{{ u.warehouse or '—' }}</td>
+            <td>{{ 'Ano' if u.active else 'Ne' }}</td>
+            <td>
+                <a href="{{ url_for('admin.user_edit', user_id=u.id) }}" class="btn btn-gray" style="padding: 0.35rem 0.7rem; font-size: 0.9rem;">Upravit</a>
+                <form method="post" action="{{ url_for('admin.user_delete', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Opravdu chcete smazat uživatele {{ u.username }}? ANO / ZRUŠIT');">
+                    <button type="submit" class="btn btn-red" style="padding: 0.35rem 0.7rem; font-size: 0.9rem;">Smazat</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

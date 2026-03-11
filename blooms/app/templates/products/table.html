@@ -1,0 +1,17 @@
+<div class="table-responsive-wrap">
+<table class="table table-striped table-hover">
+    <thead>
+        <tr>
+            {% for key, label in available_columns %}
+                {% if key in selected_columns %}
+                <th>{{ label }}</th>
+                {% endif %}
+            {% endfor %}
+            <th></th>
+        </tr>
+    </thead>
+    <tbody id="products-tbody">
+        {% include "products/list_rows.html" %}
+    </tbody>
+</table>
+</div>

@@ -1,31 +1,85 @@
 {% extends "base.html" %}
-{% block title %}Import .xls / .xlsx – Blooms{% endblock %}
+{% block title %}Import produktů – Blooms{% endblock %}
 {% block head_scripts %}{% endblock %}
 {% block content %}
-<h1 class="mb-4">Import produktů</h1>
-{% if error %}
-<div class="alert alert-danger">{% if "cestu" in (error|lower) or "složce" in (error|lower) or "slozce" in (error|lower) %}Vyberte alespoň jeden soubor .xls nebo .xlsx.{% else %}{{ error }}{% endif %}</div>
-{% endif %}
-<form method="post" action="/import" enctype="multipart/form-data" class="mb-4">
+<div class="import-page">
+  {% include "import/_import_breadcrumb.html" with context %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="mb-1">Import produktů</h1>
+      <p class="text-muted small mb-0">Nahrajte soubory objednávek (.xls / .xlsx), zadejte dopravu a kurz. Po importu zkontrolujte ceny a uložte do katalogu.</p>
+    </div>
+    <a href="{{ url_for('import.history') }}" class="btn btn-outline-secondary">Historie importů</a>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-danger alert-dismissible fade show" role="alert">
+    {{ error }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Zavřít"></button>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('import.import_page') }}" enctype="multipart/form-data" id="import-form">
     {% include '_csrf.html' %}
-    <div class="mb-3">
-        <label for="files" class="form-label">Soubory .xls / .xlsx</label>
-        <input type="file" id="files" name="files" class="form-control" accept=".xls,.xlsx" multiple required>
-    </div>
-    <div class="row mb-3">
-        <div class="col-md-4">
+    <div class="card import-upload-card shadow-sm">
+      <div class="card-body p-4">
+        <label for="files" class="import-upload-label d-block text-center py-4 py-md-5 rounded-3 border-2 border-dashed">
+          <input type="file" id="files" name="files" class="d-none" accept=".xls,.xlsx" multiple required>
+          <span class="d-block text-muted mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" class="text-success opacity-75" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>
+          </span>
+          <span class="fw-semibold text-body">Klikněte nebo přetáhněte soubory</span>
+          <span class="d-block small text-muted mt-1">.xls nebo .xlsx · více souborů najednou</span>
+          <span id="import-file-names" class="d-block small text-success mt-2" style="min-height:1.25rem;"></span>
+        </label>
+        <div class="row g-3 mt-3">
+          <div class="col-12 col-md-4">
             <label for="shipping_eur" class="form-label">Doprava (EUR)</label>
-            <input type="text" id="shipping_eur" name="shipping_eur" class="form-control" placeholder="např. 70" title="Cena dopravy v EUR k tomuto importu – použije se pro Cena+doprava a 7% marže+doprava">
+            <input type="text" id="shipping_eur" name="shipping_eur" class="form-control" placeholder="např. 70" inputmode="decimal">
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="exchange_rate" class="form-label">Kurz EUR → CZK</label>
+            <input type="text" id="exchange_rate" name="exchange_rate" class="form-control" placeholder="např. 25.5" inputmode="decimal">
+          </div>
+          <div class="col-12 col-md-4 d-flex align-items-end">
+            <button type="submit" class="btn btn-success w-100" id="import-submit-btn">Spustit import</button>
+          </div>
         </div>
-        <div class="col-md-4">
-            <label for="exchange_rate" class="form-label">Kurz EUR→CZK (VIP CZK, Cena obchod)</label>
-            <input type="text" id="exchange_rate" name="exchange_rate" class="form-control" placeholder="např. 25.5" title="Kurz pro VIP CZK a pro D1 (cena obchod = cena + doprava×kurz×1.12×2)">
-        </div>
+      </div>
     </div>
-    <button type="submit" class="btn btn-success">Spustit import</button>
-    <a href="/import/history" class="btn btn-outline-secondary ms-2">Historie importů</a>
-</form>
-<div class="alert alert-info">
-    <strong>Poznámka:</strong> Produkty jsou identifikovány podle Description + Pot-Size. Dopočty: <strong>Cena+doprava</strong> = sales + doprava/unit_cc; <strong>7% marže+doprava</strong> = (cena+doprava)×1.07; <strong>VIP Eur</strong> = (cena+doprava) + 100/unit_cc; <strong>VIP CZK</strong> = VIP Eur × volitelný kurz; <strong>Cena obchod (D1)</strong> = sales×kurz + (doprava/unit_cc)×kurz×1.12×2; <strong>D4</strong> = průměr(VIP Eur, Sales Price). Doprava (EUR) a Kurz se zadávají výše.
+  </form>
+
+  <details class="import-help mt-4">
+    <summary class="btn btn-outline-secondary btn-sm">Vzorce a mapování sloupců</summary>
+    <div class="card mt-2 border-0 bg-light">
+      <div class="card-body small">
+        <p class="mb-2"><strong>Identifikace:</strong> Description + Pot-Size. Názvy ve tvaru <code>NÁZEV K{pot_size}</code>. Ručně změněný název se nepřepisuje.</p>
+        <p class="mb-2"><strong>Dopočty:</strong> Cena+doprava, 7% marže+doprava, VIP Eur/CZK, D1 obchod, D4. Doprava a kurz se zadávají výše.</p>
+        <p class="mb-0">Pokud nevyplníte dopravu ani kurz, použijí se hodnoty z Excelu (pokud jsou).</p>
+      </div>
+    </div>
+  </details>
 </div>
+<script>
+(function() {
+  var input = document.getElementById('files');
+  var namesEl = document.getElementById('import-file-names');
+  if (input && namesEl) {
+    input.addEventListener('change', function() {
+      var files = input.files;
+      if (!files || files.length === 0) { namesEl.textContent = ''; return; }
+      var list = [];
+      for (var i = 0; i < Math.min(files.length, 8); i++) list.push(files[i].name);
+      namesEl.textContent = (files.length > 8 ? '… + ' + (files.length - 8) + ' dalších · ' : '') + list.join(', ');
+    });
+  }
+  var form = document.getElementById('import-form');
+  if (form) {
+    form.addEventListener('submit', function() {
+      var btn = document.getElementById('import-submit-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Importuji…'; setTimeout(function() { btn.textContent = 'Spustit import'; btn.disabled = false; }, 12000); }
+    });
+  }
+})();
+</script>
 {% endblock %}

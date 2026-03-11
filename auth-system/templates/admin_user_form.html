@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ 'Upravit uživatele' if user else 'Přidat uživatele' }}</h1>
+<form method="post">
+    <div class="row">
+        <label for="username">Uživatelské jméno *</label>
+        <input type="text" id="username" name="username" value="{{ user.username if user else '' }}" required>
+    </div>
+    <div class="row">
+        <label for="pin">PIN (4–6 číslic) {{ '(nevyplňovat = nechat beze změny)' if user else '*' }}</label>
+        <input type="password" id="pin" name="pin" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" placeholder="4–6 číslic" {{ '' if user else 'required' }}>
+    </div>
+    <div class="row">
+        <label for="role">Role</label>
+        <select id="role" name="role">
+            <option value="user" {{ 'selected' if user and user.role == 'user' else '' }}>user</option>
+            <option value="admin" {{ 'selected' if user and user.role == 'admin' else '' }}>admin</option>
+        </select>
+    </div>
+    <div class="row">
+        <label for="branch">Pobočka</label>
+        <input type="text" id="branch" name="branch" value="{{ user.branch if user else '' }}" placeholder="např. Praha">
+    </div>
+    <div class="row">
+        <label for="objednavac_role">Objednávač – role</label>
+        <select id="objednavac_role" name="objednavac_role">
+            <option value="">—</option>
+            {% for r in objednavac_roles %}
+            <option value="{{ r }}" {{ 'selected' if user and user.objednavac_role == r else '' }}>{{ r }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="row">
+        <label for="warehouse">Objednávač – sklad (název)</label>
+        <input type="text" id="warehouse" name="warehouse" value="{{ user.warehouse if user else '' }}" placeholder="název skladu">
+    </div>
+    <div class="row">
+        <label><input type="checkbox" name="active" value="1" {{ 'checked' if not user or user.active else '' }}> Aktivní</label>
+    </div>
+    <button type="submit" class="btn btn-green">Uložit</button>
+    <a href="{{ url_for('admin.dashboard') }}" class="btn btn-gray">Zrušit</a>
+</form>
+{% endblock %}

@@ -1,8 +1,38 @@
 {% if products %}
 <div class="list-group list-group-flush mb-2" id="product-pick-list">
   {% for p in products %}
-  <button type="button" class="list-group-item list-group-item-action product-pick text-start py-2" data-product-id="{{ p.id }}" data-name="{{ p.description }}{% if p.pot_size %} {{ p.pot_size }}{% endif %}">
-    <strong>{{ p.description }}</strong>{% if p.pot_size %} <span class="text-muted">({{ p.pot_size }})</span>{% endif %}
+  {% set d1 = p.effective_trade_price() %}
+  {% set sales = p.effective_sales_price() %}
+  <button type="button"
+          class="list-group-item list-group-item-action product-pick text-start py-2"
+          data-product-id="{{ p.id }}"
+          data-name="{{ p.description }}{% if p.pot_size %} ({{ p.pot_size }}){% endif %}{% if p.ean_code %} | EAN: {{ p.ean_code }}{% elif p.vbn_code %} | VBN: {{ p.vbn_code }}{% endif %}{% if d1 is not none %} | D1: {{ d1|price2 }}{% endif %}">
+    <div class="d-flex justify-content-between align-items-center gap-2">
+      <div>
+        <strong>{{ p.description }}</strong>
+        {% if p.pot_size %}<span class="text-muted ms-1">({{ p.pot_size }})</span>{% endif %}
+        {% if p.description2 %}
+          <div class="small text-muted">{{ p.description2 }}</div>
+        {% endif %}
+        <div class="small text-muted">
+          {% if p.ean_code %}EAN: {{ p.ean_code }}{% elif p.vbn_code %}VBN: {{ p.vbn_code }}{% else %}bez EAN/VBN{% endif %}
+        </div>
+      </div>
+      <div class="text-nowrap small">
+        {% set usage = usage_map.get(p.id) if usage_map else None %}
+        {% if usage and usage.get('count') %}
+          <span class="badge text-bg-success">Oblíbené ({{ usage.get('count') }}x)</span>
+        {% endif %}
+        {% if d1 is not none %}
+          <span class="badge text-bg-light border">D1 {{ d1|price2 }}</span>
+        {% else %}
+          <span class="text-muted">D1 -</span>
+        {% endif %}
+        {% if sales is not none %}
+          <span class="badge text-bg-light border">SP {{ sales|price2 }}</span>
+        {% endif %}
+      </div>
+    </div>
   </button>
   {% endfor %}
 </div>

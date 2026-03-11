@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Admin – Pobočky{% endblock %}
+{% block content %}
+<h1>Pobočky</h1>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Název</th>
+        <th>Kód</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="branches-tbody">
+      <tr><td colspan="3">Načítám…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section" style="max-width: 400px; margin-top: 1.5rem;">
+  <h2 id="form-title">Přidat pobočku</h2>
+  <form id="branch-form">
+    <input type="hidden" id="branch-id" value="">
+    <label style="display: block; margin-bottom: 0.5rem;">
+      Název
+      <input type="text" id="branch-name" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem;">
+    </label>
+    <label style="display: block; margin-bottom: 1rem;">
+      Kód
+      <input type="text" id="branch-code" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem;">
+    </label>
+    <button type="submit" class="btn btn-primary">Uložit</button>
+    <button type="button" id="branch-cancel" class="btn btn-secondary" style="display: none;">Zrušit</button>
+  </form>
+</div>
+<div id="branch-message" class="message" aria-live="polite"></div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin-branches.js') }}"></script>
+{% endblock %}

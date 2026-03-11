@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tisk obálky</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}">
+</head>
+<body class="print-body">
+{% if entry %}
+<div class="print-page">
+  <p class="print-title">DPD</p>
+  <p class="print-subtitle">Pobočka: {{ branch_name }}</p>
+  <p class="print-line print-spacer"></p>
+  <p class="print-line"><strong>Datum:</strong> {{ entry.datum|cs_date }}</p>
+  <p class="print-line"><strong>Datum splatnosti:</strong> {{ entry.datum_splatnosti|cs_date }}</p>
+  <p class="print-line"><strong>Týden:</strong> {{ entry.tyden_zacatek|cs_date }} – {{ entry.tyden_konec|cs_date }}</p>
+  {% if entry.k_zaplaceni is not none %}
+  <p class="print-line"><strong>K zaplacení:</strong> {{ entry.k_zaplaceni|round(2) }} Kč</p>
+  {% endif %}
+  <p class="print-line print-spacer"></p>
+  {% for d in denoms %}
+  <p class="print-line">{{ d }} Kč … {{ entry.obalka_dict().get(d|string, 0) }}</p>
+  {% endfor %}
+  <p class="print-line print-spacer"></p>
+  <p class="print-line print-celkem">CELKEM: {{ entry.celkem_obalka() }} Kč</p>
+</div>
+{% else %}
+<div class="print-page">
+  <p class="print-line">Žádná data k tisku. Nejprve uložte evidenci.</p>
+</div>
+{% endif %}
+<script>
+  window.onload = function() { window.print(); };
+</script>
+</body>
+</html>

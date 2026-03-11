@@ -4,6 +4,9 @@
 <div class="error-page">
     <h2>Request Entity Too Large (413)</h2>
     <p class="error-message">{{ message }}</p>
+    <p>Pokud používáte reverzní proxy (např. NGINX), zvyšte limit těla požadavku v konfiguraci NGINX. Do bloku <code>server</code> nebo <code>location</code> přidejte např.:</p>
+    <pre>client_max_body_size 50m;</pre>
+    <p>Pro velmi velké soubory použijte <code>100m;</code> nebo více. Po úpravě konfigurace proveďte reload: <code>nginx -s reload</code> (nebo restart služby).</p>
     <p><a href="{{ request.referrer or url_for('admin_import') }}" class="btn">Zpět</a></p>
 </div>
 {% endblock %}

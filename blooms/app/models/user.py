@@ -1,6 +1,8 @@
 """Model User."""
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime
+from typing import Any
+
+from sqlalchemy import String, Boolean, DateTime, Text
 from sqlalchemy.orm import Mapped, mapped_column
 import enum
 
@@ -20,6 +22,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default=UserRole.user.value)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    products_columns_json: Mapped[Any] = mapped_column(Text, nullable=True)
+    tabulator_state_json: Mapped[Any] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 

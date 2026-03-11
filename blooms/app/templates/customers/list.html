@@ -10,6 +10,12 @@
 </form>
 <a href="{{ url_for('customers.new') }}" class="btn btn-success mb-3">Nový odběratel</a>
 <a href="{{ url_for('customers.import_ares') }}" class="btn btn-outline-primary mb-3 ms-2">Import z ARES</a>
+{% if use_tabulator %}
+{% set toolbar_prefix = "customers-grid" %}
+{% set toolbar_placeholder = "Hledat v odběratelích..." %}
+{% include "_tabulator_toolbar.html" %}
+<div id="customers-grid"></div>
+{% else %}
 <div class="table-responsive-wrap">
 <table class="table table-striped table-hover">
     <thead>
@@ -36,4 +42,64 @@
     </tbody>
 </table>
 </div>
+{% endif %}
+{% endblock %}
+
+{% block head_scripts %}
+{{ super() }}
+{% if use_tabulator %}
+<link href="{{ url_for('main.tabulator_asset', filename='css/tabulator_bootstrap5.min.css') }}" rel="stylesheet">
+<script src="{{ url_for('main.tabulator_asset', filename='js/tabulator.min.js') }}"></script>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if use_tabulator %}
+<script>
+(function() {
+  const rows = {{ customers_rows_compact | tojson }};
+  const el = document.getElementById("customers-grid");
+  if (!el || !window.Tabulator) return;
+  const table = new Tabulator(el, {
+    data: rows,
+    layout: "fitDataStretch",
+    height: "560px",
+    movableColumns: true,
+    pagination: true,
+    paginationSize: 50,
+    paginationSizeSelector: [25, 50, 100, 200],
+    initialSort: [{column: "company_name", dir: "asc"}],
+    columns: [
+      {title: "Firma", field: "company_name", minWidth: 240, headerFilter: "input"},
+      {title: "IČO", field: "ico", width: 120, headerFilter: "input"},
+      {title: "Město", field: "city", minWidth: 160, headerFilter: "input"},
+      {title: "Email", field: "email", minWidth: 210, headerFilter: "input"},
+      {title: "Cenová hladina", field: "price_level", width: 130, headerFilter: "input"},
+      {
+        title: "",
+        field: "detail_url",
+        width: 100,
+        headerSort: false,
+        hozAlign: "center",
+        formatter: (cell) => '<a class="btn btn-sm btn-outline-primary" href="' + cell.getValue() + '">Detail</a>',
+      }
+    ]
+  });
+
+  if (window.BloomsTabulator) {
+    window.BloomsTabulator.wire(table, {
+      pageKey: "customers_list",
+      searchInputId: "customers-grid-search",
+      clearBtnId: "customers-grid-clear",
+      resetBtnId: "customers-grid-reset",
+      exportCsvBtnId: "customers-grid-export-csv",
+      exportXlsxBtnId: "customers-grid-export-xlsx",
+      exportPrefix: "odberatele_grid",
+      quickSearchFields: ["company_name", "ico", "city", "email", "price_level"],
+      mobileHideFields: ["email", "price_level"],
+    });
+  }
+})();
+</script>
+{% endif %}
 {% endblock %}

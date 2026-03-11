@@ -14,6 +14,18 @@ apps = [
         "port": 8082,
         "description": "Interní objednávkový systém",
         "icon": "🧾"
+    },
+    {
+        "name": "DPD - počítač",
+        "port": 8083,
+        "description": "Systém pro vyplácení DPD dobírek",
+        "icon": "🚚"
+    },
+    {
+        "name": "Správa uživatelů",
+        "port": 8080,
+        "description": "Centrální databáze uživatelů – přihlášení do všech aplikací",
+        "icon": "👤"
     }
 ]
 

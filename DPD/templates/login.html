@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Přihlášení – Evidence hotovosti{% endblock %}
+{% block content %}
+<div class="login-box">
+  <h1>Přihlášení</h1>
+  <p class="hint">Uživatelské jméno a PIN (4–6 číslic)</p>
+  {% if error %}
+  <p class="error">{{ error }}</p>
+  {% endif %}
+  <form id="login-form" class="login-form" method="post" action="{{ url_for('login') }}">
+    <label for="username">Uživatelské jméno</label>
+    <input type="text" id="username" name="username" class="pin-input" placeholder="Jméno" required autofocus>
+    <label for="pin" class="sr-only">PIN</label>
+    <input type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off"
+           id="pin" name="pin" class="pin-input" placeholder="PIN" minlength="4" maxlength="6">
+    <button type="submit" class="btn btn-primary btn-large">Přihlásit</button>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  document.getElementById('login-form').addEventListener('submit', function(e) {
+    var username = document.getElementById('username').value.trim();
+    var pin = document.getElementById('pin').value.trim();
+    if (!username) {
+      e.preventDefault();
+      alert('Zadejte uživatelské jméno.');
+      return false;
+    }
+    if (!/^\d{4,6}$/.test(pin)) {
+      e.preventDefault();
+      alert('Zadejte platný PIN (4–6 číslic).');
+      return false;
+    }
+  });
+</script>
+{% endblock %}

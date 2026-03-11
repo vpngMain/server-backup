@@ -13,10 +13,9 @@
             <select id="status" name="status">
                 <option value="pending" {{ 'selected' if order.status == 'pending' else '' }}>Čeká</option>
                 <option value="partially_shipped" {{ 'selected' if order.status == 'partially_shipped' else '' }}>Částečně odesláno</option>
-                <option value="shipped" {{ 'selected' if order.status == 'shipped' else '' }}>Odesláno</option>
-                <option value="verified" {{ 'selected' if order.status == 'verified' else '' }}>Zkontrolováno</option>
-                <option value="error" {{ 'selected' if order.status == 'error' else '' }}>Chyba kontroly</option>
+                <option value="shipped" {{ 'selected' if order.status in ('shipped', 'verified', 'error') else '' }}>Odesláno</option>
             </select>
+            {% if order_check_status == 'verified' or order_check_status == 'error' %}<span class="status-badge status-{{ order_check_status }}" title="Výsledek kontroly čtečkou">{% if order_check_status == 'verified' %}✅ Zkontrolováno{% else %}❌ Chyba kontroly{% endif %}</span>{% endif %}
             <button type="submit" class="btn">Změnit stav</button>
         </form>
     </div>
@@ -31,10 +30,57 @@
     <span>Datum: {{ order.created_at | format_datetime }}</span>
     {% if order.created_by_warehouse %}<span>Vytvořil sklad: <strong>{{ order.created_by_warehouse.username }}</strong></span>{% elif order.created_by %}<span>Vytvořil: <strong>{{ order.created_by.username }}</strong></span>{% endif %}
     {% set main_status = 'shipped' if order.status in ('verified','error') else order.status %}
-    <span class="status-badge status-{{ main_status }} js-order-status-badge" id="js-order-status">{{ status_cz(main_status) }}</span>
-    {% if order.check_status or order.status in ('verified','error') %}<span class="status-badge status-{{ order.check_status or order.status }}">{{ status_cz(order.check_status or order.status) }}</span>{% endif %}
+    <span class="status-badge status-{{ main_status }} js-order-status-badge" id="js-order-status">{{ status_cz(main_status) }}</span>{% if order_check_status == 'verified' or order_check_status == 'error' %}<span class="status-badge status-{{ order_check_status }}" title="Výsledek kontroly čtečkou">{% if order_check_status == 'verified' %}✅ Zkontrolováno{% else %}❌ Chyba kontroly{% endif %}</span>{% endif %}
     <span><strong>Celkem kusů:</strong> <span class="js-order-total-ordered">{{ total_qty | format_qty }}</span> objednáno, <strong><span class="js-order-total-shipped">{{ shipped_qty | format_qty }}</span></strong> odesláno</span>
 </p>
+{% if order_check_status == 'verified' or order_check_status == 'error' %}
+<div class="check-results-box" aria-label="Výsledek kontroly">
+    <h3 class="check-results-title">Výsledek kontroly čtečkou</h3>
+    {% if check_ok_items %}
+    <h4 class="check-results-subtitle check-ok">✅ Co bylo v pořádku</h4>
+    <table class="table table-check-errors">
+        <thead>
+            <tr>
+                <th>Produkt</th>
+                <th>Očekáváno (odesláno)</th>
+                <th>Naskenováno</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in check_ok_items %}
+            <tr>
+                <td>{{ row.item.display_name() }}</td>
+                <td>{{ row.expected | format_qty }}</td>
+                <td>{{ row.scanned | format_qty }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% if check_error_items %}
+    <h4 class="check-results-subtitle check-error">❌ Co bylo špatně</h4>
+    <p class="check-errors-desc">U následujících položek nesouhlasí naskenované množství s očekávaným (odeslaným):</p>
+    <table class="table table-check-errors">
+        <thead>
+            <tr>
+                <th>Produkt</th>
+                <th>Očekáváno (odesláno)</th>
+                <th>Naskenováno</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in check_error_items %}
+            <tr>
+                <td>{{ row.item.display_name() }}</td>
+                <td>{{ row.expected | format_qty }}</td>
+                <td>{{ row.scanned | format_qty }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endif %}
 <div class="table-wrapper warehouse-order-detail-table" data-order-id="{{ order.id }}">
 <table class="table">
     <thead>

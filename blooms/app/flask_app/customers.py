@@ -1,7 +1,7 @@
 """Odběratelé – CRUD + import z ARES."""
 from sqlalchemy import or_
 
-from flask import Blueprint, flash, g, redirect, render_template, request, url_for, jsonify
+from flask import Blueprint, flash, g, redirect, render_template, request, url_for, jsonify, current_app
 from flask_login import login_required, current_user
 
 from app.models import Customer
@@ -115,7 +115,27 @@ def customer_list():
             )
         )
     customers = query.order_by(Customer.company_name).limit(300).all()
-    return render_template("customers/list.html", **_ctx(), customers=customers, q=q)
+    use_tabulator = bool(current_app.config.get("USE_TABULATOR", True))
+    customers_rows_compact = []
+    if use_tabulator:
+        for c in customers:
+            customers_rows_compact.append({
+                "id": c.id,
+                "company_name": c.company_name or "",
+                "ico": c.ico or "",
+                "city": c.city or "",
+                "email": c.email or "",
+                "price_level": c.price_level or "",
+                "detail_url": url_for("customers.detail", customer_id=c.id),
+            })
+    return render_template(
+        "customers/list.html",
+        **_ctx(),
+        customers=customers,
+        q=q,
+        use_tabulator=use_tabulator,
+        customers_rows_compact=customers_rows_compact,
+    )
 
 
 @customers_bp.route("/new", methods=["GET", "POST"])

@@ -153,10 +153,17 @@ def _header_matches(header_norm: str, alias_norm: str) -> bool:
         return True
     if len(header_norm) >= 3 and header_norm in alias_norm:
         return True
-    # Slovo shoda: "prodejni cena" vs "sales price" – společná slova; zde stačí obsah
+    # Slovo shoda: potřebujeme aspoň jedno "specifické" slovo.
+    # Tím zabráníme špatnému mapování typu "d4 price" -> "sales price" jen přes slovo "price".
     h_words = set(header_norm.split())
     a_words = set(alias_norm.split())
-    if h_words & a_words and len(h_words & a_words) >= 1:
+    common = h_words & a_words
+    generic_words = {
+        "price", "cena", "eur", "czk", "qty", "amount", "code",
+        "no", "info", "reference", "unit", "per", "shelf", "cc",
+    }
+    specific_common = {w for w in common if w not in generic_words}
+    if specific_common:
         return True
     return False
 

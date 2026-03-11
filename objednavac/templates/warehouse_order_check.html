@@ -8,7 +8,7 @@
 <p class="order-detail-meta">
     Pobočka: {{ order.branch.name if order.branch else '—' }}
     {% set main_status = 'shipped' if order.status in ('verified','error') else order.status %}
-    <span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span>{% if order.check_status or order.status in ('verified','error') %}<span class="status-badge status-{{ order.check_status or order.status }}">{{ status_cz(order.check_status or order.status) }}</span>{% endif %}
+    <span class="status-badge status-{{ main_status }}">{{ status_cz(main_status) }}</span><span id="check-result-badge">{% if order.check_status == 'verified' or order.check_status == 'error' %}<span class="status-badge status-{{ order.check_status }}" title="Výsledek kontroly čtečkou">{% if order.check_status == 'verified' %}✅ Zkontrolováno{% else %}❌ Chyba kontroly{% endif %}</span>{% endif %}</span>
 </p>
 <p class="order-check-help">Skenujte ve formátu <strong>množství*EAN</strong> (např. 3*8591234567890). Můžete použít kameru nebo ruční vstup.</p>
 <div id="scanner-wrapper" class="scanner-wrapper" style="display:none;">
@@ -36,7 +36,7 @@
         <tr id="check-row-{{ i.id }}" class="{% if item_results.get(i.id) %}{% if item_results[i.id].result == 'correct' %}item-check-correct{% else %}item-check-incorrect{% endif %}{% endif %}" data-order-item-id="{{ i.id }}" data-ean="{{ i.product.ean if i.product and i.product.ean else '' }}">
             <td>{{ i.display_name() }}</td>
             <td>{{ i.product.ean if i.product and i.product.ean else '—' }}</td>
-            <td>{{ i.ordered_quantity | format_qty }}</td>
+            <td>{{ (i.shipped_quantity | format_qty) if i.shipped_quantity is not none else '—' }}</td>
             <td class="check-result-cell">
                 {% if item_results.get(i.id) %}
                 {{ item_results[i.id].scanned_quantity | format_qty }} skenováno → {{ 'Správně' if item_results[i.id].result == 'correct' else 'Nesprávně' }}
@@ -138,7 +138,14 @@
                             if (td) td.textContent = totalShown + ' skenováno → ' + (data.result === 'correct' ? 'Správně' : 'Nesprávně');
                         }
                         scanInput.value = '';
-                        if (data.all_checked) feedback.textContent += '. ' + (data.all_correct ? 'Objednávka zkontrolována.' : 'Zjištěna chyba.');
+                        if (data.all_checked) {
+                            feedback.textContent += '. ' + (data.all_correct ? 'Objednávka zkontrolována.' : 'Zjištěna chyba.');
+                            var badgeEl = document.getElementById('check-result-badge');
+                            if (badgeEl && data.order_check_status) {
+                                var text = data.order_check_status === 'verified' ? '✅ Zkontrolováno' : '❌ Chyba kontroly';
+                                badgeEl.innerHTML = '<span class="status-badge status-' + data.order_check_status + '" title="Výsledek kontroly čtečkou">' + text + '</span>';
+                            }
+                        }
                     } else {
                         feedback.textContent = data.error || 'Chyba';
                         feedback.className = 'scan-feedback feedback-error';

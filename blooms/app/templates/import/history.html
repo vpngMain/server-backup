@@ -1,41 +1,150 @@
 {% extends "base.html" %}
 {% block title %}Historie importu – Blooms{% endblock %}
 {% block content %}
-<h1 class="mb-4">Historie importu</h1>
-{% if success %}
-<div class="alert alert-success">Import byl úspěšně dokončen.</div>
+<div class="import-history-page">
+  {% set level = 'history' %}
+  {% include "import/_import_breadcrumb.html" with context %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="mb-1">Historie importu</h1>
+      <p class="text-muted small mb-0">Všechny dávky importů. Otevřete dávku a soubor pro kontrolu cen a uložení do katalogu.</p>
+    </div>
+    <a href="{{ url_for('import.import_page') }}" class="btn btn-success">Nový import</a>
+  </div>
+
+  {% if success %}
+  <div class="alert alert-success alert-dismissible fade show" role="alert">
+    Import byl úspěšně dokončen.
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Zavřít"></button>
+  </div>
+  {% endif %}
+
+  {% if use_tabulator %}
+  {% if batches %}
+  {% set toolbar_prefix = "import-history-grid" %}
+  {% set toolbar_placeholder = "Hledat v historii..." %}
+  {% include "_tabulator_toolbar.html" %}
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div id="imports-history-grid" class="import-history-grid"></div>
+    </div>
+  </div>
+  {% else %}
+  <div class="card shadow-sm import-empty-state">
+    <div class="card-body text-center py-5">
+      <p class="text-muted mb-4">Zatím žádné importy.</p>
+      <a href="{{ url_for('import.import_page') }}" class="btn btn-success">Začít první import</a>
+    </div>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-striped mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Datum</th>
+              <th>Složka</th>
+              <th>Soubory</th>
+              <th>Řádky</th>
+              <th>Nové</th>
+              <th>Existující</th>
+              <th>Chyby</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in batches %}
+            <tr>
+              <td class="text-nowrap">{{ b.imported_at.strftime('%d.%m.%Y %H:%M') if b.imported_at else '-' }}</td>
+              <td class="text-truncate" style="max-width:200px" title="{{ b.source_folder }}">{{ b.source_folder }}</td>
+              <td class="text-end">{{ b.total_files }}</td>
+              <td class="text-end">{{ b.total_rows }}</td>
+              <td class="text-end">{{ b.new_products }}</td>
+              <td class="text-end">{{ b.existing_products }}</td>
+              <td class="text-end">{{ b.error_rows }}</td>
+              <td><span class="badge bg-{{ 'success' if b.status == 'completed' else 'warning' if b.status == 'running' else 'danger' }}">{{ b.status }}</span></td>
+              <td><a href="{{ url_for('import.batch_detail', batch_id=b.id) }}" class="btn btn-sm btn-outline-primary">Detail</a></td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="9" class="text-center py-5 text-muted">
+                <p class="mb-2">Zatím žádné importy.</p>
+                <a href="{{ url_for('import.import_page') }}" class="btn btn-success btn-sm">Začít import</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block head_scripts %}
+{{ super() }}
+{% if use_tabulator %}
+<link href="{{ url_for('main.tabulator_asset', filename='css/tabulator_bootstrap5.min.css') }}" rel="stylesheet">
+<script src="{{ url_for('main.tabulator_asset', filename='js/tabulator.min.js') }}"></script>
 {% endif %}
-<a href="/import" class="btn btn-success mb-3">Novy import</a>
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th>Datum</th>
-            <th>Složka</th>
-            <th>Soubory</th>
-            <th>Řádky</th>
-            <th>Nové</th>
-            <th>Existující</th>
-            <th>Chyby</th>
-            <th>Status</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for b in batches %}
-        <tr>
-            <td>{{ b.imported_at.strftime('%d.%m.%Y %H:%M') if b.imported_at else '-' }}</td>
-            <td class="text-truncate" style="max-width:200px" title="{{ b.source_folder }}">{{ b.source_folder }}</td>
-            <td>{{ b.total_files }}</td>
-            <td>{{ b.total_rows }}</td>
-            <td>{{ b.new_products }}</td>
-            <td>{{ b.existing_products }}</td>
-            <td>{{ b.error_rows }}</td>
-            <td><span class="badge bg-{{ 'success' if b.status == 'completed' else 'warning' if b.status == 'running' else 'danger' }}">{{ b.status }}</span></td>
-            <td><a href="/import/history/{{ b.id }}" class="btn btn-sm btn-outline-primary">Detail</a></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="9" class="text-muted">Žádné importy.</td></tr>
-        {% endfor %}
-    </tbody>
-</table>
+{% endblock %}
+
+{% block scripts %}
+{% if use_tabulator and batches %}
+<script>
+(function() {
+  const rows = {{ batches_rows_compact | tojson }};
+  const el = document.getElementById("imports-history-grid");
+  if (!el || !window.Tabulator) return;
+  const table = new Tabulator(el, {
+    data: rows,
+    layout: "fitDataStretch",
+    height: "560px",
+    movableColumns: true,
+    pagination: true,
+    paginationSize: 50,
+    paginationSizeSelector: [25, 50, 100],
+    initialSort: [{column: "imported_at_sort", dir: "desc"}],
+    columns: [
+      {title: "Datum", field: "imported_at", width: 160, headerFilter: "input"},
+      {title: "_sort", field: "imported_at_sort", visible: false},
+      {title: "Složka", field: "source_folder", minWidth: 260, headerFilter: "input"},
+      {title: "Soubory", field: "total_files", width: 90, hozAlign: "right"},
+      {title: "Řádky", field: "total_rows", width: 90, hozAlign: "right"},
+      {title: "Nové", field: "new_products", width: 90, hozAlign: "right"},
+      {title: "Existující", field: "existing_products", width: 100, hozAlign: "right"},
+      {title: "Chyby", field: "error_rows", width: 90, hozAlign: "right"},
+      {title: "Status", field: "status", width: 120, headerFilter: "input",
+       formatter: function(cell){
+         if (!window.BloomsTabulator) return cell.getValue();
+         return window.BloomsTabulator.statusFormatter({
+           "completed": {label: "completed", className: "text-bg-success"},
+           "running": {label: "running", className: "text-bg-warning text-dark"},
+           "failed": {label: "failed", className: "text-bg-danger"}
+         }, "text-bg-secondary")(cell);
+       }},
+      {title: "", field: "detail_url", width: 100, headerSort: false, hozAlign: "center",
+       formatter: (cell) => '<a class="btn btn-sm btn-outline-primary" href="' + cell.getValue() + '">Detail</a>'}
+    ]
+  });
+  if (window.BloomsTabulator) {
+    window.BloomsTabulator.wire(table, {
+      pageKey: "import_history",
+      searchInputId: "import-history-grid-search",
+      clearBtnId: "import-history-grid-clear",
+      resetBtnId: "import-history-grid-reset",
+      exportCsvBtnId: "import-history-grid-export-csv",
+      exportXlsxBtnId: "import-history-grid-export-xlsx",
+      exportPrefix: "historie_importu_grid",
+      quickSearchFields: ["source_folder", "status", "imported_at"],
+      mobileHideFields: ["source_folder", "existing_products", "new_products"],
+    });
+  }
+})();
+</script>
+{% endif %}
 {% endblock %}

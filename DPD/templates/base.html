@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Evidence hotovosti{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <span class="app-name">Evidence hotovosti</span>
+      {% if session.get('is_admin') %}
+      <nav class="admin-nav header-nav">
+        <a href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('user_index') }}">Formulář</a>
+        <a href="{{ url_for('admin_branches') }}">Pobočky</a>
+        <a href="{{ url_for('admin_users') }}">Uživatelé</a>
+      </nav>
+      {% endif %}
+      {% if session.get('user_name') %}
+      <span class="user-name">{{ session.user_name }}</span>
+      <button type="button" id="theme-toggle-btn" class="btn btn-small theme-toggle" aria-label="Přepnout režim">Tmavý režim</button>
+      <a href="{{ url_for('logout') }}" class="btn btn-small">Odhlásit</a>
+      {% else %}
+      <button type="button" id="theme-toggle-btn" class="btn btn-small theme-toggle" aria-label="Přepnout režim" style="margin-left: auto;">Tmavý režim</button>
+      {% endif %}
+    </div>
+  </header>
+  <main class="main container">
+    {% block content %}{% endblock %}
+  </main>
+  <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/login.js') }}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

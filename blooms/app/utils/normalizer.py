@@ -34,3 +34,18 @@ def product_key_normalized(description: Optional[str], pot_size: Optional[str]) 
     d = normalize(description) if description is not None else ""
     p = normalize(pot_size) if pot_size is not None else ""
     return f"{d}::{p}"
+
+
+def base_description_for_key(description: Optional[str], pot_size: Optional[str]) -> str:
+    """
+    Pro klíč produktu odřízne suffix ve tvaru ' K{pot_size}' pokud je přítomen.
+    Např. 'OCIMUM BASILICUM K11' + pot_size '11' -> 'OCIMUM BASILICUM'
+    """
+    d = (description or "").strip()
+    p = (pot_size or "").strip()
+    if not d or not p:
+        return d
+    suffix = f" K{p}"
+    if d.upper().endswith(suffix.upper()):
+        return d[: -len(suffix)].rstrip()
+    return d
