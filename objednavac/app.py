@@ -266,6 +266,22 @@ def _ensure_suppliers_table():
         db.session.rollback()
 
 
+def _ensure_suppliers_street_municipality():
+    """Přidá sloupce ulice a obec do suppliers."""
+    if getattr(_ensure_suppliers_street_municipality, "_done", False):
+        return
+    try:
+        cols = [row[0] for row in db.session.execute(text("PRAGMA table_info(suppliers)")).fetchall()]
+        if "street" not in cols:
+            db.session.execute(text("ALTER TABLE suppliers ADD COLUMN street VARCHAR(255)"))
+        if "municipality" not in cols:
+            db.session.execute(text("ALTER TABLE suppliers ADD COLUMN municipality VARCHAR(255)"))
+        db.session.commit()
+        _ensure_suppliers_street_municipality._done = True
+    except Exception:
+        db.session.rollback()
+
+
 def _run_migrations():
     """Spustí migrace (sloupce/tabulky). Voláno z before_request a při startu aplikace."""
     _ensure_warehouse_note_column()
@@ -274,6 +290,7 @@ def _run_migrations():
     _ensure_order_check_status_column()
     _ensure_goods_receipt_tables()
     _ensure_suppliers_table()
+    _ensure_suppliers_street_municipality()
     _ensure_goods_receipt_supplier_id_column()
     _ensure_order_supplier_id_column()
     _ensure_warehouse_code_column()
@@ -531,11 +548,13 @@ class GoodsReceiptItem(db.Model):
 
 
 class Supplier(db.Model):
-    """Dodavatel (kód a název). Volitelně vázaný na sklad."""
+    """Dodavatel (kód, název, ulice, obec). Volitelně vázaný na sklad."""
     __tablename__ = "suppliers"
     id = db.Column(db.Integer, primary_key=True)
     supplier_id = db.Column(db.String(100), nullable=False, unique=True)
     supplier_name = db.Column(db.String(255), nullable=False)
+    street = db.Column(db.String(255), nullable=True)
+    municipality = db.Column(db.String(255), nullable=True)
     warehouse_id = db.Column(db.Integer, db.ForeignKey("warehouses.id"), nullable=True)
     warehouse = db.relationship("Warehouse", backref="suppliers")
 
@@ -653,8 +672,20 @@ def get_current_branch_id():
     return user.branch_id
 
 
+def _default_warehouse_teplice_id():
+    """Vrátí ID skladu s názvem nebo kódem 'Teplice' (výchozí sklad)."""
+    w = Warehouse.query.filter(
+        db.or_(
+            db.func.lower(Warehouse.name) == "teplice",
+            (Warehouse.code.isnot(None)) & (db.func.lower(Warehouse.code) == "teplice"),
+        )
+    ).first()
+    return w.id if w else None
+
+
 def get_current_warehouse_id():
-    """Vrátí ID skladu, pod kterým uživatel právě působí. Admin v režimu sklad používá acting_as_warehouse_id."""
+    """Vrátí ID skladu, pod kterým uživatel právě působí. Admin v režimu sklad používá acting_as_warehouse_id.
+    Výchozí sklad pro roli warehouse je Teplice (pokud je v seznamu)."""
     user = get_current_user()
     if user and user.role == "admin" and session.get("acting_as_role") == "warehouse":
         wid = session.get("acting_as_warehouse_id")
@@ -673,8 +704,10 @@ def get_current_warehouse_id():
         return current
     ids = user.get_warehouse_ids()
     if ids:
-        session["current_warehouse_id"] = ids[0]
-        return ids[0]
+        teplice_id = _default_warehouse_teplice_id()
+        first_id = teplice_id if (teplice_id and teplice_id in ids) else ids[0]
+        session["current_warehouse_id"] = first_id
+        return first_id
     return user.warehouse_id
 
 
@@ -823,6 +856,28 @@ def inject_user():
         _load_branch_cart_from_db()
         cart_count = _get_branch_cart_count()
         cart_count_internal = _get_branch_cart_count_internal()
+    router_url = os.environ.get("ROUTER_URL", "").strip()
+    if not router_url and request:
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(request.url_root)
+            router_url = f"{p.scheme}://{p.hostname}" if p.port in (80, 8000, None) else f"{p.scheme}://{p.hostname}:8000"
+        except Exception:
+            router_url = "http://localhost:8000"
+    else:
+        router_url = router_url.rstrip("/") if router_url else "http://localhost:8000"
+
+    all_warehouses = []
+    branch_preferred_warehouse_id = None
+    if current and (current.role == "branch" or acting_as_role == "branch"):
+        all_warehouses = Warehouse.query.order_by(Warehouse.name).all()
+        try:
+            branch_preferred_warehouse_id = session.get("branch_preferred_warehouse_id")
+            if branch_preferred_warehouse_id is not None:
+                branch_preferred_warehouse_id = int(branch_preferred_warehouse_id)
+        except (TypeError, ValueError):
+            branch_preferred_warehouse_id = None
+
     return {
         "current_user": current,
         "status_cz": status_cz,
@@ -835,7 +890,73 @@ def inject_user():
         "acting_as_warehouse": acting_as_warehouse,
         "cart_count": cart_count,
         "cart_count_internal": cart_count_internal,
+        "router_url": router_url,
+        "all_warehouses": all_warehouses,
+        "branch_preferred_warehouse_id": branch_preferred_warehouse_id,
+        "default_warehouse_teplice_id": _default_warehouse_teplice_id(),
     }
+
+
+def _sync_branches_from_auth():
+    """Synchronizuje pobočky s auth-system: přidá chybějící, smaže ty co v auth-system už nejsou (bez objednávek)."""
+    auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
+    try:
+        r = requests.get(auth_url + "/api/branches", timeout=10)
+        if r.status_code != 200:
+            return
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else []
+        if not isinstance(data, list):
+            return
+        auth_names = {(item.get("name") or "").strip() for item in data if (item.get("name") or "").strip()}
+        for item in data:
+            name = (item.get("name") or "").strip()
+            if not name or Branch.query.filter_by(name=name).first():
+                continue
+            db.session.add(Branch(name=name))
+        for b in Branch.query.all():
+            if b.name in auth_names:
+                continue
+            if Order.query.filter_by(branch_id=b.id).count() > 0:
+                continue
+            User.query.filter_by(branch_id=b.id).update({"branch_id": None})
+            for u in User.query.filter(User.branches.any(Branch.id == b.id)).all():
+                u.branches.remove(b)
+            BranchCart.query.filter_by(branch_id=b.id).delete()
+            db.session.delete(b)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _sync_warehouses_from_auth():
+    """Synchronizuje sklady s auth-system: přidá chybějící, smaže ty co v auth-system už nejsou (bez objednávek a příjmů)."""
+    auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
+    try:
+        r = requests.get(auth_url + "/api/warehouses", timeout=10)
+        if r.status_code != 200:
+            return
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else []
+        if not isinstance(data, list):
+            return
+        auth_names = {(item.get("name") or "").strip() for item in data if (item.get("name") or "").strip()}
+        for item in data:
+            name = (item.get("name") or "").strip()
+            if not name or Warehouse.query.filter_by(name=name).first():
+                continue
+            db.session.add(Warehouse(name=name, code=(item.get("code") or "").strip() or None))
+        for w in Warehouse.query.all():
+            if w.name in auth_names:
+                continue
+            if Order.query.filter_by(warehouse_id=w.id).count() > 0 or GoodsReceipt.query.filter_by(warehouse_id=w.id).count() > 0:
+                continue
+            User.query.filter_by(warehouse_id=w.id).update({"warehouse_id": None})
+            for u in User.query.filter(User.warehouses.any(Warehouse.id == w.id)).all():
+                u.warehouses.remove(w)
+            Supplier.query.filter_by(warehouse_id=w.id).update({"warehouse_id": None})
+            db.session.delete(w)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def _auth_api_login(username, pin):
@@ -867,16 +988,31 @@ def login():
             if err:
                 flash(err if "spojit" not in err else f"Nepodařilo se spojit s centrálním přihlášením: {err}", "error")
                 return render_template("login.html")
+            _sync_branches_from_auth()
+            _sync_warehouses_from_auth()
             role = data.get("role", "user")
-            branch_name = (data.get("branch") or "").strip()
             warehouse_name = (data.get("warehouse") or "").strip()
-            branch = None
-            if branch_name:
+            branch_list = []
+            if data.get("branches") and isinstance(data["branches"], list):
+                for item in data["branches"]:
+                    name = (item.get("name") if isinstance(item, dict) else str(item)).strip()
+                    if not name:
+                        continue
+                    b = Branch.query.filter_by(name=name).first()
+                    if not b:
+                        b = Branch(name=name)
+                        db.session.add(b)
+                        db.session.flush()
+                    branch_list.append(b)
+            if not branch_list and (data.get("branch") or "").strip():
+                branch_name = (data.get("branch") or "").strip()
                 branch = Branch.query.filter_by(name=branch_name).first()
                 if not branch:
                     branch = Branch(name=branch_name)
                     db.session.add(branch)
                     db.session.flush()
+                branch_list = [branch]
+            branch = branch_list[0] if branch_list else None
             warehouse = None
             if warehouse_name:
                 warehouse = Warehouse.query.filter_by(name=warehouse_name).first()
@@ -895,8 +1031,10 @@ def login():
                 )
                 db.session.add(user)
                 db.session.commit()
-                if branch and role == "branch":
-                    user.branches.append(branch)
+                if branch_list and role == "branch":
+                    for b in branch_list:
+                        if b not in user.branches:
+                            user.branches.append(b)
                 if warehouse and role == "warehouse":
                     user.warehouses.append(warehouse)
                 db.session.commit()
@@ -906,8 +1044,9 @@ def login():
                 user.warehouse_id = warehouse.id if warehouse and role == "warehouse" else None
                 for b in list(user.branches):
                     user.branches.remove(b)
-                if branch and role == "branch":
-                    user.branches.append(branch)
+                if branch_list and role == "branch":
+                    for b in branch_list:
+                        user.branches.append(b)
                 for w in list(user.warehouses):
                     user.warehouses.remove(w)
                 if warehouse and role == "warehouse":
@@ -926,7 +1065,8 @@ def login():
             if user.role == "warehouse":
                 ids = user.get_warehouse_ids()
                 if ids:
-                    session["current_warehouse_id"] = ids[0]
+                    teplice_id = _default_warehouse_teplice_id()
+                    session["current_warehouse_id"] = teplice_id if (teplice_id and teplice_id in ids) else ids[0]
             if user.role == "admin":
                 return redirect(url_for("admin_dashboard"))
             if user.role == "warehouse":
@@ -948,7 +1088,8 @@ def login():
                 if user.role == "warehouse":
                     ids = user.get_warehouse_ids()
                     if ids:
-                        session["current_warehouse_id"] = ids[0]
+                        teplice_id = _default_warehouse_teplice_id()
+                        session["current_warehouse_id"] = teplice_id if (teplice_id and teplice_id in ids) else ids[0]
                 if user.role == "admin":
                     return redirect(url_for("admin_dashboard"))
                 if user.role == "warehouse":
@@ -958,6 +1099,115 @@ def login():
                 return redirect(url_for("index"))
         flash("Zadejte uživatelské jméno a PIN (nebo jméno a heslo).", "error")
     return render_template("login.html")
+
+
+@app.route("/auth/sso")
+def auth_sso():
+    """SSO ze Směrosu: ověření tokenu u auth-system a vytvoření lokální session."""
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        flash("Chybí SSO token.", "error")
+        return redirect(url_for("login"))
+    auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
+    try:
+        r = requests.get(auth_url + "/api/sso/verify", params={"token": token}, timeout=10)
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if r.status_code != 200 or not data.get("ok"):
+            flash(data.get("error", "Neplatný nebo vypršený SSO token."), "error")
+            return redirect(url_for("login"))
+    except requests.RequestException as e:
+        flash(f"Nepodařilo se ověřit token: {e}", "error")
+        return redirect(url_for("login"))
+    username = (data.get("username") or "").strip()
+    if not username:
+        flash("Neplatná odpověď přihlášení.", "error")
+        return redirect(url_for("login"))
+    _sync_branches_from_auth()
+    _sync_warehouses_from_auth()
+    role = data.get("role", "user")
+    warehouse_name = (data.get("warehouse") or "").strip()
+    branch_list = []
+    if data.get("branches") and isinstance(data["branches"], list):
+        for item in data["branches"]:
+            name = (item.get("name") if isinstance(item, dict) else str(item)).strip()
+            if not name:
+                continue
+            b = Branch.query.filter_by(name=name).first()
+            if not b:
+                b = Branch(name=name)
+                db.session.add(b)
+                db.session.flush()
+            branch_list.append(b)
+    if not branch_list and (data.get("branch") or "").strip():
+        branch_name = (data.get("branch") or "").strip()
+        branch = Branch.query.filter_by(name=branch_name).first()
+        if not branch:
+            branch = Branch(name=branch_name)
+            db.session.add(branch)
+            db.session.flush()
+        branch_list = [branch]
+    branch = branch_list[0] if branch_list else None
+    warehouse = None
+    if warehouse_name:
+        warehouse = Warehouse.query.filter_by(name=warehouse_name).first()
+        if not warehouse:
+            warehouse = Warehouse(name=warehouse_name)
+            db.session.add(warehouse)
+            db.session.flush()
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        user = User(
+            username=username,
+            password_hash=generate_password_hash(os.urandom(16).hex()),
+            role=role,
+            branch_id=branch.id if branch and role == "branch" else None,
+            warehouse_id=warehouse.id if warehouse and role == "warehouse" else None,
+        )
+        db.session.add(user)
+        db.session.commit()
+        if branch_list and role == "branch":
+            for b in branch_list:
+                if b not in user.branches:
+                    user.branches.append(b)
+        if warehouse and role == "warehouse":
+            user.warehouses.append(warehouse)
+        db.session.commit()
+    else:
+        user.role = role
+        user.branch_id = branch.id if branch and role == "branch" else None
+        user.warehouse_id = warehouse.id if warehouse and role == "warehouse" else None
+        for b in list(user.branches):
+            user.branches.remove(b)
+        if branch_list and role == "branch":
+            for b in branch_list:
+                user.branches.append(b)
+        for w in list(user.warehouses):
+            user.warehouses.remove(w)
+        if warehouse and role == "warehouse":
+            user.warehouses.append(warehouse)
+        db.session.commit()
+    session["user_id"] = user.id
+    session.pop("current_branch_id", None)
+    session.pop("current_warehouse_id", None)
+    session.pop("acting_as_role", None)
+    session.pop("acting_as_branch_id", None)
+    session.pop("acting_as_warehouse_id", None)
+    if user.role == "branch":
+        ids = user.get_branch_ids()
+        if ids:
+            session["current_branch_id"] = ids[0]
+    if user.role == "warehouse":
+        ids = user.get_warehouse_ids()
+        if ids:
+            teplice_id = _default_warehouse_teplice_id()
+            session["current_warehouse_id"] = teplice_id if (teplice_id and teplice_id in ids) else ids[0]
+    if user.role == "admin":
+        return redirect(url_for("admin_dashboard"))
+    if user.role == "warehouse":
+        return redirect(url_for("warehouse_dashboard"))
+    if user.role == "branch":
+        return redirect(url_for("branch_dashboard"))
+    return redirect(url_for("index"))
 
 
 @app.route("/branch/switch", methods=["POST"])
@@ -984,6 +1234,44 @@ def warehouse_switch():
     return redirect(request.referrer or url_for("warehouse_dashboard"))
 
 
+@app.route("/branch/set-warehouse", methods=["POST"])
+@login_required
+@role_required("branch")
+def branch_set_warehouse():
+    """Pobočka zvolí sklad, ze kterého chce objednávat (výchozí je Teplice)."""
+    warehouse_id = request.form.get("warehouse_id", type=int)
+    if warehouse_id and Warehouse.query.get(warehouse_id):
+        session["branch_preferred_warehouse_id"] = warehouse_id
+        flash("Sklad pro objednávky změněn.")
+    else:
+        session.pop("branch_preferred_warehouse_id", None)
+        flash("Pro objednávky bude použit výchozí sklad (Teplice).")
+    return redirect(request.referrer or url_for("index"))
+
+
+def _router_url():
+    url = os.environ.get("ROUTER_URL", "").strip()
+    if url:
+        return url.rstrip("/")
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(request.url_root)
+        return f"{p.scheme}://{p.hostname}" if p.port in (80, 8000, None) else f"{p.scheme}://{p.hostname}:8000"
+    except Exception:
+        return "http://localhost:8000"
+
+
+def _logout_chain_next_url():
+    """Další krok řetězu po Objednávači: DPD logout s chain=1."""
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(_router_url())
+        base = f"{p.scheme}://{p.hostname}"
+        return f"{base}:8083/logout?chain=1"
+    except Exception:
+        return "http://localhost:8083/logout?chain=1"
+
+
 @app.route("/logout")
 def logout():
     session.pop("user_id", None)
@@ -992,7 +1280,12 @@ def logout():
     session.pop("acting_as_role", None)
     session.pop("acting_as_branch_id", None)
     session.pop("acting_as_warehouse_id", None)
-    return redirect(url_for("login"))
+    next_url = request.args.get("next", "").strip()
+    if next_url and next_url.startswith("http"):
+        return redirect(next_url)
+    if request.args.get("chain") == "1":
+        return redirect(_logout_chain_next_url())
+    return redirect(_router_url() + "/logout")
 
 
 def _load_branch_cart_from_db():
@@ -1251,8 +1544,7 @@ def index():
         for pid, qty in rows:
             if pid and qty is not None and qty > 0:
                 waiting_by_product[pid] = float(qty)
-    return render_template(
-        "products.html",
+    ctx = dict(
         products=products,
         products_by_brand=products_by_brand,
         cart=cart,
@@ -1270,6 +1562,9 @@ def index():
         total_pages=total_pages,
         total=total,
     )
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return render_template("_products_grid_partial.html", **ctx)
+    return render_template("products.html", **ctx)
 
 
 @app.route("/internal")
@@ -1585,6 +1880,16 @@ def order_submit():
         return redirect(url_for("cart_view"))
     order_type = session.get("order_type", "normal")
     order = Order(branch_id=bid, status="pending", created_by_id=user.id, order_type=order_type)
+    preferred_wh = None
+    try:
+        preferred_wh = session.get("branch_preferred_warehouse_id")
+        if preferred_wh is not None:
+            preferred_wh = int(preferred_wh)
+    except (TypeError, ValueError):
+        preferred_wh = None
+    preferred_wh = preferred_wh or _default_warehouse_teplice_id()
+    if preferred_wh:
+        order.warehouse_id = preferred_wh
     db.session.add(order)
     db.session.flush()
     notes = _get_branch_cart_notes()
@@ -2120,228 +2425,72 @@ def admin_goods_receipt_delete(receipt_id):
 @login_required
 @role_required("admin")
 def admin_users():
-    if request.method == "POST" and request.form.get("action") == "create":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
-        role = request.form.get("role", "branch")
-        branch_ids = request.form.getlist("branch_ids", type=int) or []
-        if not username or not password:
-            flash("Uživatelské jméno a heslo jsou povinné.", "error")
-            return redirect(url_for("admin_users"))
-        if role == "branch" and not branch_ids:
-            flash("Uživatel s rolí branch musí být přiřazen k alespoň jedné pobočce.", "error")
-            return redirect(url_for("admin_users"))
-        warehouse_ids = request.form.getlist("warehouse_ids", type=int) or []
-        if role == "warehouse" and not warehouse_ids:
-            flash("Uživatel s rolí warehouse musí být přiřazen k alespoň jednomu skladu.", "error")
-            return redirect(url_for("admin_users"))
-        if User.query.filter_by(username=username).first():
-            flash("Uživatel již existuje.", "error")
-            return redirect(url_for("admin_users"))
-        u = User(
-            username=username,
-            role=role,
-            branch_id=branch_ids[0] if role == "branch" and branch_ids else None,
-            warehouse_id=warehouse_ids[0] if role == "warehouse" and warehouse_ids else None,
-        )
-        u.set_password(password)
-        db.session.add(u)
-        db.session.flush()
-        if role == "branch" and branch_ids:
-            for bid in branch_ids:
-                b = Branch.query.get(bid)
-                if b:
-                    u.branches.append(b)
-        if role == "warehouse" and warehouse_ids:
-            for wid in warehouse_ids:
-                w = Warehouse.query.get(wid)
-                if w:
-                    u.warehouses.append(w)
-        db.session.commit()
-        flash("Účet uživatele vytvořen.")
-        return redirect(url_for("admin_users"))
-    users = User.query.all()
-    branches = Branch.query.order_by(Branch.name).all()
-    warehouses = Warehouse.query.order_by(Warehouse.name).all()
-    edit_user_id = request.args.get("edit", type=int)
-    return render_template("admin_users.html", users=users, branches=branches, warehouses=warehouses, user=get_current_user(), edit_user_id=edit_user_id)
+    flash("Správa uživatelů je v centrálním auth-system (Směrovač → Správa uživatelů).", "info")
+    return redirect(url_for("admin_management"))
 
 
 @app.route("/admin/users/<int:user_id>/edit", methods=["POST"])
 @login_required
 @role_required("admin")
 def admin_user_edit(user_id):
-    u = User.query.get_or_404(user_id)
-    username = request.form.get("username", "").strip()
-    role = request.form.get("role", u.role)
-    branch_ids = request.form.getlist("branch_ids", type=int) or []
-    warehouse_ids = request.form.getlist("warehouse_ids", type=int) or []
-    new_password = request.form.get("new_password", "")
-    if not username:
-        flash("Uživatelské jméno je povinné.", "error")
-        return redirect(url_for("admin_users"))
-    if role == "branch" and not branch_ids:
-        flash("Uživatel s rolí branch musí být přiřazen k alespoň jedné pobočce.", "error")
-        return redirect(url_for("admin_users"))
-    if role == "warehouse" and not warehouse_ids:
-        flash("Uživatel s rolí warehouse musí být přiřazen k alespoň jednomu skladu.", "error")
-        return redirect(url_for("admin_users"))
-    other = User.query.filter(User.username == username, User.id != u.id).first()
-    if other:
-        flash("Uživatelské jméno již používá jiný účet.", "error")
-        return redirect(url_for("admin_users"))
-    u.username = username
-    u.role = role
-    u.branch_id = branch_ids[0] if role == "branch" and branch_ids else None
-    u.warehouse_id = warehouse_ids[0] if role == "warehouse" and warehouse_ids else None
-    if role == "branch":
-        u.branches = Branch.query.filter(Branch.id.in_(branch_ids)).all() if branch_ids else []
-    else:
-        u.branches = []
-    if role == "warehouse":
-        u.warehouses = Warehouse.query.filter(Warehouse.id.in_(warehouse_ids)).all() if warehouse_ids else []
-    else:
-        u.warehouses = []
-    if new_password:
-        u.set_password(new_password)
-    db.session.commit()
-    flash("Účet uživatele upraven.")
-    return redirect(url_for("admin_users"))
+    flash("Správa uživatelů je v centrálním auth-system (Směrovač → Správa uživatelů).", "info")
+    return redirect(url_for("admin_management"))
 
 
 @app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
 @login_required
 @role_required("admin")
 def admin_user_delete(user_id):
-    u = User.query.get_or_404(user_id)
-    if u.id == session.get("user_id"):
-        flash("Nemůžete smazat vlastní účet.", "error")
-        return redirect(url_for("admin_users"))
-    if u.role == "admin" and User.query.filter_by(role="admin").count() <= 1:
-        flash("Nelze smazat posledního administrátora.", "error")
-        return redirect(url_for("admin_users"))
-    db.session.delete(u)
-    db.session.commit()
-    flash("Účet uživatele smazán.")
-    return redirect(url_for("admin_users"))
+    flash("Správa uživatelů je v centrálním auth-system (Směrovač → Správa uživatelů).", "info")
+    return redirect(url_for("admin_management"))
 
 
 @app.route("/admin/branches", methods=["GET", "POST"])
 @login_required
 @role_required("admin")
 def admin_branches():
-    if request.method == "POST" and request.form.get("action") == "create":
-        name = request.form.get("name", "").strip()
-        code = request.form.get("code", "").strip() or None
-        if not name:
-            flash("Název pobočky je povinný.", "error")
-            return redirect(url_for("admin_branches"))
-        b = Branch(name=name, code=code)
-        db.session.add(b)
-        db.session.commit()
-        flash("Pobočka přidána.")
-        return redirect(url_for("admin_branches"))
-    branches = Branch.query.order_by(Branch.name).all()
-    edit_branch_id = request.args.get("edit", type=int)
-    return render_template("admin_branches.html", branches=branches, user=get_current_user(), edit_branch_id=edit_branch_id)
+    flash("Pobočky a sklady se spravují v centrálním systému (Směrovač → Správa uživatelů → Pobočky / Sklady).", "info")
+    return redirect(url_for("admin_management"))
 
 
 @app.route("/admin/branches/<int:branch_id>/edit", methods=["POST"])
 @login_required
 @role_required("admin")
 def admin_branch_edit(branch_id):
-    b = Branch.query.get_or_404(branch_id)
-    name = request.form.get("name", "").strip()
-    code = request.form.get("code", "").strip() or None
-    if not name:
-        flash("Název pobočky je povinný.", "error")
-        return redirect(url_for("admin_branches"))
-    b.name = name
-    b.code = code
-    db.session.commit()
-    flash("Pobočka upravena.")
-    return redirect(url_for("admin_branches"))
+    flash("Pobočky a sklady se spravují v centrálním systému (Směrovač → Správa uživatelů).", "info")
+    return redirect(url_for("admin_management"))
 
 
 @app.route("/admin/branches/<int:branch_id>/delete", methods=["POST"])
 @login_required
 @role_required("admin")
 def admin_branch_delete(branch_id):
-    b = Branch.query.get_or_404(branch_id)
-    if b.orders.count() > 0:
-        flash("Pobočku nelze smazat, má objednávky. Nejprve smažte nebo přeřaďte objednávky.", "error")
-        return redirect(url_for("admin_branches"))
-    for u in b.users:
-        u.branch_id = None
-    for u in b.branch_users:
-        u.branches.remove(b)
-    db.session.delete(b)
-    db.session.commit()
-    flash("Pobočka smazána.")
-    return redirect(url_for("admin_branches"))
+    flash("Pobočky a sklady se spravují v centrálním systému (Směrovač → Správa uživatelů).", "info")
+    return redirect(url_for("admin_management"))
 
 
 @app.route("/admin/warehouses", methods=["GET", "POST"])
 @login_required
 @role_required("admin")
 def admin_warehouses():
-    if request.method == "POST" and request.form.get("action") == "create":
-        name = request.form.get("name", "").strip()
-        code = (request.form.get("code") or "").strip() or None
-        if not name:
-            flash("Název skladu je povinný.", "error")
-            return redirect(url_for("admin_warehouses"))
-        if code and Warehouse.query.filter(Warehouse.code == code).first():
-            flash(f"Sklad s kódem „{code}“ již existuje.", "error")
-            return redirect(url_for("admin_warehouses"))
-        w = Warehouse(name=name, code=code)
-        db.session.add(w)
-        db.session.commit()
-        flash("Sklad přidán.")
-        return redirect(url_for("admin_warehouses"))
-    warehouses = Warehouse.query.order_by(Warehouse.name).all()
-    edit_warehouse_id = request.args.get("edit", type=int)
-    return render_template("admin_warehouses.html", warehouses=warehouses, user=get_current_user(), edit_warehouse_id=edit_warehouse_id)
+    flash("Pobočky a sklady se spravují v centrálním systému (Směrovač → Správa uživatelů → Pobočky / Sklady).", "info")
+    return redirect(url_for("admin_management"))
 
 
 @app.route("/admin/warehouses/<int:warehouse_id>/edit", methods=["POST"])
 @login_required
 @role_required("admin")
 def admin_warehouse_edit(warehouse_id):
-    w = Warehouse.query.get_or_404(warehouse_id)
-    name = request.form.get("name", "").strip()
-    code = (request.form.get("code") or "").strip() or None
-    if not name:
-        flash("Název skladu je povinný.", "error")
-        return redirect(url_for("admin_warehouses"))
-    if code:
-        existing = Warehouse.query.filter(Warehouse.code == code, Warehouse.id != w.id).first()
-        if existing:
-            flash(f"Sklad s kódem „{code}“ již existuje.", "error")
-            return redirect(url_for("admin_warehouses"))
-    w.name = name
-    w.code = code
-    db.session.commit()
-    flash("Sklad upraven.")
-    return redirect(url_for("admin_warehouses"))
+    flash("Pobočky a sklady se spravují v centrálním systému (Směrovač → Správa uživatelů).", "info")
+    return redirect(url_for("admin_management"))
 
 
 @app.route("/admin/warehouses/<int:warehouse_id>/delete", methods=["POST"])
 @login_required
 @role_required("admin")
 def admin_warehouse_delete(warehouse_id):
-    w = Warehouse.query.get_or_404(warehouse_id)
-    if w.orders.count() > 0:
-        flash("Sklad nelze smazat, má objednávky.", "error")
-        return redirect(url_for("admin_warehouses"))
-    for u in w.users_default:
-        u.warehouse_id = None
-    for u in w.warehouse_users:
-        u.warehouses.remove(w)
-    db.session.delete(w)
-    db.session.commit()
-    flash("Sklad smazán.")
-    return redirect(url_for("admin_warehouses"))
+    flash("Pobočky a sklady se spravují v centrálním systému (Směrovač → Správa uživatelů).", "info")
+    return redirect(url_for("admin_management"))
 
 
 @app.route("/admin/products")
@@ -2997,10 +3146,14 @@ def _import_orders_csv(path):
 
 
 def _import_vydejky_csv(path):
-    """Import výdejek z CSV: order_id, order_item_id, shipped_quantity. Aktualizuje odeslané množství."""
+    """Import výdejek z CSV: order_id, order_item_id, shipped_quantity. Aktualizuje odeslané množství.
+    Položky objednávky, které v importu nejsou, se označí jako sklad nemá (unavailable=True)."""
     import csv
+    from collections import defaultdict
     updated = 0
     errors = []
+    # order_id -> set of order_item_id, které jsou v importu
+    order_item_ids_in_import = defaultdict(set)
     with open(path, "r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         if not reader.fieldnames:
@@ -3027,10 +3180,19 @@ def _import_vydejky_csv(path):
                 errors.append(f"Položka order_item_id={iid} v objednávce {oid} neexistuje")
                 continue
             item.shipped_quantity = shipped
+            order_item_ids_in_import[oid].add(iid)
             order = Order.query.get(oid)
             if order:
                 _update_order_status_from_items(order)
             updated += 1
+    # Položky v objednávce, které v importu nebyly → sklad nemá
+    for oid, item_ids_in_import in order_item_ids_in_import.items():
+        order = Order.query.get(oid)
+        if not order:
+            continue
+        for item in order.items:
+            if item.id not in item_ids_in_import:
+                item.unavailable = True
     db.session.commit()
     return updated, errors
 
@@ -3331,7 +3493,7 @@ def warehouse_suppliers():
 @login_required
 @role_required("admin")
 def warehouse_supplier_edit(supplier_id):
-    """Admin: úprava dodavatele (kód, název)."""
+    """Admin: úprava dodavatele (kód, název, ulice, obec)."""
     s = Supplier.query.get_or_404(supplier_id)
     new_code = (request.form.get("supplier_id") or "").strip()
     new_name = (request.form.get("supplier_name") or "").strip()
@@ -3343,6 +3505,8 @@ def warehouse_supplier_edit(supplier_id):
         return redirect(url_for("warehouse_suppliers"))
     s.supplier_id = new_code
     s.supplier_name = new_name
+    s.street = (request.form.get("street") or "").strip() or None
+    s.municipality = (request.form.get("municipality") or "").strip() or None
     db.session.commit()
     flash("Dodavatel byl upraven.")
     return redirect(url_for("warehouse_suppliers"))
@@ -3359,6 +3523,118 @@ def warehouse_supplier_delete(supplier_id):
     db.session.delete(s)
     db.session.commit()
     flash("Dodavatel byl smazán.")
+    return redirect(url_for("warehouse_suppliers"))
+
+
+def _normalize_supplier_import_header(h):
+    """Normalizuje název sloupce pro import dodavatelů: bez diakritiky, lowercase, mezery podtržítko."""
+    if not h or not isinstance(h, str):
+        return ""
+    s = (h.strip().lower()
+         .replace("á", "a").replace("č", "c").replace("ď", "d").replace("é", "e").replace("ě", "e")
+         .replace("í", "i").replace("ň", "n").replace("ó", "o").replace("ř", "r").replace("š", "s")
+         .replace("ť", "t").replace("ú", "u").replace("ů", "u").replace("ý", "y").replace("ž", "z"))
+    return s.replace(" ", "_").replace("-", "_")
+
+
+@app.route("/warehouse/suppliers/import", methods=["GET", "POST"])
+@login_required
+@role_required("admin")
+def warehouse_suppliers_import():
+    """Admin: import dodavatelů z .xlsx. Hlavička: Číslo firmy | Název firmy | Ulice | Obec."""
+    if request.method == "GET":
+        return redirect(url_for("warehouse_suppliers"))
+    f = request.files.get("file")
+    if not f or not f.filename:
+        flash("Vyberte soubor .xlsx.", "error")
+        return redirect(url_for("warehouse_suppliers"))
+    if os.path.splitext(f.filename)[1].lower() != ".xlsx":
+        flash("Povolený formát je pouze .xlsx. Hlavička: Číslo firmy | Název firmy | Ulice | Obec.", "error")
+        return redirect(url_for("warehouse_suppliers"))
+    path = os.path.join(app.config["UPLOAD_FOLDER"], f.filename)
+    try:
+        f.save(path)
+    except Exception as e:
+        app.logger.exception("Supplier import: uložení souboru selhalo")
+        flash("Soubor se nepodařilo nahrát.", "error")
+        return redirect(url_for("warehouse_suppliers"))
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        ws = wb.active
+        headers_raw = [c.value for c in ws[1]]
+        rows_data = list(ws.iter_rows(min_row=2, values_only=True))
+        wb.close()
+        headers = [_normalize_supplier_import_header(str(h or "")) for h in headers_raw]
+        col_supplier_id = None
+        col_supplier_name = None
+        col_street = None
+        col_municipality = None
+        for i, h in enumerate(headers):
+            if h in ("cislo_firmy", "cislo_firma", "supplier_id", "kod", "ico"):
+                col_supplier_id = i
+            elif h in ("nazev_firmy", "nazev_firma", "supplier_name", "nazev"):
+                col_supplier_name = i
+            elif h in ("ulice", "street"):
+                col_street = i
+            elif h in ("obec", "municipality", "mesto", "city"):
+                col_municipality = i
+        if col_supplier_id is None:
+            for i, h in enumerate(headers):
+                if "cislo" in h or ("firma" in h and "nazev" not in h):
+                    col_supplier_id = i
+                    break
+        if col_supplier_name is None:
+            for i, h in enumerate(headers):
+                if "nazev" in h and "firmy" in h:
+                    col_supplier_name = i
+                    break
+        if col_supplier_id is None or col_supplier_name is None:
+            flash("V souboru chybí sloupce „Číslo firmy“ a „Název firmy“. Očekávaná hlavička: Číslo firmy | Název firmy | Ulice | Obec.", "error")
+            if os.path.exists(path):
+                os.remove(path)
+            return redirect(url_for("warehouse_suppliers"))
+        created = 0
+        updated = 0
+        def _cell(row, col):
+            if col is None or col >= len(row):
+                return None
+            return row[col]
+
+        for row in rows_data:
+            sid = (_cell(row, col_supplier_id) and str(_cell(row, col_supplier_id)).strip()) or ""
+            name = (_cell(row, col_supplier_name) and str(_cell(row, col_supplier_name)).strip()) or ""
+            if not sid or not name:
+                continue
+            street = _cell(row, col_street)
+            street = (str(street).strip() if street is not None else None) or None
+            if street == "None":
+                street = None
+            municipality = _cell(row, col_municipality)
+            municipality = (str(municipality).strip() if municipality is not None else None) or None
+            if municipality == "None":
+                municipality = None
+            existing = Supplier.query.filter(Supplier.supplier_id == sid).first()
+            if existing:
+                existing.supplier_name = name
+                existing.street = street
+                existing.municipality = municipality
+                updated += 1
+            else:
+                db.session.add(Supplier(supplier_id=sid, supplier_name=name, street=street, municipality=municipality))
+                created += 1
+        db.session.commit()
+        flash(f"Import dokončen: přidáno {created} dodavatelů, aktualizováno {updated}.", "success")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Supplier import failed: %s", e)
+        flash(f"Chyba importu: {e}", "error")
+    finally:
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
     return redirect(url_for("warehouse_suppliers"))
 
 
@@ -3899,13 +4175,19 @@ def _order_check_results(order):
 
 
 def _order_check_view(order_id, redirect_back_route, for_branch=False):
-    """Společná logika pro stránku kontroly objednávky (používá sklad i pobočka)."""
+    """Společná logika pro stránku kontroly objednávky (používá sklad i pobočka).
+    Pro pobočku se zobrazují jen položky s odeslaným množstvím > 0 a které sklad má (ne unavailable)."""
     order = Order.query.get_or_404(order_id)
     if order.status not in ("shipped", "partially_shipped", "verified", "error"):
         flash("Kontrola je k dispozici pouze u odeslaných nebo částečně odeslaných objednávek.", "error")
         return redirect(url_for(redirect_back_route, order_id=order_id))
+    if for_branch:
+        check_items = [i for i in order.items if (i.shipped_quantity or 0) > 0 and not i.unavailable]
+    else:
+        check_items = None
     item_results = {}
-    for item in order.items:
+    items_to_show = check_items if check_items is not None else order.items
+    for item in items_to_show:
         last_check = OrderItemCheck.query.filter_by(order_item_id=item.id).order_by(OrderItemCheck.created_at.desc()).first()
         if last_check:
             item_results[item.id] = last_check
@@ -3913,6 +4195,7 @@ def _order_check_view(order_id, redirect_back_route, for_branch=False):
         "warehouse_order_check.html",
         order=order,
         item_results=item_results,
+        check_items=check_items,
         user=get_current_user(),
         status_cz=status_cz,
         check_for_branch=for_branch,
@@ -3970,6 +4253,9 @@ def warehouse_order_check_scan(order_id):
     order_item = OrderItem.query.filter(OrderItem.order_id == order.id, OrderItem.product_id == product.id).first()
     if not order_item:
         return jsonify({"ok": False, "error": "Tento produkt není v objednávce"}), 404
+    if user and user.role == "branch":
+        if order_item.unavailable or (order_item.shipped_quantity or 0) <= 0:
+            return jsonify({"ok": False, "error": "Tato položka se v kontrole neověřuje (nebyla odeslána nebo sklad nemá)."}), 400
     expected = order_item.shipped_quantity if order_item.shipped_quantity is not None else 0
     from sqlalchemy import func
     total_already = db.session.query(func.coalesce(func.sum(OrderItemCheck.scanned_quantity), 0)).filter(
@@ -3986,7 +4272,11 @@ def warehouse_order_check_scan(order_id):
     db.session.add(check)
     db.session.commit()
     audit_log("order_check_scan", "order_item", order_item.id, f"Scan: {scanned_qty}*{ean} -> {result} (celkem {total_after})")
-    all_items_with_product = [i for i in order.items if i.product_id and i.product and (i.product.ean or i.product.extra_eans.count() > 0)]
+    # Pro pobočku se výsledek kontroly vyhodnocuje jen z položek s odesl. množstvím > 0 a které sklad má
+    if user and user.role == "branch":
+        all_items_with_product = [i for i in order.items if i.product_id and i.product and (i.product.ean or i.product.extra_eans.count() > 0) and (i.shipped_quantity or 0) > 0 and not i.unavailable]
+    else:
+        all_items_with_product = [i for i in order.items if i.product_id and i.product and (i.product.ean or i.product.extra_eans.count() > 0)]
     item_totals = {}
     for it in order.items:
         s = db.session.query(func.coalesce(func.sum(OrderItemCheck.scanned_quantity), 0)).filter(

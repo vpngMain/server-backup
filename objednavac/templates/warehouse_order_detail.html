@@ -3,20 +3,30 @@
 {% block content %}
 <section class="order-detail-actions-top" aria-label="Akce">
     {% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}
-    <div class="order-detail-top-row">
-        <form method="post" action="{{ url_for('warehouse_order_import_xls', order_id=order.id) }}" enctype="multipart/form-data" class="inline-form order-import-xls-form">
-            <input type="file" name="file" accept=".xls,.xlsx" required>
-            <button type="submit" class="btn btn-primary">Import z externího skladu</button>
-        </form>
-        <form method="post" action="{{ url_for('warehouse_order_status', order_id=order.id) }}" class="form-inline js-warehouse-status-form">
-            <label for="status">Stav</label>
-            <select id="status" name="status">
+    <div class="order-detail-top-row order-detail-import-and-status">
+        <div class="order-detail-import-box">
+            <span class="order-detail-import-label">Import převodky</span>
+            <form method="post" action="{{ url_for('warehouse_order_import_xls', order_id=order.id) }}" enctype="multipart/form-data" class="order-import-xls-form">
+                <div class="order-import-xls-row">
+                    <label for="import-format" class="order-import-format-label">Formát</label>
+                    <select id="import-format" class="order-import-format-select" name="import_format" aria-label="Formát importu">
+                        <option value="prevodka">Převodka (EAN / kód zboží)</option>
+                    </select>
+                    <label for="order-import-file" class="order-import-file-label">Soubor</label>
+                    <input type="file" id="order-import-file" name="file" accept=".xls,.xlsx" required class="order-import-file-input">
+                    <button type="submit" class="btn btn-primary order-import-submit">Import z externího skladu</button>
+                </div>
+            </form>
+        </div>
+        <form method="post" action="{{ url_for('warehouse_order_status', order_id=order.id) }}" class="form-inline js-warehouse-status-form order-detail-status-form">
+            <label for="status" class="order-detail-status-label">Stav</label>
+            <select id="status" name="status" class="order-detail-status-select">
                 <option value="pending" {{ 'selected' if order.status == 'pending' else '' }}>Čeká</option>
                 <option value="partially_shipped" {{ 'selected' if order.status == 'partially_shipped' else '' }}>Částečně odesláno</option>
                 <option value="shipped" {{ 'selected' if order.status in ('shipped', 'verified', 'error') else '' }}>Odesláno</option>
             </select>
             {% if order_check_status == 'verified' or order_check_status == 'error' %}<span class="status-badge status-{{ order_check_status }}" title="Výsledek kontroly čtečkou">{% if order_check_status == 'verified' %}✅ Zkontrolováno{% else %}❌ Chyba kontroly{% endif %}</span>{% endif %}
-            <button type="submit" class="btn">Změnit stav</button>
+            <button type="submit" class="btn order-detail-status-btn">Změnit stav</button>
         </form>
     </div>
     {% endif %}

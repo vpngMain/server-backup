@@ -7,7 +7,7 @@
     {% if csrf_token is defined %}<meta name="csrf-token" content="{{ csrf_token() }}">{% endif %}
     <title>{% block title %}Odběros{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -246,16 +246,20 @@
         [data-theme="dark"] .accordion-body { background: var(--surface); color: var(--text); border-color: var(--border); }
         .form-control, .form-select {
             background: var(--surface);
-            border: 1.5px solid var(--border);
+            border: 2px solid var(--border);
             border-radius: 12px;
-            padding: 0.7rem 1rem;
+            padding: 0.75rem 1rem;
             font-size: 1rem;
+            font-family: inherit;
             transition: border-color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         }
         .form-control:focus, .form-select:focus {
+            outline: none;
             border-color: var(--accent-solid);
             box-shadow: 0 0 0 4px var(--accent-glow);
         }
+        .form-control::placeholder { color: var(--text-secondary); opacity: 0.9; }
         .table { background: var(--surface) !important; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm); color: var(--text) !important; }
         .table thead { background: var(--table-header-bg) !important; color: var(--table-header-text) !important; }
         .table tbody td, .table tbody th { color: var(--text) !important; background: var(--surface) !important; }
@@ -455,6 +459,73 @@
         [data-theme="dark"] .badge[style*="d97706"] { background: rgba(245,158,11,0.35) !important; color: #fbbf24 !important; }
         [data-theme="dark"] .badge[style*="#a855f7"],
         [data-theme="dark"] .badge[style*="a855f7"] { background: rgba(168,85,247,0.35) !important; color: #c084fc !important; }
+        /* Téma Viktorinka */
+        body.theme-viktorinka {
+            --bg: #fff0f6;
+            --bg-mesh: radial-gradient(ellipse 85% 55% at 50% -15%, rgba(236,72,153,0.15), transparent),
+                       radial-gradient(ellipse 65% 45% at 100% 45%, rgba(249,168,212,0.1), transparent),
+                       radial-gradient(ellipse 55% 35% at 0% 75%, rgba(236,72,153,0.08), transparent);
+            --surface: #fffbfc;
+            --surface-hover: #fce7f3;
+            --text: #5c3344;
+            --text-secondary: #a85c7a;
+            --accent: linear-gradient(135deg, #ec4899 0%, #db2777 50%, #be185d 100%);
+            --accent-solid: #ec4899;
+            --accent-glow: rgba(236,72,153,0.4);
+            --border: rgba(92,51,68,0.2);
+            --nav-bg: rgba(255,251,252,0.9);
+            --nav-border: rgba(248,198,212,0.6);
+            --table-header-bg: #fdf2f8;
+            --table-header-text: #5c3344;
+            --card-bg: #fffbfc;
+            font-family: 'Nunito', 'Plus Jakarta Sans', sans-serif;
+        }
+        body.theme-viktorinka::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse 100% 60% at 30% 10%, rgba(252,231,243,0.7), transparent 45%),
+                        radial-gradient(ellipse 80% 50% at 70% 90%, rgba(249,168,212,0.4), transparent 40%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        [data-theme="dark"] body.theme-viktorinka {
+            --bg: #2d1b24;
+            --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(244,114,182,0.2), transparent),
+                       radial-gradient(ellipse 60% 40% at 100% 50%, rgba(249,168,212,0.12), transparent);
+            --surface: #3d2430;
+            --surface-hover: #4a2c3d;
+            --text: #fce7f3;
+            --text-secondary: #f9a8d4;
+            --accent: linear-gradient(135deg, #f472b6 0%, #f9a8d4 100%);
+            --accent-solid: #f472b6;
+            --accent-glow: rgba(244,114,182,0.5);
+            --border: rgba(255,255,255,0.15);
+            --nav-bg: rgba(45,27,36,0.95);
+            --nav-border: rgba(255,255,255,0.1);
+            --table-header-bg: #4a2c3d;
+            --table-header-text: #fce7f3;
+            --card-bg: #3d2430;
+        }
+        .viktorinka-decorations { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+        .viktorinka-decorations .v-heart, .viktorinka-decorations .v-sparkle { position: absolute; font-size: 1.1rem; animation: viktorinka-float 4s ease-in-out infinite; }
+        .viktorinka-decorations .v-heart { color: #ec4899; }
+        .viktorinka-decorations .v-sparkle { color: #f9a8d4; animation-duration: 3s; }
+        [data-theme="dark"] .viktorinka-decorations .v-heart { color: #f472b6; }
+        [data-theme="dark"] .viktorinka-decorations .v-sparkle { color: #f9a8d4; }
+        .v-heart.v-h1 { left: 5%; top: 15%; }
+        .v-heart.v-h2 { left: 18%; top: 70%; animation-delay: 0.8s; }
+        .v-heart.v-h3 { left: 45%; top: 25%; animation-delay: 1.6s; }
+        .v-heart.v-h4 { left: 75%; top: 55%; animation-delay: 2.4s; }
+        .v-heart.v-h5 { left: 88%; top: 18%; animation-delay: 3.2s; }
+        .v-heart.v-h6 { left: 32%; top: 82%; animation-delay: 1.2s; }
+        .v-sparkle.v-s1 { left: 10%; top: 40%; animation-delay: 0.5s; }
+        .v-sparkle.v-s2 { left: 55%; top: 75%; animation-delay: 1.3s; }
+        .v-sparkle.v-s3 { left: 82%; top: 35%; animation-delay: 2.1s; }
+        .v-sparkle.v-s4 { left: 25%; top: 50%; animation-delay: 0.9s; }
+        .v-sparkle.v-s5 { left: 68%; top: 12%; animation-delay: 2.7s; }
+        .v-sparkle.v-s6 { left: 42%; top: 88%; animation-delay: 1.8s; }
+        @keyframes viktorinka-float { 0%, 100% { transform: translateY(0) scale(1); opacity: 0.6; } 50% { transform: translateY(-12px) scale(1.1); opacity: 0.9; } }
         [data-theme="dark"] .command-palette-item:hover,
         [data-theme="dark"] .command-palette-item.active { background: var(--surface-hover) !important; }
         [data-theme="dark"] .card .card-body small:not(.badge *),
@@ -511,13 +582,17 @@
         .smeros-btn:active { transform: translateY(0); }
     </style>
 </head>
-<body>
+<body class="{% if theme_viktorinka %}theme-viktorinka{% endif %}">
+    {% if theme_viktorinka %}
+    <div class="viktorinka-decorations" aria-hidden="true">
+        <span class="v-heart v-h1">♥</span><span class="v-heart v-h2">♥</span><span class="v-heart v-h3">♥</span>
+        <span class="v-heart v-h4">♥</span><span class="v-heart v-h5">♥</span><span class="v-heart v-h6">♥</span>
+        <span class="v-sparkle v-s1">✦</span><span class="v-sparkle v-s2">✧</span><span class="v-sparkle v-s3">✦</span>
+        <span class="v-sparkle v-s4">✧</span><span class="v-sparkle v-s5">✦</span><span class="v-sparkle v-s6">✧</span>
+    </div>
+    {% endif %}
     <script>
     (function(){var t=localStorage.getItem('theme')||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.body.setAttribute('data-theme',t);})();
-    function goToSmeros() {
-        var host = window.location.hostname;
-        window.location.href = 'http://' + host + ':8000';
-    }
     </script>
     <nav class="navbar navbar-expand-lg navbar-apple navbar-light">
         <div class="container-fluid">
@@ -542,7 +617,7 @@
                     </li>
                     {% endif %}
                     <li class="nav-item">
-                        <button type="button" class="smeros-btn" onclick="goToSmeros()" title="Otevřít Směros">Směrovač</button>
+                        <a class="nav-link" href="{{ router_url }}" title="Zpět na směrovač">Na směrovač</a>
                     </li>
                     <li class="nav-item">
                         <button id="theme-toggle" class="nav-link btn btn-link p-2" title="Motiv" style="border-radius:8px;">

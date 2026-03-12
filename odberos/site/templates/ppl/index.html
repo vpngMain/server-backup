@@ -29,7 +29,7 @@
             <form id="parcelForm" class="row g-3 align-items-end">
                 <div class="col-md-4">
                     <label for="parcelCode" class="form-label">Číslo zásilky <span class="text-danger">*</span></label>
-                    <input type="text" id="parcelCode" class="form-control form-control-lg" placeholder="41498792168-54302 nebo 41498792168" required autofocus>
+                    <input type="text" id="parcelCode" class="form-control form-control-lg" placeholder="41498792168-54302 nebo 41498792168" required autofocus autocomplete="off">
                     <small class="text-muted d-block">Pip balík → Enter → pip umístění → Enter (uloží a připraví na další). Poslední 4 číslice z první části.</small>
                 </div>
                 <div class="col-md-2">
@@ -290,7 +290,11 @@
         if (vydat) {
             fetch(api + '/' + vydat.dataset.id + '/vydat', { method: 'POST', headers: { 'X-CSRFToken': csrfHeader } })
                 .then(function(r) {
-                    if (r.ok) { showToast('Zásilka vydána.', 'success'); loadParcels(); }
+                    if (r.ok) {
+                        showToast('Zásilka vydána.', 'success');
+                        searchBar.value = '';
+                        loadParcels();
+                    }
                     else { r.json().then(function(d) { showToast(d.error || 'Chyba.', 'error'); }); }
                 })
                 .catch(function() { showToast('Chyba.', 'error'); });
@@ -301,7 +305,11 @@
             if (!confirm('Opravdu smazat zásilku? Tuto akci nelze vrátit zpět.')) return;
             fetch(api + '/' + del.dataset.id, { method: 'DELETE' })
                 .then(function(r) {
-                    if (r.ok) { showToast('Zásilka smazána.', 'success'); loadParcels(); }
+                    if (r.ok) {
+                        showToast('Zásilka smazána.', 'success');
+                        searchBar.value = '';
+                        loadParcels();
+                    }
                     else { showToast('Chyba mazání.', 'error'); }
                 })
                 .catch(function() { showToast('Chyba.', 'error'); });

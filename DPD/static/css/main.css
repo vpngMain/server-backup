@@ -1,48 +1,125 @@
+/* Sjednoceno podle Odběros (Sneat theme) */
 :root {
   --max-width: 1000px;
   --font-size: 1.1rem;
   --btn-size: 2.8rem;
   --spacing: 1rem;
   --radius: 8px;
-  --color-primary: #1a5fb4;
-  --color-primary-hover: #1c71d8;
-  --color-bg: #f6f5f4;
-  --color-text: #1e1e1e;
-  --color-error: #c01c28;
+  --color-primary: #696cff;
+  --color-primary-hover: #5f61e6;
+  --color-bg: #f5f5f9;
+  --color-text: #566a7f;
+  --color-error: #ff3e1d;
   --color-header-bg: #fff;
-  --color-header-border: #ddd;
+  --color-header-border: #d9dee3;
   --color-section-bg: #fff;
-  --color-section-shadow: rgba(0,0,0,0.08);
-  --color-muted: #555;
-  --color-input-border: #ccc;
-  --color-table-header: #f8f8f8;
-  --color-table-row-hover: #fafafa;
+  --color-section-shadow: rgba(67, 89, 113, 0.06);
+  --color-muted: #697a8d;
+  --color-input-border: #d9dee3;
+  --color-table-header: #fcfdfd;
+  --color-table-row-hover: #f5f5f9;
   --color-modal-bg: #fff;
   --color-modal-backdrop: rgba(0,0,0,0.5);
-  --color-success-bg: #d4edda;
-  --color-success-text: #155724;
-  --color-error-bg: #f8d7da;
+  --color-success-bg: rgba(113, 221, 55, 0.15);
+  --color-success-text: #156315;
+  --color-error-bg: rgba(255, 62, 29, 0.12);
 }
 
-[data-theme="dark"] {
-  --color-bg: #1a1a1a;
-  --color-text: #e0e0e0;
-  --color-primary: #4a9eff;
-  --color-primary-hover: #6bb0ff;
-  --color-error: #f28b82;
-  --color-header-bg: #2d2d2d;
-  --color-header-border: #444;
-  --color-section-bg: #2d2d2d;
+html[data-theme="dark"] {
+  --color-bg: #232333;
+  --color-text: #a1acb8;
+  --color-primary: #696cff;
+  --color-primary-hover: #787bff;
+  --color-error: #ff3e1d;
+  --color-header-bg: #2b2b40;
+  --color-header-border: #434968;
+  --color-section-bg: #2b2b40;
   --color-section-shadow: rgba(0,0,0,0.3);
-  --color-muted: #aaa;
-  --color-input-border: #555;
-  --color-table-header: #363636;
-  --color-table-row-hover: #363636;
-  --color-modal-bg: #2d2d2d;
+  --color-muted: #798396;
+  --color-input-border: #434968;
+  --color-table-header: #323249;
+  --color-table-row-hover: #323249;
+  --color-modal-bg: #2b2b40;
   --color-modal-backdrop: rgba(0,0,0,0.7);
-  --color-success-bg: #1e3a24;
-  --color-success-text: #a8dab5;
-  --color-error-bg: #4a2020;
+  --color-success-bg: rgba(113, 221, 55, 0.15);
+  --color-success-text: #71dd37;
+  --color-error-bg: rgba(255, 62, 29, 0.2);
+}
+
+/* Téma Viktorinka – pro uživatele Viktorinka */
+body.theme-viktorinka {
+  --color-primary: #ec4899;
+  --color-primary-hover: #db2777;
+  --color-bg: #fff0f6;
+  --color-text: #5c3344;
+  --color-header-bg: #fffbfc;
+  --color-header-border: #f8c6d4;
+  --color-section-bg: #fffbfc;
+  --color-muted: #a85c7a;
+  --color-input-border: #f8c6d4;
+  --color-table-header: #fdf2f8;
+  --color-table-row-hover: #fce7f3;
+  --color-modal-bg: #fffbfc;
+  font-family: "Nunito", system-ui, sans-serif;
+  background: linear-gradient(165deg, #fff5f9 0%, #ffe4ec 25%, #fff0f6 50%, #fce7f3 75%, #fffbfc 100%);
+  background-attachment: fixed;
+  position: relative;
+  z-index: 1;
+}
+body.theme-viktorinka::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse 100% 60% at 30% 10%, rgba(252, 231, 243, 0.7), transparent 45%),
+              radial-gradient(ellipse 80% 50% at 70% 90%, rgba(249, 168, 212, 0.4), transparent 40%);
+  pointer-events: none;
+  z-index: 0;
+}
+html[data-theme="dark"] body.theme-viktorinka {
+  --color-bg: #2d1b24;
+  --color-text: #fce7f3;
+  --color-header-bg: #3d2430;
+  --color-header-border: #6b3a4d;
+  --color-section-bg: #3d2430;
+  --color-primary: #f472b6;
+  --color-primary-hover: #f9a8d4;
+  --color-muted: #f9a8d4;
+  --color-input-border: #6b3a4d;
+  --color-table-header: #4a2c3d;
+  --color-table-row-hover: #5c3344;
+  --color-modal-bg: #3d2430;
+  background: linear-gradient(165deg, #2d1b24 0%, #3d2430 40%, #2d1b24 70%, #4a2c3d 100%);
+}
+.viktorinka-decorations {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+.viktorinka-decorations .v-heart,
+.viktorinka-decorations .v-sparkle {
+  position: absolute;
+  font-size: 1.1rem;
+  animation: viktorinka-float 4s ease-in-out infinite;
+}
+.viktorinka-decorations .v-heart { color: #ec4899; }
+.viktorinka-decorations .v-sparkle { color: #f9a8d4; animation-duration: 3s; }
+.v-heart.v-h1 { left: 5%; top: 15%; }
+.v-heart.v-h2 { left: 18%; top: 70%; animation-delay: 0.8s; }
+.v-heart.v-h3 { left: 45%; top: 25%; animation-delay: 1.6s; }
+.v-heart.v-h4 { left: 75%; top: 55%; animation-delay: 2.4s; }
+.v-heart.v-h5 { left: 88%; top: 18%; animation-delay: 3.2s; }
+.v-heart.v-h6 { left: 32%; top: 82%; animation-delay: 1.2s; }
+.v-sparkle.v-s1 { left: 10%; top: 40%; animation-delay: 0.5s; }
+.v-sparkle.v-s2 { left: 55%; top: 75%; animation-delay: 1.3s; }
+.v-sparkle.v-s3 { left: 82%; top: 35%; animation-delay: 2.1s; }
+.v-sparkle.v-s4 { left: 25%; top: 50%; animation-delay: 0.9s; }
+.v-sparkle.v-s5 { left: 68%; top: 12%; animation-delay: 2.7s; }
+.v-sparkle.v-s6 { left: 42%; top: 88%; animation-delay: 1.8s; }
+@keyframes viktorinka-float {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.6; }
+  50% { transform: translateY(-12px) scale(1.1); opacity: 0.9; }
 }
 
 * {
@@ -111,11 +188,13 @@ input[type="month"],
 select {
   background: var(--color-bg);
   color: var(--color-text);
-  border: 1px solid var(--color-input-border);
+  border: 2px solid var(--color-input-border);
   border-radius: var(--radius);
-  padding: 0.5rem 0.75rem;
+  padding: 0.65rem 1rem;
   font-size: 1rem;
   font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 input[type="text"]:focus,
 input[type="number"]:focus,
@@ -126,6 +205,23 @@ input[type="month"]:focus,
 select:focus {
   outline: none;
   border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(105, 108, 255, 0.2);
+}
+body.theme-viktorinka input:focus,
+body.theme-viktorinka select:focus {
+  box-shadow: 0 0 0 4px rgba(236, 72, 153, 0.25);
+}
+input::placeholder {
+  color: var(--color-muted);
+  opacity: 0.9;
+}
+.form-label-block {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+.form-label-block input,
+.form-label-block select {
+  margin-top: 0.25rem;
 }
 .input-amount {
   width: 8rem;
@@ -291,6 +387,20 @@ h2 {
 .btn-secondary {
   background: var(--color-section-bg);
   border: 1px solid var(--color-muted);
+  color: var(--color-text);
+}
+.btn-secondary:hover {
+  color: var(--color-text);
+}
+
+.btn-danger {
+  background: var(--color-error);
+  color: #fff;
+  border-color: var(--color-error);
+}
+.btn-danger:hover {
+  opacity: 0.9;
+  color: #fff;
 }
 
 .btn-small {

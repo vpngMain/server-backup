@@ -5,9 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Evidence hotovosti{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
   {% block head %}{% endblock %}
 </head>
-<body>
+<body class="{% if theme_viktorinka %}theme-viktorinka{% endif %}">
+  {% if theme_viktorinka %}
+  <div class="viktorinka-decorations" aria-hidden="true">
+    <span class="v-heart v-h1">♥</span><span class="v-heart v-h2">♥</span><span class="v-heart v-h3">♥</span>
+    <span class="v-heart v-h4">♥</span><span class="v-heart v-h5">♥</span><span class="v-heart v-h6">♥</span>
+    <span class="v-sparkle v-s1">✦</span><span class="v-sparkle v-s2">✧</span><span class="v-sparkle v-s3">✦</span>
+    <span class="v-sparkle v-s4">✧</span><span class="v-sparkle v-s5">✦</span><span class="v-sparkle v-s6">✧</span>
+  </div>
+  {% endif %}
   <header class="header">
     <div class="container">
       <span class="app-name">Evidence hotovosti</span>
@@ -15,12 +24,20 @@
       <nav class="admin-nav header-nav">
         <a href="{{ url_for('admin_dashboard') }}">Dashboard</a>
         <a href="{{ url_for('user_index') }}">Formulář</a>
-        <a href="{{ url_for('admin_branches') }}">Pobočky</a>
-        <a href="{{ url_for('admin_users') }}">Uživatelé</a>
       </nav>
       {% endif %}
       {% if session.get('user_name') %}
       <span class="user-name">{{ session.user_name }}</span>
+      {% if user_branches_for_switch and user_branches_for_switch|length > 1 %}
+      <form method="post" action="{{ url_for('branch_switch') }}" style="display:inline;">
+        <select name="branch_id" onchange="this.form.submit()" class="btn btn-small" style="margin-right:0.5rem;" aria-label="Pobočka">
+          {% for b in user_branches_for_switch %}
+          <option value="{{ b.id }}" {{ 'selected' if current_branch_id == b.id else '' }}>{{ b.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% endif %}
+      <a href="{{ router_url }}" class="btn btn-small">Na směrovač</a>
       <button type="button" id="theme-toggle-btn" class="btn btn-small theme-toggle" aria-label="Přepnout režim">Tmavý režim</button>
       <a href="{{ url_for('logout') }}" class="btn btn-small">Odhlásit</a>
       {% else %}

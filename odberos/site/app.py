@@ -1,10 +1,10 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from wtforms import StringField, BooleanField, DateField, FloatField, TextAreaField, PasswordField, SelectField
 from wtforms.validators import DataRequired, Optional, Regexp, Length
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 try:
     from zoneinfo import ZoneInfo
     from zoneinfo import ZoneInfoNotFoundError
@@ -14,6 +14,7 @@ except ImportError:
 import os
 import re
 import csv
+from sqlalchemy import func, delete, insert
 try:
     import requests
 except ImportError:
@@ -121,6 +122,24 @@ login_manager.login_view = 'admin_login'
 login_manager.session_protection = 'strong'  # Silnější ochrana session
 
 
+def _session_lifetime_until_midnight():
+    """Vrátí timedelta do nejbližší půlnoci (Europe/Prague) pro expiraci session cookie."""
+    if CZ_TZ is None:
+        return timedelta(hours=24)
+    now = datetime.now(CZ_TZ)
+    next_midnight = (now.date() + timedelta(days=1))
+    from datetime import time as dt_time
+    next_midnight_dt = datetime.combine(next_midnight, dt_time(0, 0, 0), tzinfo=CZ_TZ)
+    delta = next_midnight_dt - now
+    return delta if delta.total_seconds() > 0 else timedelta(hours=24)
+
+
+@app.before_request
+def _set_session_lifetime_to_midnight():
+    """Nastaví PERMANENT_SESSION_LIFETIME na čas do půlnoci, aby session končila o 00:00."""
+    app.config["PERMANENT_SESSION_LIFETIME"] = _session_lifetime_until_midnight()
+
+
 def _cesky_datum(d, fmt='%d.%m.%Y'):
     """Převede date/datetime na řetězec v českém formátu dd.mm.yyyy (nebo dd.mm.yyyy HH:MM)."""
     if d is None:
@@ -159,14 +178,34 @@ def cesky_datum_cas_filter(d):
     return _cesky_datum(d, '%d.%m.%Y %H:%M')
 
 
+def _router_url():
+    """URL směrovače (Směros) – ROUTER_URL nebo stejný host, port 8000."""
+    url = os.environ.get("ROUTER_URL", "").strip()
+    if url:
+        return url.rstrip("/")
+    from urllib.parse import urlparse
+    try:
+        p = urlparse(request.url_root)
+        return f"{p.scheme}://{p.hostname}" if p.port in (80, 8000, None) else f"{p.scheme}://{p.hostname}:8000"
+    except Exception:
+        return "http://localhost:8000"
+
+
 @app.context_processor
 def inject_csrf_token():
     """Zajistí, že csrf_token() je dostupný ve všech šablonách."""
+    out = {"router_url": _router_url()}
     try:
         from flask_wtf.csrf import generate_csrf
-        return {'csrf_token': generate_csrf}
+        out["csrf_token"] = generate_csrf
     except Exception:
-        return {'csrf_token': lambda: ''}
+        out["csrf_token"] = lambda: ""
+    theme_viktorinka = (
+        current_user.is_authenticated
+        and (getattr(current_user, "username", None) or "").strip().lower() == "viktorinka"
+    )
+    out["theme_viktorinka"] = theme_viktorinka
+    return out
 
 
 # Časová zóna pro ČR (na Windows může chybět IANA data – pak použijeme lokální čas)
@@ -832,23 +871,6 @@ def init_db():
         # Spustíme migraci před vytvářením dat - MUSÍ být před jakýmkoliv dotazem na modely
         migrate_db()
         
-        # Po migraci musíme znovu načíst metadata, aby SQLAlchemy věděl o nových sloupcích
-        # Použijeme raw SQL dotaz pro kontrolu existence poboček
-        try:
-            result = db.session.execute(db.text("SELECT COUNT(*) FROM pobocka"))
-            pobocka_count = result.scalar()
-            if pobocka_count == 0:
-                pobocky = [Pobocka(nazev='Teplice'), Pobocka(nazev='Děčín')]
-                db.session.bulk_save_objects(pobocky)
-                db.session.commit()
-        except Exception as e:
-            app.logger.error(f'Chyba při kontrole poboček: {str(e)}')
-            # Pokud tabulka neexistuje, vytvoříme ji pomocí create_all
-            db.create_all()
-            pobocky = [Pobocka(nazev='Teplice'), Pobocka(nazev='Děčín')]
-            db.session.bulk_save_objects(pobocky)
-            db.session.commit()
-        
         try:
             user_table = User.__tablename__
             result = db.session.execute(db.text(f"SELECT COUNT(*) FROM {user_table}"))
@@ -902,6 +924,53 @@ def load_user(user_id):
     except (ValueError, TypeError):
         return None
 
+
+def sync_pobocky_from_auth():
+    """Synchronizuje pobočky s auth-system: přidá chybějící, smaže ty co v auth-system už nejsou (bez závislých dat)."""
+    if not requests:
+        return
+    auth_url = (os.environ.get('AUTH_API_URL') or 'http://localhost:8080').rstrip('/')
+    try:
+        r = requests.get(auth_url + '/api/branches', timeout=10)
+        if r.status_code != 200:
+            return
+        try:
+            data = r.json()
+        except Exception:
+            data = []
+        if not isinstance(data, list):
+            data = []
+        auth_names = {(item.get('name') or '').strip() for item in data if (item.get('name') or '').strip()}
+        # Přidat chybějící pobočky
+        for item in data:
+            name = (item.get('name') or '').strip()
+            if not name or Pobocka.query.filter_by(nazev=name).first():
+                continue
+            db.session.add(Pobocka(nazev=name))
+        # Odstranit pobočky, které v auth-system už nejsou (jen pokud nemají odběry/reklamace)
+        for p in Pobocka.query.all():
+            if p.nazev in auth_names:
+                continue
+            odbery = Odber.query.filter_by(pobocka_id=p.id).count()
+            reklamace = Reklamace.query.filter_by(pobocka_id=p.id).count()
+            if odbery > 0 or reklamace > 0:
+                app.logger.info('sync_pobocky_from_auth: pobočka "%s" nebyla smazána (má %s odběrů, %s reklamací)', p.nazev, odbery, reklamace)
+                continue
+            # Odebrat z uživatelů (M:N a pobocka_id)
+            for u in User.query.filter((User.pobocka_id == p.id) | (User.pobocky.any(Pobocka.id == p.id))).all():
+                if u.pobocka_id == p.id:
+                    u.pobocka_id = None
+                if p in u.pobocky:
+                    u.pobocky.remove(p)
+            # Akce: nastavit pobocka_id na NULL tam, kde odkazuje na tuto pobočku
+            Akce.query.filter_by(pobocka_id=p.id).update({Akce.pobocka_id: None})
+            db.session.delete(p)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        app.logger.debug('sync_pobocky_from_auth: %s', e)
+
+
 # Routy
 @app.route('/')
 def index():
@@ -909,6 +978,7 @@ def index():
     if not current_user.is_authenticated:
         return redirect(url_for('admin_login'))
     try:
+        sync_pobocky_from_auth()
         pobocky = get_user_pobocky()
         aktualni_rok = date.today().year
         reklamace_stat = get_reklamace_stats_for_pobocky(pobocky, rok=aktualni_rok)
@@ -1888,36 +1958,53 @@ def admin_login():
                 flash(err, 'danger')
             else:
                 role = data.get('role', 'user')
-                branch_name = (data.get('branch') or '').strip()
-                pobocka = None
-                if branch_name:
+                pobocky_list = []
+                if data.get('branches') and isinstance(data['branches'], list):
+                    for item in data['branches']:
+                        name = (item.get('name') if isinstance(item, dict) else str(item)).strip()
+                        if not name:
+                            continue
+                        p = Pobocka.query.filter_by(nazev=name).first()
+                        if not p and role == 'user':
+                            p = Pobocka(nazev=name)
+                            db.session.add(p)
+                            db.session.commit()
+                        if p:
+                            pobocky_list.append(p)
+                if not pobocky_list and (data.get('branch') or '').strip():
+                    branch_name = (data.get('branch') or '').strip()
                     pobocka = Pobocka.query.filter_by(nazev=branch_name).first()
                     if not pobocka and role == 'user':
                         pobocka = Pobocka(nazev=branch_name)
                         db.session.add(pobocka)
                         db.session.commit()
-                user = User.query.filter_by(username=username_val).first()
+                    if pobocka:
+                        pobocky_list.append(pobocka)
+                first_p = pobocky_list[0] if pobocky_list else None
+                user = User.query.filter(func.lower(User.username) == username_val.lower()).first() if username_val else None
                 if not user:
                     user = User(
-                        username=username_val,
+                        username=data.get('username', username_val).strip() or username_val,
                         password=generate_password_hash(os.urandom(16).hex()),
                         pin=None,
                         role=role,
-                        pobocka_id=pobocka.id if pobocka and role == 'user' else None,
+                        pobocka_id=first_p.id if first_p and role == 'user' else None,
                     )
                     db.session.add(user)
                     db.session.commit()
-                    if pobocka and role == 'user':
-                        user.pobocky.append(pobocka)
+                    if pobocky_list and role == 'user':
+                        _set_user_pobocky_explicit(user.id, pobocky_list)
                         db.session.commit()
+                    db.session.refresh(user)
                 else:
                     user.role = role
-                    user.pobocka_id = pobocka.id if pobocka and role == 'user' else None
-                    user.pobocky.clear()
-                    if pobocka and role == 'user':
-                        user.pobocky.append(pobocka)
+                    user.pobocka_id = first_p.id if first_p and role == 'user' else None
+                    if pobocky_list and role == 'user':
+                        _set_user_pobocky_explicit(user.id, pobocky_list)
                     db.session.commit()
-                login_user(user)
+                    db.session.refresh(user)
+                session.permanent = True
+                login_user(user, remember=False)
                 flash(f'Vítejte, {user.jmeno or user.username}!', 'success')
                 next_url = request.args.get('next')
                 if next_url and _is_safe_redirect_url(next_url):
@@ -1925,9 +2012,10 @@ def admin_login():
                 return redirect(url_for('admin_dashboard') if user.is_admin() else url_for('index'))
         elif username_val and password_val:
             # Zpětná kompatibilita: přihlášení heslem proti lokální DB
-            user = User.query.filter_by(username=username_val).first()
+            user = User.query.filter(func.lower(User.username) == username_val.lower()).first()
             if user and user.check_password(password_val):
-                login_user(user)
+                session.permanent = True
+                login_user(user, remember=False)
                 flash(f'Vítejte, {user.jmeno or user.username}!', 'success')
                 next_url = request.args.get('next')
                 if next_url and _is_safe_redirect_url(next_url):
@@ -1939,17 +2027,114 @@ def admin_login():
 
     return render_template('admin_login.html', form=form)
 
+
+@app.route('/auth/sso')
+def auth_sso():
+    """SSO z Směrosu: ověření tokenu u auth-system a vytvoření lokální session."""
+    token = (request.args.get('token') or '').strip()
+    if not token:
+        flash('Chybí SSO token.', 'danger')
+        return redirect(url_for('admin_login'))
+    if not requests:
+        flash('Modul requests není nainstalován.', 'danger')
+        return redirect(url_for('admin_login'))
+    auth_url = (os.environ.get('AUTH_API_URL') or 'http://localhost:8080').rstrip('/')
+    try:
+        r = requests.get(auth_url + '/api/sso/verify', params={'token': token}, timeout=10)
+        data = r.json() if r.headers.get('content-type', '').startswith('application/json') else {}
+        if r.status_code != 200 or not data.get('ok'):
+            flash(data.get('error', 'Neplatný nebo vypršený SSO token.'), 'danger')
+            return redirect(url_for('admin_login'))
+    except requests.RequestException as e:
+        flash(f'Nepodařilo se ověřit token: {e}', 'danger')
+        return redirect(url_for('admin_login'))
+    username_val = (data.get('username') or '').strip()
+    if not username_val:
+        flash('Neplatná odpověď přihlášení.', 'danger')
+        return redirect(url_for('admin_login'))
+    sync_pobocky_from_auth()
+    role = data.get('role', 'user')
+    pobocky_list = []
+    if data.get('branches') and isinstance(data['branches'], list):
+        for item in data['branches']:
+            name = (item.get('name') if isinstance(item, dict) else str(item)).strip()
+            if not name:
+                continue
+            p = Pobocka.query.filter_by(nazev=name).first()
+            if not p and role == 'user':
+                p = Pobocka(nazev=name)
+                db.session.add(p)
+                db.session.commit()
+            if p:
+                pobocky_list.append(p)
+    if not pobocky_list and (data.get('branch') or '').strip():
+        branch_name = (data.get('branch') or '').strip()
+        pobocka = Pobocka.query.filter_by(nazev=branch_name).first()
+        if not pobocka and role == 'user':
+            pobocka = Pobocka(nazev=branch_name)
+            db.session.add(pobocka)
+            db.session.commit()
+        if pobocka:
+            pobocky_list.append(pobocka)
+    first_p = pobocky_list[0] if pobocky_list else None
+    user = User.query.filter(func.lower(User.username) == username_val.lower()).first() if username_val else None
+    if not user:
+        user = User(
+            username=username_val,
+            password=generate_password_hash(os.urandom(16).hex()),
+            pin=None,
+            role=role,
+            pobocka_id=first_p.id if first_p and role == 'user' else None,
+        )
+        db.session.add(user)
+        db.session.commit()
+        if pobocky_list and role == 'user':
+            _set_user_pobocky_explicit(user.id, pobocky_list)
+            db.session.commit()
+        db.session.refresh(user)
+    else:
+        user.role = role
+        user.pobocka_id = first_p.id if first_p and role == 'user' else None
+        if pobocky_list and role == 'user':
+            _set_user_pobocky_explicit(user.id, pobocky_list)
+        db.session.commit()
+        db.session.refresh(user)
+    session.permanent = True
+    login_user(user, remember=False)
+    flash(f'Vítejte, {user.jmeno or user.username}!', 'success')
+    return redirect(url_for('admin_dashboard') if user.is_admin() else url_for('index'))
+
+
+def _set_user_pobocky_explicit(user_id, pobocky_list):
+    """Zapíše přiřazení poboček přímo do tabulky user_pobocky (všechny pobočky, ne jen první)."""
+    if not user_id or not pobocky_list:
+        return
+    try:
+        db.session.execute(delete(user_pobocky).where(user_pobocky.c.user_id == user_id))
+        for p in pobocky_list:
+            if getattr(p, 'id', None):
+                db.session.execute(insert(user_pobocky).values(user_id=user_id, pobocka_id=p.id))
+    except Exception as e:
+        app.logger.warning('_set_user_pobocky_explicit: %s', e)
+
+
 def get_user_pobocky():
-    """Vrací seznam poboček, ke kterým má uživatel přístup."""
+    """Vrací seznam poboček, ke kterým má uživatel přístup (shodné s přiřazením ve správě uživatelů)."""
     if not current_user.is_authenticated:
-        return Pobocka.query.all()  # Nepřihlášení vidí vše
+        return Pobocka.query.order_by(Pobocka.nazev).all()
     if getattr(current_user, 'is_admin', None) and current_user.is_admin():
-        return Pobocka.query.all()
-    # Many-to-many přiřazené pobočky
+        return Pobocka.query.order_by(Pobocka.nazev).all()
+    # User: načíst přímo z user_pobocky, aby byl seznam všech přiřazených poboček
+    try:
+        rows = db.session.query(user_pobocky.c.pobocka_id).filter(user_pobocky.c.user_id == current_user.id).all()
+        pid_list = [r[0] for r in rows]
+        if pid_list:
+            return Pobocka.query.filter(Pobocka.id.in_(pid_list)).order_by(Pobocka.nazev).all()
+    except Exception:
+        pass
     pobocky = getattr(current_user, 'pobocky', None)
     if pobocky:
         return list(pobocky)
-    # Zpětná kompatibilita: jeden pobocka_id
     pid = getattr(current_user, 'pobocka_id', None)
     if pid:
         pobocka = db.session.get(Pobocka, pid)
@@ -2470,296 +2655,73 @@ def admin_statistiky():
 @app.route('/admin/users', methods=['GET', 'POST'])
 @login_required
 def admin_users():
-    """Samostatná stránka – uživatelé (seznam + přidat)."""
-    if not (current_user.is_authenticated and current_user.is_admin()):
-        flash('Nemáte oprávnění!', 'danger')
-        return redirect(url_for('index'))
-    user_form = AddUserForm()
-    all_pobocky = Pobocka.query.all()
-    user_form.pobocky.choices = [(str(p.id), p.nazev) for p in all_pobocky]
-    users = User.query.all()
-
-    if user_form.validate_on_submit() and 'jmeno' in request.form:
-        jmeno_clean = (user_form.jmeno.data or '').strip()[:100]
-        pin_clean = (user_form.pin.data or '').strip()
-        username_clean = jmeno_clean.lower().replace(' ', '_')[:100]
-        existing_pin = User.query.filter_by(pin=pin_clean).first()
-        if existing_pin:
-            flash('PIN již existuje!', 'danger')
-        elif User.query.filter_by(username=username_clean).first():
-            flash('Uživatel s tímto jménem již existuje!', 'danger')
-        else:
-            user = User(username=username_clean, pin=pin_clean, jmeno=jmeno_clean, role=user_form.role.data)
-            user.set_password(pin_clean)
-            pobocky_data = request.form.getlist('pobocky') or user_form.pobocky.data or []
-            if pobocky_data:
-                pobocky_ids = []
-                for p in pobocky_data:
-                    if not p:
-                        continue
-                    try:
-                        pid = int(p)
-                        if db.session.get(Pobocka, pid):
-                            pobocky_ids.append(pid)
-                    except (ValueError, TypeError):
-                        continue
-                if pobocky_ids:
-                    user.pobocky = Pobocka.query.filter(Pobocka.id.in_(pobocky_ids)).all()
-                    user.pobocka_id = user.pobocky[0].id
-            try:
-                db.session.add(user)
-                db.session.commit()
-                akce = Akce(odber_id=None, uzivatel=current_user.username, akce=f'Přidán uživatel: {user.jmeno}', datum=get_current_time(), pobocka_id=_system_pobocka_id())
-                db.session.add(akce)
-                db.session.commit()
-                flash('Uživatel přidán!', 'success')
-                return redirect(url_for('admin_users'))
-            except Exception as e:
-                db.session.rollback()
-                flash(f'Chyba: {str(e)}', 'danger')
-
-    _sneat_path = os.path.join(app.root_path, 'templates', 'admin_base_sneat.html')
-    admin_base = 'admin_base_sneat.html' if os.path.isfile(_sneat_path) else 'admin_base_tailadmin.html'
-    return render_template('admin_users.html', admin_base=admin_base, user_form=user_form, users=users, all_pobocky=all_pobocky)
+    """Správa uživatelů je v centrálním auth-system (Směrovač → Správa uživatelů)."""
+    flash('Správa uživatelů je v centrálním systému (Směrovač → Správa uživatelů).', 'info')
+    return redirect(url_for('admin_dashboard'))
 
 
 @app.route('/admin/pobocky', methods=['GET', 'POST'])
 @login_required
 def admin_pobocky():
-    """Samostatná stránka – pobočky (seznam + přidat)."""
-    if not (current_user.is_authenticated and current_user.is_admin()):
-        flash('Nemáte oprávnění!', 'danger')
-        return redirect(url_for('index'))
-    pobocka_form = AddPobockaForm()
-    pobocky = Pobocka.query.all()
-
-    if pobocka_form.validate_on_submit() and 'nazev' in request.form:
-        pobocka = Pobocka(nazev=pobocka_form.nazev.data)
-        db.session.add(pobocka)
-        db.session.commit()
-        akce = Akce(odber_id=None, uzivatel=current_user.username, akce=f'Přidána pobočka: {pobocka.nazev}', datum=get_current_time(), pobocka_id=pobocka.id)
-        db.session.add(akce)
-        db.session.commit()
-        flash('Pobočka přidána!', 'success')
-        return redirect(url_for('admin_pobocky'))
-
-    _sneat_path = os.path.join(app.root_path, 'templates', 'admin_base_sneat.html')
-    admin_base = 'admin_base_sneat.html' if os.path.isfile(_sneat_path) else 'admin_base_tailadmin.html'
-    return render_template('admin_pobocky.html', admin_base=admin_base, pobocka_form=pobocka_form, pobocky=pobocky)
+    """Správa poboček je v centrálním auth-system (Směrovač → Správa uživatelů → Pobočky)."""
+    flash('Pobočky se spravují v centrálním systému (Směrovač → Správa uživatelů → Pobočky).', 'info')
+    return redirect(url_for('admin_dashboard'))
 
 
 @app.route('/admin/user/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_user(id):
-    """Editace uživatele."""
-    if not (current_user.is_authenticated and current_user.is_admin()):
-        flash('Nemáte oprávnění!', 'danger')
-        return redirect(url_for('admin_users'))
-    
-    user = User.query.get_or_404(id)
-    form = EditUserForm()
-    
-    # Naplníme choices pro pobočky (pro zpětnou kompatibilitu)
-    all_pobocky = Pobocka.query.all()
-    form.pobocky.choices = [(str(p.id), p.nazev) for p in all_pobocky]
-    
-    # Získáme ID poboček uživatele pro checkboxy
-    user_pobocky_ids = [p.id for p in user.pobocky]
-    
-    if request.method == 'GET':
-        form.jmeno.data = user.jmeno
-        form.pin.data = user.pin
-        form.role.data = user.role
-        form.pobocky.data = [str(p.id) for p in user.pobocky]
-    
-    if form.validate_on_submit():
-        # Sanitizace vstupů
-        jmeno_clean = form.jmeno.data.strip()[:100] if form.jmeno.data else user.jmeno
-        if not jmeno_clean or len(jmeno_clean) < 2:
-            flash('Jméno musí mít minimálně 2 znaky!', 'danger')
-            return render_template('admin_edit_user_checkboxes.html', form=form, user=user, all_pobocky=all_pobocky, user_pobocky_ids=user_pobocky_ids)
-        
-        user.jmeno = jmeno_clean
-        
-        if form.pin.data:
-            pin_clean = form.pin.data.strip()
-            if pin_clean:
-                # Kontrola unikátnosti PINu (kromě aktuálního uživatele)
-                existing_pin = User.query.filter(User.pin == pin_clean, User.id != id).first()
-                if existing_pin:
-                    flash('PIN již existuje u jiného uživatele!', 'danger')
-                    return render_template('admin_edit_user_checkboxes.html', form=form, user=user, all_pobocky=all_pobocky, user_pobocky_ids=user_pobocky_ids)
-                user.pin = pin_clean
-                user.set_password(pin_clean)  # přihlášení jen přes PIN
-        
-        user.role = form.role.data
-        
-        # Aktualizace poboček - použijeme checkboxy z request.form.getlist
-        pobocky_data = request.form.getlist('pobocky')
-        
-        if pobocky_data:
-            pobocky_ids = []
-            for p_id in pobocky_data:
-                if p_id:
-                    try:
-                        pob_id = int(p_id)
-                        # Ověření, že pobočka existuje
-                        if db.session.get(Pobocka, pob_id):
-                            pobocky_ids.append(pob_id)
-                    except (ValueError, TypeError):
-                        continue
-            
-            if pobocky_ids:
-                pobocky_objects = Pobocka.query.filter(Pobocka.id.in_(pobocky_ids)).all()
-                user.pobocky = pobocky_objects
-                app.logger.info(f'Uživatel {user.username} má nyní {len(pobocky_objects)} poboček: {[p.nazev for p in pobocky_objects]}')
-                # Zpětná kompatibilita
-                if pobocky_objects:
-                    user.pobocka_id = pobocky_objects[0].id
-            else:
-                user.pobocky = []
-                user.pobocka_id = None
-        else:
-            user.pobocky = []
-            user.pobocka_id = None
-
-        try:
-            db.session.commit()
-            akce = Akce(
-                odber_id=None,
-                uzivatel=current_user.username,
-                akce=f'Upraven uživatel: {user.jmeno}',
-                datum=get_current_time(),
-                pobocka_id=_system_pobocka_id()
-            )
-            db.session.add(akce)
-            db.session.commit()
-            flash('Uživatel upraven!', 'success')
-            return redirect(url_for('admin_users'))
-        except Exception as e:
-            db.session.rollback()
-            app.logger.error(f'Chyba při ukládání uživatele: {str(e)}')
-            flash(f'Chyba při ukládání: {str(e)}', 'danger')
-    
-    return render_template('admin_edit_user_checkboxes.html', form=form, user=user, all_pobocky=all_pobocky, user_pobocky_ids=user_pobocky_ids)
+    """Správa uživatelů je v centrálním auth-system."""
+    flash('Správa uživatelů je v centrálním systému (Směrovač → Správa uživatelů).', 'info')
+    return redirect(url_for('admin_dashboard'))
 
 
 @app.route('/admin/pobocka/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_pobocka(id):
-    """Editace pobočky."""
-    if not (current_user.is_authenticated and current_user.is_admin()):
-        flash('Nemáte oprávnění!', 'danger')
-        return redirect(url_for('admin_pobocky'))
-    
-    pobocka = Pobocka.query.get_or_404(id)
-    form = EditPobockaForm()
-    
-    if request.method == 'GET':
-        form.nazev.data = pobocka.nazev
-        form.adresa.data = pobocka.adresa
-        form.firma.data = pobocka.firma
-    
-    if form.validate_on_submit():
-        # Sanitizace vstupu
-        new_nazev = form.nazev.data.strip()[:100] if form.nazev.data else pobocka.nazev
-        
-        # Kontrola, zda název už neexistuje (kromě aktuální pobočky)
-        existing = Pobocka.query.filter(Pobocka.nazev == new_nazev, Pobocka.id != id).first()
-        if existing:
-            flash('Pobočka s tímto názvem již existuje!', 'danger')
-            return render_template('admin_edit_pobocka.html', form=form, pobocka=pobocka)
-        
-        old_nazev = pobocka.nazev
-        pobocka.nazev = new_nazev
-        pobocka.adresa = (form.adresa.data or '').strip()[:200] if form.adresa.data else None
-        pobocka.firma = (form.firma.data or '').strip()[:200] if form.firma.data else None
-        
-        try:
-            db.session.commit()
-            akce = Akce(
-                odber_id=None,
-                uzivatel=current_user.username,
-                akce=f'Upravena pobočka: {old_nazev} → {pobocka.nazev}',
-                datum=get_current_time(),
-                pobocka_id=pobocka.id
-            )
-            db.session.add(akce)
-            db.session.commit()
-            flash('Pobočka upravena!', 'success')
-            return redirect(url_for('admin_pobocky'))
-        except Exception as e:
-            db.session.rollback()
-            app.logger.error(f'Chyba při ukládání pobočky: {str(e)}')
-            flash(f'Chyba při ukládání: {str(e)}', 'danger')
-    
-    return render_template('admin_edit_pobocka.html', form=form, pobocka=pobocka)
+    """Správa poboček je v centrálním auth-system (Směrovač → Správa uživatelů → Pobočky)."""
+    flash('Pobočky se spravují v centrálním systému (Směrovač → Správa uživatelů → Pobočky).', 'info')
+    return redirect(url_for('admin_dashboard'))
 
 
 @app.route('/delete_user/<int:id>', methods=['POST'])
 @login_required
 def delete_user(id):
-    if not (current_user.is_authenticated and current_user.is_admin()):
-        flash('Nemáte oprávnění!', 'danger')
-        return redirect(url_for('admin_dashboard'))
-    user = User.query.get_or_404(id)
-    if user.id == current_user.id:
-        flash('Nemůžete smazat sami sebe!', 'danger')
-        return redirect(url_for('admin_dashboard'))
-    akce = Akce(
-        odber_id=None,
-        uzivatel=current_user.username,
-        akce=f'Smazán uživatel: {user.jmeno or user.username}',
-        datum=get_current_time(),
-        pobocka_id=_system_pobocka_id()
-    )
-    db.session.add(akce)
-    db.session.delete(user)
-    db.session.commit()
-    flash('Uživatel smazán!', 'success')
-    return redirect(url_for('admin_users'))
+    """Správa uživatelů je v centrálním auth-system."""
+    flash('Správa uživatelů je v centrálním systému (Směrovač → Správa uživatelů).', 'info')
+    return redirect(url_for('admin_dashboard'))
 
 
 @app.route('/delete_pobocka/<int:id>', methods=['POST'])
 @login_required
 def delete_pobocka(id):
-    """Smazání pobočky."""
-    if not (current_user.is_authenticated and current_user.is_admin()):
-        flash('Nemáte oprávnění!', 'danger')
-        return redirect(url_for('admin_pobocky'))
-    
-    pobocka = Pobocka.query.get_or_404(id)
-    
-    # Kontrola, jestli pobočka nemá žádné odběry nebo reklamace
-    odbery_count = Odber.query.filter_by(pobocka_id=id).count()
-    reklamace_count = Reklamace.query.filter_by(pobocka_id=id).count()
-    
-    if odbery_count > 0 or reklamace_count > 0:
-        flash(f'Nelze smazat pobočku! Má {odbery_count} odběrů a {reklamace_count} reklamací.', 'danger')
-        return redirect(url_for('admin_pobocky'))
-    
-    nazev = pobocka.nazev
-    db.session.delete(pobocka)
-    db.session.commit()
-    
-    akce = Akce(
-        odber_id=None,
-        uzivatel=current_user.username,
-        akce=f'Smazána pobočka: {nazev}',
-        datum=get_current_time(),
-        pobocka_id=_system_pobocka_id()
-    )
-    db.session.add(akce)
-    db.session.commit()
-    flash('Pobočka smazána!', 'success')
-    return redirect(url_for('admin_pobocky'))
+    """Správa poboček je v centrálním auth-system – mazání jen tam."""
+    flash('Pobočky se spravují v centrálním systému (Směrovač → Správa uživatelů → Pobočky).', 'info')
+    return redirect(url_for('admin_dashboard'))
+
+def _logout_chain_next_url():
+    """Další krok řetězu po Odběros: Objednávač logout s chain=1."""
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(_router_url())
+        base = f"{p.scheme}://{p.hostname}"
+        return f"{base}:8082/logout?chain=1"
+    except Exception:
+        return "http://localhost:8082/logout?chain=1"
+
 
 @app.route('/logout')
 def logout():
     if current_user.is_authenticated:
         logout_user()
         flash('Byli jste odhlášeni.', 'info')
-    return redirect(url_for('index'))
+    next_url = request.args.get('next', '').strip()
+    if next_url and next_url.startswith('http'):
+        return redirect(next_url)
+    # V řetězu (chain=1) jdeme na další app; jinak start řetězu na Směros
+    if request.args.get('chain') == '1':
+        return redirect(_logout_chain_next_url())
+    return redirect(_router_url() + '/logout')
 
 
 # ---------- PPL Sklad (zásilky) ----------

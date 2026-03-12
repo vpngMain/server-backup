@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{% if warehouse %}Upravit sklad{% else %}Přidat sklad{% endif %}</h1>
+<form method="post">
+    <div class="row">
+        <label for="name">Název skladu *</label>
+        <input type="text" id="name" name="name" value="{{ warehouse.name if warehouse else '' }}" required maxlength="100">
+    </div>
+    <div class="row">
+        <label for="code">Kód (volitelné)</label>
+        <input type="text" id="code" name="code" value="{{ warehouse.code if warehouse else '' }}" maxlength="20">
+    </div>
+    <div class="row" style="margin-top: 1rem;">
+        <button type="submit" class="btn btn-green">Uložit</button>
+        <a href="{{ url_for('admin.warehouses') }}" class="btn btn-gray" style="margin-left: 0.5rem;">Zrušit</a>
+    </div>
+</form>
+{% endblock %}

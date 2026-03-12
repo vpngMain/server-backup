@@ -3,6 +3,19 @@
 {% block content %}
 <h2>Produkty</h2>
 <p class="branch-cart-info">Košík platí pro vaši pobočku: <strong>{{ current_branch.name if current_branch else '—' }}</strong></p>
+{% if all_warehouses is defined and all_warehouses %}
+<div class="branch-warehouse-select card-section" style="margin-bottom: 1rem;">
+    <form method="post" action="{{ url_for('branch_set_warehouse') }}" class="form-inline branch-set-warehouse-form">
+        <label for="branch-warehouse-id">Objednat ze skladu:</label>
+        <select name="warehouse_id" id="branch-warehouse-id" class="filter-group-select" onchange="this.form.submit();">
+            <option value="">— výchozí (Teplice) —</option>
+            {% for w in all_warehouses %}
+            <option value="{{ w.id }}" {{ 'selected' if branch_preferred_warehouse_id == w.id else '' }}>{{ w.name }}{% if w.code %} ({{ w.code }}){% endif %}</option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+{% endif %}
 <div class="products-filters">
     <div class="search-form">
         <label for="live-search">Vyhledávání (název, kód, EAN)</label>
@@ -11,7 +24,7 @@
     {% if groups %}
     <div class="form-group form-group-inline">
         <label for="filter-group">Skupina</label>
-        <select id="filter-group" class="filter-group-select" onchange="applyUrlFilters();">
+        <select id="filter-group" class="filter-group-select" onchange="applyFiltersLive();">
             <option value="">Všechny skupiny</option>
             {% for g in groups %}
             <option value="{{ g }}" {{ 'selected' if group_filter == g else '' }}>{{ g }}</option>
@@ -22,7 +35,7 @@
     {% if brands %}
     <div class="form-group form-group-inline">
         <label for="filter-brand">Značka</label>
-        <select id="filter-brand" class="filter-group-select" onchange="applyUrlFilters();">
+        <select id="filter-brand" class="filter-group-select" onchange="applyFiltersLive();">
             <option value="">Všechny značky</option>
             {% for b in brands %}
             <option value="{{ b }}" {{ 'selected' if brand_filter == b else '' }}>{{ b }}</option>
@@ -33,7 +46,7 @@
     {% if categories %}
     <div class="form-group form-group-inline">
         <label for="filter-category">Síla nikotinu</label>
-        <select id="filter-category" class="filter-group-select" onchange="applyUrlFilters();">
+        <select id="filter-category" class="filter-group-select" onchange="applyFiltersLive();">
             <option value="">Vše</option>
             {% for c in categories %}
             <option value="{{ c }}" {{ 'selected' if category_filter == c else '' }}>{{ c }}</option>
@@ -43,6 +56,7 @@
     {% endif %}
 </div>
 {% if products %}
+<div id="products-list-container">
 <div class="products-grid" id="products-grid">
     <article class="product-card product-card-custom" id="product-card-custom">
         <div class="product-card-inner">
@@ -99,21 +113,23 @@
 {% if total_pages is defined and total_pages > 1 %}
 <nav class="pagination" aria-label="Stránkování produktů">
     {% if page > 1 %}
-    <a href="{{ url_for('index', page=page-1, q=search_q or none, group=group_filter or none, brand=brand_filter or none, category=category_filter or none) }}" class="btn btn-sm">← Předchozí</a>
+    <a href="{{ url_for('index', page=page-1, q=search_q or none, group=group_filter or none, brand=brand_filter or none, category=category_filter or none) }}" class="btn btn-sm pagination-link">← Předchozí</a>
     {% endif %}
     <span class="pagination-info">Stránka {{ page }} / {{ total_pages }} (celkem {{ total }})</span>
     {% if page < total_pages %}
-    <a href="{{ url_for('index', page=page+1, q=search_q or none, group=group_filter or none, brand=brand_filter or none, category=category_filter or none) }}" class="btn btn-sm">Další →</a>
+    <a href="{{ url_for('index', page=page+1, q=search_q or none, group=group_filter or none, brand=brand_filter or none, category=category_filter or none) }}" class="btn btn-sm pagination-link">Další →</a>
     {% endif %}
 </nav>
 {% endif %}
 <p class="muted" id="live-search-no-results" style="display: none;">Žádný produkt nevyhovuje filtru.</p>
+</div>
 {% else %}
 <p>Žádné produkty{% if search_q %} nevyhovují hledání „{{ search_q }}“. <a href="{{ url_for('index') }}">Zobrazit vše</a>{% else %}. Administrátor může naimportovat produkty (Import).{% endif %}</p>
 {% endif %}
 <script>
 (function() {
-    function applyUrlFilters() {
+    var indexUrl = '{{ url_for("index") }}';
+    function getFilterParams(page) {
         var q = (document.getElementById('live-search') && document.getElementById('live-search').value.trim()) || '';
         var g = (document.getElementById('filter-group') && document.getElementById('filter-group').value) || '';
         var b = (document.getElementById('filter-brand') && document.getElementById('filter-brand').value) || '';
@@ -123,19 +139,40 @@
         if (b) params.set('brand', b);
         if (c) params.set('category', c);
         if (q) params.set('q', q);
-        params.set('page', '1');
-        window.location.href = '{{ url_for("index") }}' + (params.toString() ? '?' + params.toString() : '');
+        params.set('page', String(page || 1));
+        return params;
     }
-    window.applyUrlFilters = applyUrlFilters;
+    function applyFiltersLive(page) {
+        var params = getFilterParams(page || 1);
+        var url = indexUrl + (params.toString() ? '?' + params.toString() : '');
+        if (window.history && window.history.replaceState) {
+            window.history.replaceState(null, '', url);
+        }
+        var container = document.getElementById('products-list-container');
+        if (!container) return;
+        container.style.opacity = '0.6';
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.text(); })
+            .then(function(html) {
+                container.innerHTML = html;
+                container.style.opacity = '';
+            })
+            .catch(function() {
+                container.style.opacity = '';
+                window.location.href = url;
+            });
+    }
+    window.applyFiltersLive = applyFiltersLive;
+    window.getFilterParams = getFilterParams;
 })();
 (function() {
-    var table = document.getElementById('products-grid');
-    if (table) {
-        table.addEventListener('submit', function(e) {
-            var form = e.target;
-            if (form.method !== 'post' || !form.action || form.action.indexOf('/cart/add') === -1) return;
-            if (form.action.indexOf('/cart/add-custom') !== -1) return;
-            e.preventDefault();
+    var container = document.getElementById('products-list-container');
+    if (!container) return;
+    function onGridSubmit(e) {
+        var form = e.target;
+        if (form.method !== 'post' || !form.action || form.action.indexOf('/cart/add') === -1) return;
+        if (form.action.indexOf('/cart/add-custom') !== -1) return;
+        e.preventDefault();
             var btn = form.querySelector('button[type="submit"]');
             var qtyInput = form.querySelector('input[name="quantity"]');
             var card = form.closest('.product-card');
@@ -169,11 +206,13 @@
                     if (btn) btn.disabled = false;
                     alert('Nepodařilo se přidat do košíku.');
                 });
-        });
     }
+    container.addEventListener('submit', onGridSubmit);
 })();
 (function() {
     var setQuantityUrl = '{{ url_for("cart_set_quantity") }}';
+    var container = document.getElementById('products-list-container');
+    if (!container) return;
     function fmtQty(n) { return n == null ? '' : (n === Math.floor(n) ? Math.floor(n) : n); }
     function updateCardCartState(card, qty) {
         var badgeEl = card ? card.querySelector('.product-card-cart-badge') : null;
@@ -194,88 +233,66 @@
             card.classList.remove('product-card-in-cart');
         }
     }
-    document.querySelectorAll('.js-cart-minus').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var pid = btn.getAttribute('data-product-id');
-            var card = btn.closest('.product-card');
-            var input = card && card.querySelector('.js-cart-qty-input');
-            var current = input ? parseFloat(input.value) || 0 : 0;
-            var newQty = Math.max(0, current - 1);
-            var fd = new FormData();
-            fd.append('product_id', pid);
-            fd.append('quantity', newQty);
-            fetch(setQuantityUrl, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (data && data.ok) {
-                        updateCardCartState(card, data.cart_qty);
-                        if (data.cart_total != null) window.dispatchEvent(new CustomEvent('cart-update', { detail: { count: data.cart_total } }));
-                    }
+    function onMinusPlus(e, delta) {
+        var btn = e.target.closest('.js-cart-minus') || e.target.closest('.js-cart-plus');
+        if (!btn) return;
+        var pid = btn.getAttribute('data-product-id');
+        var card = btn.closest('.product-card');
+        var input = card && card.querySelector('.js-cart-qty-input');
+        var current = input ? parseFloat(input.value) || 0 : 0;
+        var newQty = Math.max(0, current + delta);
+        var fd = new FormData();
+        fd.append('product_id', pid);
+        fd.append('quantity', newQty);
+        fetch(setQuantityUrl, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.ok) {
+                    updateCardCartState(card, data.cart_qty);
+                    if (data.cart_total != null) window.dispatchEvent(new CustomEvent('cart-update', { detail: { count: data.cart_total } }));
+                }
+            })
+            .catch(function() {});
+    }
+    container.addEventListener('click', function(e) {
+        if (e.target.closest('.js-cart-minus')) { e.preventDefault(); onMinusPlus(e, -1); }
+        else if (e.target.closest('.js-cart-plus')) { e.preventDefault(); onMinusPlus(e, 1); }
+        else if (e.target.closest('.pagination-link')) {
+            e.preventDefault();
+            var a = e.target.closest('.pagination-link');
+            if (!a || !a.href) return;
+            var container = document.getElementById('products-list-container');
+            if (!container) { window.location.href = a.href; return; }
+            container.style.opacity = '0.6';
+            fetch(a.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function(r) { return r.text(); })
+                .then(function(html) {
+                    container.innerHTML = html;
+                    container.style.opacity = '';
                 })
-                .catch(function() {});
-        });
-    });
-    document.querySelectorAll('.js-cart-plus').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var pid = btn.getAttribute('data-product-id');
-            var card = btn.closest('.product-card');
-            var input = card && card.querySelector('.js-cart-qty-input');
-            var current = input ? parseFloat(input.value) || 0 : 0;
-            var newQty = current + 1;
-            var fd = new FormData();
-            fd.append('product_id', pid);
-            fd.append('quantity', newQty);
-            fetch(setQuantityUrl, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (data && data.ok) {
-                        updateCardCartState(card, data.cart_qty);
-                        if (data.cart_total != null) window.dispatchEvent(new CustomEvent('cart-update', { detail: { count: data.cart_total } }));
-                    }
-                })
-                .catch(function() {});
-        });
+                .catch(function() { window.location.href = a.href; });
+        }
     });
 })();
 (function() {
     var input = document.getElementById('live-search');
-    var grid = document.getElementById('products-grid');
-    var noResults = document.getElementById('live-search-no-results');
-    if (!input || !grid) return;
-    var cards = grid.querySelectorAll('.product-card.product-row');
-    function filter() {
-        var q = (input.value || '').trim().toLowerCase();
-        var visible = 0;
-        for (var i = 0; i < cards.length; i++) {
-            var card = cards[i];
-            var name = (card.getAttribute('data-name') || '');
-            var sku = (card.getAttribute('data-sku') || '');
-            var ean = (card.getAttribute('data-ean') || '');
-            var group = (card.getAttribute('data-group') || '');
-            var brand = (card.getAttribute('data-brand') || '');
-            var category = (card.getAttribute('data-category') || '');
-            var show = !q || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || ean.indexOf(q) !== -1 || group.indexOf(q) !== -1 || brand.indexOf(q) !== -1 || category.indexOf(q) !== -1;
-            card.style.display = show ? '' : 'none';
-            if (show) visible++;
-        }
-        if (noResults) noResults.style.display = (visible === 0 && cards.length > 0) ? 'block' : 'none';
-        updateSearchUrl(q);
-    }
-    function updateSearchUrl(q) {
-        var params = new URLSearchParams(window.location.search);
-        if (q) params.set('q', q); else params.delete('q');
-        params.set('page', '1');
-        var query = params.toString();
-        var url = window.location.pathname + (query ? '?' + query : '');
-        if (window.history && window.history.replaceState) {
-            window.history.replaceState(null, '', url);
-        }
-    }
-    input.addEventListener('input', function() { filter(); });
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') e.preventDefault();
+    if (!input) return;
+    var searchDebounce = null;
+    input.addEventListener('input', function() {
+        if (searchDebounce) clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(function() {
+            searchDebounce = null;
+            if (window.applyFiltersLive) window.applyFiltersLive(1);
+        }, 400);
     });
-    filter();
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (searchDebounce) clearTimeout(searchDebounce);
+            searchDebounce = null;
+            if (window.applyFiltersLive) window.applyFiltersLive(1);
+        }
+    });
 })();
 </script>
 {% endblock %}

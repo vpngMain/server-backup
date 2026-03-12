@@ -3,27 +3,19 @@
 {% block content %}
 <h1>Zadejte hotovost</h1>
 
+<div id="message" class="message" aria-live="polite" style="margin-bottom: 1rem;"></div>
+
 <div class="filters" style="margin-bottom: 1rem;">
-  {% if branches %}
-  <label>
-    Pobočka
-    <select id="entry-branch" aria-label="Pobočka pro evidenci">
-      <option value="">— vyberte pobočku —</option>
-      {% for b in branches %}
-      <option value="{{ b.id }}">{{ b.name }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  {% endif %}
   <label>
     Evidovat za týden (pondělí)
     <input type="week" id="entry-week" aria-label="Týden pro evidenci">
   </label>
   <p class="section-hint" style="margin: 0.25rem 0 0;">Ponechte prázdné pro aktuální týden.</p>
   <label>
-    K zaplacení (Kč)
-    <input type="number" step="0.01" min="0" id="k-zaplaceni" placeholder="0" class="input-amount" aria-label="K zaplacení v Kč">
+    K zaplacení (Kč) *
+    <input type="number" step="0.01" min="0" id="k-zaplaceni" placeholder="0" class="input-amount" aria-label="K zaplacení v Kč" required>
   </label>
+  <button type="button" id="btn-load-today" class="btn btn-secondary btn-small">Načíst dnešní evidenci</button>
 </div>
 
 <div class="form-sections-grid">
@@ -68,8 +60,6 @@
   <button type="button" id="btn-ulozit" class="btn btn-primary btn-large">ULOŽIT</button>
   <button type="button" id="btn-print-obalka" class="btn btn-secondary btn-large">VYTISKNOUT OBÁLKU</button>
 </div>
-
-<div id="message" class="message" aria-live="polite"></div>
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/user-form.js') }}"></script>

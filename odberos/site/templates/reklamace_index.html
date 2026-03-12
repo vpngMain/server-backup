@@ -30,7 +30,7 @@
 <header class="rekl-hero">
     <p class="rekl-hero-label">Reklamace</p>
     <h1>Elektronické cigarety</h1>
-    <p class="rekl-hero-sub">Přehled reklamací podle poboček. Adresa pro vrácení zboží se nastavuje v Admin → Pobočky.</p>
+    <p class="rekl-hero-sub">Přehled reklamací podle poboček. Pobočky se spravují v centrální Správě uživatelů (Směrovač → Správa uživatelů → Pobočky).</p>
 </header>
 
 {% if prehled %}
@@ -55,7 +55,7 @@
 {% else %}
 <div class="rekl-empty">
     <div class="rekl-empty-icon"><i class="fas fa-folder-open"></i></div>
-    <p>Zatím nejsou k dispozici žádné pobočky. Vytvořte je v Admin panelu.</p>
+    <p>Zatím nejsou k dispozici žádné pobočky. Pobočky se synchronizují z centrální Správy uživatelů (Směrovač → Správa uživatelů → Pobočky).</p>
 </div>
 {% endif %}
 {% endblock %}

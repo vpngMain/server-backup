@@ -79,7 +79,8 @@
             '<td>' + kzp + '</td>' +
             '<td>' + row.obalka_celkem + ' Kč</td>' +
             '<td>' + row.kasa_celkem + ' Kč</td>' +
-            '<td><button type="button" class="btn btn-small btn-detail" data-entry-id="' + row.id + '">Detail</button></td>' +
+            '<td><button type="button" class="btn btn-small btn-detail" data-entry-id="' + row.id + '">Detail</button> ' +
+            '<button type="button" class="btn btn-small btn-danger btn-delete-entry" data-entry-id="' + row.id + '">Smazat</button></td>' +
             '</tr>';
         }).join('');
       })
@@ -115,7 +116,8 @@
             '<p><strong>Uživatel:</strong> ' + (e.uzivatel || '') + '</p>' +
             '<p><strong>K zaplacení:</strong> ' + kzp + '</p>' +
             '<h3>Obálka</h3><table class="data-table"><thead><tr><th>Nominál</th><th>Počet</th></tr></thead><tbody>' + obalkaRows + '</tbody></table><p><strong>Celkem obálka:</strong> ' + (e.obalka_celkem || 0) + ' Kč</p>' +
-            '<h3>Kasička</h3><table class="data-table"><thead><tr><th>Nominál</th><th>Počet</th></tr></thead><tbody>' + kasaRows + '</tbody></table><p><strong>Celkem kasička:</strong> ' + (e.kasa_celkem || 0) + ' Kč</p>';
+            '<h3>Kasička</h3><table class="data-table"><thead><tr><th>Nominál</th><th>Počet</th></tr></thead><tbody>' + kasaRows + '</tbody></table><p><strong>Celkem kasička:</strong> ' + (e.kasa_celkem || 0) + ' Kč</p>' +
+            '<p style="margin-top: 1rem;"><button type="button" class="btn btn-danger btn-delete-entry" data-entry-id="' + e.id + '">Smazat záznam</button></p>';
         }
         if (detailModal) {
           detailModal.classList.add('modal-open');
@@ -156,8 +158,24 @@
       '<td>' + kzp + '</td>' +
       '<td>' + row.obalka_celkem + ' Kč</td>' +
       '<td>' + row.kasa_celkem + ' Kč</td>' +
-      '<td><button type="button" class="btn btn-small btn-detail" data-entry-id="' + row.id + '">Detail</button></td>' +
+      '<td><button type="button" class="btn btn-small btn-detail" data-entry-id="' + row.id + '">Detail</button> ' +
+      '<button type="button" class="btn btn-small btn-danger btn-delete-entry" data-entry-id="' + row.id + '">Smazat</button></td>' +
       '</tr>';
+  }
+
+  function deleteEntry(entryId, afterDelete) {
+    if (!confirm('Opravdu smazat tento záznam? Tuto akci nelze vrátit zpět.')) return;
+    fetch('/api/admin/entries/' + entryId, { method: 'DELETE' })
+      .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+      .then(function(result) {
+        if (result.ok && result.data.ok) {
+          hideDetail();
+          if (typeof afterDelete === 'function') afterDelete();
+        } else {
+          alert(result.data.error || 'Záznam se nepodařilo smazat.');
+        }
+      })
+      .catch(function() { alert('Chyba připojení.'); });
   }
 
   function loadMonthly() {
@@ -199,5 +217,12 @@
   document.addEventListener('click', function(ev) {
     var btn = ev.target.closest('.btn-detail');
     if (btn && btn.dataset.entryId) showDetail(btn.dataset.entryId);
+    var delBtn = ev.target.closest('.btn-delete-entry');
+    if (delBtn && delBtn.dataset.entryId) {
+      deleteEntry(delBtn.dataset.entryId, loadEntries);
+      if (monthlyContent && monthlyContent.innerHTML && !monthlyContent.innerHTML.includes('Žádné')) {
+        loadMonthly();
+      }
+    }
   });
 })();

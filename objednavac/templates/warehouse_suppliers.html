@@ -7,12 +7,20 @@
 {% if edit_supplier and user.role == 'admin' %}
 <form method="post" action="{{ url_for('warehouse_supplier_edit', supplier_id=edit_supplier.id) }}" class="form-stacked warehouse-suppliers-form">
     <div class="form-group">
-        <label for="edit_supplier_id">Kód dodavatele</label>
+        <label for="edit_supplier_id">Číslo firmy (kód)</label>
         <input type="text" id="edit_supplier_id" name="supplier_id" class="input-warehouse" required maxlength="100" value="{{ edit_supplier.supplier_id }}">
     </div>
     <div class="form-group">
-        <label for="edit_supplier_name">Název dodavatele</label>
+        <label for="edit_supplier_name">Název firmy</label>
         <input type="text" id="edit_supplier_name" name="supplier_name" class="input-warehouse" required maxlength="255" value="{{ edit_supplier.supplier_name }}">
+    </div>
+    <div class="form-group">
+        <label for="edit_supplier_street">Ulice</label>
+        <input type="text" id="edit_supplier_street" name="street" class="input-warehouse" maxlength="255" value="{{ edit_supplier.street or '' }}">
+    </div>
+    <div class="form-group">
+        <label for="edit_supplier_municipality">Obec</label>
+        <input type="text" id="edit_supplier_municipality" name="municipality" class="input-warehouse" maxlength="255" value="{{ edit_supplier.municipality or '' }}">
     </div>
     <button type="submit" class="btn btn-primary">Uložit</button>
     <a href="{{ url_for('warehouse_suppliers') }}" class="btn btn-secondary">Zrušit</a>
@@ -29,6 +37,16 @@
     </div>
     <button type="submit" class="btn btn-primary">Přidat dodavatele</button>
 </form>
+{% if user.role == 'admin' %}
+<div class="warehouse-suppliers-import-box" style="margin-top: 1.5rem;">
+    <h3 class="warehouse-suppliers-import-title">Import z .xlsx (admin)</h3>
+    <p class="muted" style="margin-bottom: 0.5rem;">Hlavička: <strong>Číslo firmy | Název firmy | Ulice | Obec</strong></p>
+    <form method="post" action="{{ url_for('warehouse_suppliers_import') }}" enctype="multipart/form-data" class="form-inline">
+        <input type="file" name="file" accept=".xlsx" required class="input-warehouse" style="max-width: 280px;">
+        <button type="submit" class="btn btn-primary">Importovat dodavatele</button>
+    </form>
+</div>
+{% endif %}
 {% endif %}
 
 <div class="warehouse-suppliers-list" style="margin-top: 2rem;">
@@ -37,8 +55,10 @@
 <table class="table">
     <thead>
         <tr>
-            <th>Kód</th>
-            <th>Název</th>
+            <th>Číslo firmy</th>
+            <th>Název firmy</th>
+            <th>Ulice</th>
+            <th>Obec</th>
             <th>Sklad</th>
             {% if user.role == 'admin' %}<th>Akce</th>{% endif %}
         </tr>
@@ -48,6 +68,8 @@
         <tr>
             <td>{{ s.supplier_id }}</td>
             <td>{{ s.supplier_name }}</td>
+            <td>{{ s.street or '—' }}</td>
+            <td>{{ s.municipality or '—' }}</td>
             <td>{{ s.warehouse.name if s.warehouse else '—' }}</td>
             {% if user.role == 'admin' %}
             <td>

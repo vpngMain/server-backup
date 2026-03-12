@@ -82,16 +82,22 @@
   bindSection('obalka-grid', 'obalka-celkem');
   bindSection('kasa-grid', 'kasa-celkem');
 
+  var skipLoadTodayUntil = 0;
   function loadToday() {
+    if (Date.now() < skipLoadTodayUntil) return;
     var url = '/api/entry/today';
-    var branchEl = document.getElementById('entry-branch');
-    if (branchEl && branchEl.value) {
-      url += '?branch_id=' + encodeURIComponent(branchEl.value);
-    }
     fetch(url)
       .then(function(r) { return r.json(); })
       .then(function(data) {
-        if (!data.ok || !data.entry) return;
+        if (!data.ok) return;
+        if (!data.entry) {
+          if (messageEl) {
+            messageEl.textContent = 'Pro dnešek není žádná uložená evidence.';
+            messageEl.className = 'message';
+          }
+          return;
+        }
+        if (Date.now() < skipLoadTodayUntil) return;
         var obalka = data.entry.obalka || {};
         var kasa = data.entry.kasa || {};
         var obalkaGrid = document.getElementById('obalka-grid');
@@ -112,15 +118,18 @@
         setTotal('kasa-grid', KASA, 'kasa-celkem');
         var kzEl = document.getElementById('k-zaplaceni');
         if (kzEl && data.entry.k_zaplaceni != null) kzEl.value = data.entry.k_zaplaceni;
+        if (messageEl) {
+          messageEl.textContent = 'Dnešní evidence načtena.';
+          messageEl.className = 'message success';
+        }
       })
       .catch(function() {});
   }
-  loadToday();
-  var branchSelect = document.getElementById('entry-branch');
-  if (branchSelect) branchSelect.addEventListener('change', loadToday);
 
   var btnUlozit = document.getElementById('btn-ulozit');
   var messageEl = document.getElementById('message');
+  var btnLoadToday = document.getElementById('btn-load-today');
+  if (btnLoadToday) btnLoadToday.addEventListener('click', function() { loadToday(); });
   var btnPrintObalka = document.getElementById('btn-print-obalka');
   if (btnPrintObalka) {
     btnPrintObalka.addEventListener('click', function() {
@@ -131,8 +140,6 @@
       var d = String(today.getDate()).padStart(2, '0');
       var datum = y + '-' + m + '-' + d;
       var printPayload = { obalka: obalka, datum: datum };
-      var branchEl = document.getElementById('entry-branch');
-      if (branchEl && branchEl.value) printPayload.branch_id = branchEl.value;
       var kzEl = document.getElementById('k-zaplaceni');
       if (kzEl && kzEl.value !== '') printPayload.k_zaplaceni = parseFloat(kzEl.value);
       fetch('/print/obalka', {
@@ -156,14 +163,33 @@
     });
   }
 
+  function resetForm() {
+    var obalkaGrid = document.getElementById('obalka-grid');
+    var kasaGrid = document.getElementById('kasa-grid');
+    if (obalkaGrid) obalkaGrid.querySelectorAll('.denom-input').forEach(function(input) { input.value = '0'; });
+    if (kasaGrid) kasaGrid.querySelectorAll('.denom-input').forEach(function(input) { input.value = '0'; });
+    var kzEl = document.getElementById('k-zaplaceni');
+    if (kzEl) kzEl.value = '';
+    var weekInput = document.getElementById('entry-week');
+    if (weekInput) weekInput.value = '';
+    setTotal('obalka-grid', OBALKA, 'obalka-celkem');
+    setTotal('kasa-grid', KASA, 'kasa-celkem');
+  }
+
   if (btnUlozit) {
     btnUlozit.addEventListener('click', function() {
+      var kzEl = document.getElementById('k-zaplaceni');
+      if (!kzEl || String(kzEl.value).trim() === '') {
+        if (messageEl) {
+          messageEl.textContent = 'Vyplňte pole „K zaplacení“.';
+          messageEl.className = 'message error';
+        }
+        kzEl && kzEl.focus();
+        return;
+      }
       var obalka = getValues('obalka-grid');
       var kasa = getValues('kasa-grid');
       var payload = { obalka: obalka, kasa: kasa };
-      var branchEl = document.getElementById('entry-branch');
-      if (branchEl && branchEl.value) payload.branch_id = branchEl.value;
-      var kzEl = document.getElementById('k-zaplaceni');
       if (kzEl) {
         if (kzEl.value !== '') payload.k_zaplaceni = parseFloat(kzEl.value);
         else payload.k_zaplaceni = null;
@@ -196,6 +222,9 @@
         if (result.ok && result.data.ok) {
           messageEl.textContent = '\u2713 ' + (result.data.message || 'Data byla uložena.');
           messageEl.className = 'message success';
+          skipLoadTodayUntil = Date.now() + 2000;
+          resetForm();
+          setTimeout(function() { resetForm(); }, 100);
         } else {
           messageEl.textContent = result.data.error || 'Chyba při ukládání.';
           messageEl.className = 'message error';

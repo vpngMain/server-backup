@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Sklady</h1>
+<p><a href="{{ url_for('admin.warehouse_add') }}" class="btn btn-green">Přidat sklad</a></p>
+<table>
+    <thead>
+        <tr>
+            <th>Název</th>
+            <th>Kód</th>
+            <th>Akce</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for w in warehouses %}
+        <tr>
+            <td>{{ w.name }}</td>
+            <td>{{ w.code or '—' }}</td>
+            <td>
+                <a href="{{ url_for('admin.warehouse_edit', warehouse_id=w.id) }}" class="btn btn-gray" style="padding: 0.35rem 0.7rem; font-size: 0.9rem;">Upravit</a>
+                <form method="post" action="{{ url_for('admin.warehouse_delete', warehouse_id=w.id) }}" style="display:inline;" onsubmit="return confirm('Opravdu smazat sklad {{ w.name }}?');">
+                    <button type="submit" class="btn btn-red" style="padding: 0.35rem 0.7rem; font-size: 0.9rem;">Smazat</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<p><a href="{{ url_for('admin.dashboard') }}" class="btn btn-gray">← Zpět na uživatele</a></p>
+{% endblock %}

@@ -32,7 +32,7 @@
         </tr>
     </thead>
     <tbody>
-        {% for i in order.items %}
+        {% for i in (check_items if check_items is defined and check_items else order.items) %}
         <tr id="check-row-{{ i.id }}" class="{% if item_results.get(i.id) %}{% if item_results[i.id].result == 'correct' %}item-check-correct{% else %}item-check-incorrect{% endif %}{% endif %}" data-order-item-id="{{ i.id }}" data-ean="{{ i.product.ean if i.product and i.product.ean else '' }}">
             <td>{{ i.display_name() }}</td>
             <td>{{ i.product.ean if i.product and i.product.ean else '—' }}</td>

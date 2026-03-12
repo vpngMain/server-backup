@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Pobočky</h1>
+<p><a href="{{ url_for('admin.branch_add') }}" class="btn btn-green">Přidat pobočku</a></p>
+<table>
+    <thead>
+        <tr>
+            <th>Název</th>
+            <th>Kód</th>
+            <th>Akce</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for b in branches %}
+        <tr>
+            <td>{{ b.name }}</td>
+            <td>{{ b.code or '—' }}</td>
+            <td>
+                <a href="{{ url_for('admin.branch_edit', branch_id=b.id) }}" class="btn btn-gray" style="padding: 0.35rem 0.7rem; font-size: 0.9rem;">Upravit</a>
+                <form method="post" action="{{ url_for('admin.branch_delete', branch_id=b.id) }}" style="display:inline;" onsubmit="return confirm('Opravdu smazat pobočku {{ b.name }}?');">
+                    <button type="submit" class="btn btn-red" style="padding: 0.35rem 0.7rem; font-size: 0.9rem;">Smazat</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<p><a href="{{ url_for('admin.dashboard') }}" class="btn btn-gray">← Zpět na uživatele</a></p>
+{% endblock %}

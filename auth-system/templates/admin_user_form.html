@@ -18,8 +18,11 @@
         </select>
     </div>
     <div class="row">
-        <label for="branch">Pobočka</label>
-        <input type="text" id="branch" name="branch" value="{{ user.branch if user else '' }}" placeholder="např. Praha">
+        <label>Pobočky (může být více)</label>
+        {% for b in all_branches %}
+        <label style="display:block;"><input type="checkbox" name="branch_ids" value="{{ b.id }}" {{ 'checked' if b.id in user_branch_ids else '' }}> {{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</label>
+        {% endfor %}
+        {% if not all_branches %}<span class="text-muted">Žádné pobočky. Přidejte je v sekci Pobočky.</span>{% endif %}
     </div>
     <div class="row">
         <label for="objednavac_role">Objednávač – role</label>
@@ -31,8 +34,21 @@
         </select>
     </div>
     <div class="row">
-        <label for="warehouse">Objednávač – sklad (název)</label>
-        <input type="text" id="warehouse" name="warehouse" value="{{ user.warehouse if user else '' }}" placeholder="název skladu">
+        <label for="warehouse">Objednávač – sklad</label>
+        <select id="warehouse" name="warehouse">
+            <option value="">—</option>
+            {% for w in all_warehouses %}
+            <option value="{{ w.name }}" {{ 'selected' if user and user.warehouse == w.name else '' }}>{{ w.name }}{% if w.code %} ({{ w.code }}){% endif %}</option>
+            {% endfor %}
+        </select>
+        {% if not all_warehouses %}<span class="text-muted">Žádné sklady. Přidejte je v sekci Sklady.</span>{% endif %}
+    </div>
+    <div class="row">
+        <label>Aplikace na směrovači (co uživatel uvidí po přihlášení)</label>
+        <p class="text-muted" style="margin: 0.25rem 0 0.5rem 0; font-size: 0.9rem;">Uživatel uvidí jen zaškrtnuté karty. Admin vidí vždy všechno včetně Správy uživatelů.</p>
+        {% for code in router_app_codes %}
+        <label style="display:block;"><input type="checkbox" name="allowed_apps" value="{{ code }}" {{ 'checked' if code in user_allowed_app_codes else '' }}> {% if code == 'odberos' %}Odběros{% elif code == 'objednavac' %}Objednávač{% elif code == 'dpd' %}DPD – počítač{% else %}{{ code }}{% endif %}</label>
+        {% endfor %}
     </div>
     <div class="row">
         <label><input type="checkbox" name="active" value="1" {{ 'checked' if not user or user.active else '' }}> Aktivní</label>

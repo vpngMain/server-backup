@@ -7,9 +7,40 @@
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='smeros.png') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='smeros.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+    (function(){var v=localStorage.getItem('theme');if(v==='dark')document.documentElement.setAttribute('data-theme','dark');})();
+    </script>
 </head>
-<body>
+<body class="{% if theme_viktorinka %}theme-viktorinka{% endif %}">
+    <button type="button" id="theme-toggle-smeros" class="theme-toggle-fixed" title="Přepnout tmavý režim" aria-label="Tmavý režim">🌙</button>
+    {% if theme_viktorinka %}
+    <div class="viktorinka-decorations" aria-hidden="true">
+        <span class="v-heart v-h1">♥</span><span class="v-heart v-h2">♥</span><span class="v-heart v-h3">♥</span>
+        <span class="v-heart v-h4">♥</span><span class="v-heart v-h5">♥</span><span class="v-heart v-h6">♥</span>
+        <span class="v-sparkle v-s1">✦</span><span class="v-sparkle v-s2">✧</span><span class="v-sparkle v-s3">✦</span>
+        <span class="v-sparkle v-s4">✧</span><span class="v-sparkle v-s5">✦</span><span class="v-sparkle v-s6">✧</span>
+    </div>
+    {% endif %}
     {% block content %}{% endblock %}
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script>
+    (function(){
+        var key='theme';
+        var html=document.documentElement;
+        var btn=document.getElementById('theme-toggle-smeros');
+        function isDark(){ return html.getAttribute('data-theme')==='dark'; }
+        function setDark(dark){
+            if(dark){ html.setAttribute('data-theme','dark'); try{ localStorage.setItem(key,'dark'); }catch(e){} }
+            else{ html.removeAttribute('data-theme'); try{ localStorage.setItem(key,'light'); }catch(e){} }
+            if(btn){ btn.textContent=dark?'☀️':'🌙'; btn.setAttribute('title',dark?'Světlý režim':'Tmavý režim'); }
+        }
+        if(btn){
+            btn.textContent=isDark()?'☀️':'🌙';
+            btn.setAttribute('title',isDark()?'Světlý režim':'Tmavý režim');
+            btn.addEventListener('click',function(){ setDark(!isDark()); });
+        }
+    })();
+    </script>
 </body>
 </html>

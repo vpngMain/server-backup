@@ -2,46 +2,47 @@
   box-sizing: border-box;
 }
 
+/* Výchozí téma = Odběros (Sneat) */
 :root {
-  --bg: #f1f5f9;
-  --bg-card: #ffffff;
-  --text: #0f172a;
-  --text-muted: #64748b;
-  --border: #e2e8f0;
-  --border-focus: #0d9488;
-  --primary: #0d9488;
-  --primary-hover: #0f766e;
-  --primary-light: #ccfbf1;
-  --header-bg: #ffffff;
-  --header-border: #e2e8f0;
-  --table-head: #f8fafc;
-  --table-border: #e2e8f0;
+  --bg: #f5f5f9;
+  --bg-card: #fff;
+  --text: #566a7f;
+  --text-muted: #697a8d;
+  --border: #d9dee3;
+  --border-focus: #696cff;
+  --primary: #696cff;
+  --primary-hover: #5f61e6;
+  --primary-light: #e7e7ff;
+  --header-bg: #fff;
+  --header-border: #d9dee3;
+  --table-head: #fcfdfd;
+  --table-border: #d9dee3;
   --input-bg: #ffffff;
   --btn-bg: #ffffff;
-  --btn-border: #cbd5e1;
-  --btn-hover-bg: #f1f5f9;
+  --btn-border: #d9dee3;
+  --btn-hover-bg: #f5f5f9;
   --radius: 10px;
   --radius-sm: 6px;
   --radius-lg: 14px;
-  --shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-  --shadow-card: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
-  --shadow-hover: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.05);
+  --shadow: 0 2px 6px -2px rgba(67, 89, 113, 0.06), 0 2px 4px -2px rgba(67, 89, 113, 0.04);
+  --shadow-card: 0 2px 6px -2px rgba(67, 89, 113, 0.06), 0 2px 4px -2px rgba(67, 89, 113, 0.04);
+  --shadow-hover: 0 4px 12px -4px rgba(67, 89, 113, 0.1);
 }
 
 html.dark-mode {
-  --bg: #0f172a;
-  --bg-card: #1e293b;
-  --text: #f1f5f9;
-  --text-muted: #94a3b8;
-  --border: #334155;
-  --border-focus: #2dd4bf;
-  --primary: #2dd4bf;
-  --primary-hover: #5eead4;
-  --primary-light: #134e4a;
-  --header-bg: #1e293b;
-  --header-border: #334155;
-  --table-head: #334155;
-  --table-border: #334155;
+  --bg: #232333;
+  --bg-card: #2b2b40;
+  --text: #a1acb8;
+  --text-muted: #798396;
+  --border: #434968;
+  --border-focus: #696cff;
+  --primary: #696cff;
+  --primary-hover: #787bff;
+  --primary-light: rgba(105, 108, 255, 0.15);
+  --header-bg: #2b2b40;
+  --header-border: #434968;
+  --table-head: #323249;
+  --table-border: #434968;
   --input-bg: #334155;
   --btn-bg: #334155;
   --btn-border: #475569;
@@ -1253,6 +1254,77 @@ html.dark-mode .badge-unavailable {
 .order-detail-top-row .form-inline {
   margin-bottom: 0;
 }
+.order-detail-import-and-status {
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+.order-detail-import-box {
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+.order-detail-import-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: var(--text);
+}
+.order-import-xls-form .order-import-xls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.order-import-format-label,
+.order-import-file-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.order-import-format-select {
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9375rem;
+  background: var(--input-bg);
+  color: var(--text);
+  min-width: 200px;
+}
+.order-import-file-input {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.875rem;
+  max-width: 220px;
+}
+.order-import-submit {
+  margin-left: 0.25rem;
+}
+.order-detail-status-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+.order-detail-status-label {
+  font-weight: 500;
+  font-size: 0.9375rem;
+  color: var(--text);
+}
+.order-detail-status-select {
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9375rem;
+  background: var(--input-bg);
+  color: var(--text);
+  min-width: 160px;
+}
+.order-detail-status-btn {
+  padding: 0.5rem 1rem;
+}
 .order-detail-actions {
   margin-bottom: 1rem;
 }
@@ -1642,12 +1714,19 @@ html.dark-mode .badge-sklad-nema {
 }
 .input-custom-name {
   min-width: 220px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 0.95rem;
+  padding: 10px 14px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  font-size: 1rem;
   background: var(--input-bg);
   color: var(--text);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.input-custom-name:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.2);
 }
 .input-custom-sep {
   color: var(--text-muted);
@@ -2536,25 +2615,27 @@ html.dark-mode .stat-card.stat-shipped .stat-value { color: #34d399; }
 }
 .form-group input,
 .form-group select {
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 15px;
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  font-size: 1rem;
+  font-family: inherit;
   width: 100%;
-  max-width: 300px;
+  max-width: 320px;
   background: var(--input-bg);
   color: var(--text);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.2);
+  box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.2);
 }
 html.dark-mode .form-group input:focus,
 html.dark-mode .form-group select:focus {
-  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.25);
+  box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.25);
 }
 .form-group input::placeholder {
   color: var(--text-muted);
@@ -2681,9 +2762,14 @@ html.dark-mode .form-group select:focus {
 .input-qty {
   width: 72px;
   min-width: 72px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  font-size: 1rem;
+  background: var(--input-bg);
+  color: var(--text);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   font-size: 0.95rem;
   text-align: right;
   background: var(--input-bg);
@@ -2693,10 +2779,10 @@ html.dark-mode .form-group select:focus {
 .input-qty:focus {
   outline: none;
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);
+  box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.2);
 }
 html.dark-mode .input-qty:focus {
-  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.25);
+  box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.25);
 }
 .input-qty::placeholder {
   color: var(--text-muted);
@@ -2802,7 +2888,13 @@ body.theme-viktorinka .month-year-select:focus {
 .login-box .form-group input {
   max-width: none;
   width: 100%;
-  padding: 12px 14px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.login-box .form-group input:focus {
+  box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.2);
 }
 .login-box .btn-primary {
   width: 100%;
@@ -2844,19 +2936,21 @@ body.theme-viktorinka .month-year-select:focus {
   color: var(--text);
 }
 .search-form input[type="search"] {
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 15px;
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  font-size: 1rem;
   width: 240px;
   max-width: 100%;
   background: var(--input-bg);
   color: var(--text);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 .search-form input[type="search"]:focus {
   outline: none;
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.2);
+  box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.2);
 }
 .products-filters {
   display: flex;
@@ -3108,9 +3202,10 @@ html.dark-mode .product-card-custom .product-card-inner {
 .product-card-custom .input-custom-name {
   flex: 1;
   min-width: 120px;
-  padding: 0.5rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   font-size: 0.95rem;
 }
 .product-card-custom .input-custom-sep {

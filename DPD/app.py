@@ -15,6 +15,7 @@ from flask import (
     url_for,
     session,
     send_file,
+    flash,
 )
 import io
 import csv
@@ -72,6 +73,60 @@ def create_app():
 
     os.makedirs(os.path.join(app.root_path, "instance"), exist_ok=True)
 
+    @app.context_processor
+    def inject_router_url():
+        url = os.environ.get("ROUTER_URL", "").strip()
+        if url:
+            router_url = url.rstrip("/")
+        else:
+            try:
+                from urllib.parse import urlparse
+                p = urlparse(request.url_root)
+                router_url = f"{p.scheme}://{p.hostname}" if p.port in (80, 8000, None) else f"{p.scheme}://{p.hostname}:8000"
+            except Exception:
+                router_url = "http://localhost:8000"
+        out = {"router_url": router_url}
+        user_name = (session.get("user_name") or "").strip()
+        out["theme_viktorinka"] = user_name.lower() == "viktorinka"
+        bid = session.get("branch_id")
+        branch_ids = session.get("branch_ids") or []
+        if len(branch_ids) > 1:
+            out["user_branches_for_switch"] = Branch.query.filter(Branch.id.in_(branch_ids)).order_by(Branch.name).all()
+            out["current_branch_id"] = bid
+        else:
+            out["user_branches_for_switch"] = []
+            out["current_branch_id"] = bid
+        return out
+
+    def _sync_branches_from_auth():
+        """Synchronizuje pobočky s auth-system: přidá chybějící, smaže ty co v auth-system už nejsou (bez záznamů)."""
+        if not requests:
+            return
+        auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
+        try:
+            r = requests.get(auth_url + "/api/branches", timeout=10)
+            if r.status_code != 200:
+                return
+            data = r.json() if r.headers.get("content-type", "").startswith("application/json") else []
+            if not isinstance(data, list):
+                return
+            auth_names = {(item.get("name") or "").strip() for item in data if (item.get("name") or "").strip()}
+            for item in data:
+                name = (item.get("name") or "").strip()
+                if not name or Branch.query.filter_by(name=name).first():
+                    continue
+                db.session.add(Branch(name=name))
+            for b in Branch.query.all():
+                if b.name in auth_names:
+                    continue
+                if Entry.query.filter_by(branch_id=b.id).count() > 0:
+                    continue
+                User.query.filter_by(branch_id=b.id).update({"branch_id": None})
+                db.session.delete(b)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
     def _auth_api_login(username_val, pin_val):
         """Ověří přihlášení přes centrální auth API. Vrátí (data, None) nebo (None, error)."""
         if not requests:
@@ -114,57 +169,159 @@ def create_app():
             if request.is_json:
                 return jsonify({"ok": False, "error": err}), 401
             return render_template("login.html", error=err)
+        _sync_branches_from_auth()
         role = data.get("role", "user")
-        branch_name = (data.get("branch") or "").strip()
-        branch = None
-        if branch_name:
+        branch_ids = []
+        if data.get("branches") and isinstance(data["branches"], list):
+            for item in data["branches"]:
+                name = (item.get("name") if isinstance(item, dict) else str(item)).strip()
+                if not name:
+                    continue
+                b = Branch.query.filter_by(name=name).first()
+                if not b:
+                    b = Branch(name=name)
+                    db.session.add(b)
+                    db.session.commit()
+                branch_ids.append(b.id)
+        if not branch_ids and (data.get("branch") or "").strip():
+            branch_name = (data.get("branch") or "").strip()
             branch = Branch.query.filter_by(name=branch_name).first()
             if not branch:
                 branch = Branch(name=branch_name)
                 db.session.add(branch)
                 db.session.commit()
+            branch_ids = [branch.id]
+        branch_id = branch_ids[0] if branch_ids else None
         user = User.query.filter_by(name=username).first()
         if not user:
-            user = User(name=username, role=role, branch_id=branch.id if branch else None)
+            user = User(name=username, role=role, branch_id=branch_id)
             user.set_pin(pin)
             db.session.add(user)
             db.session.commit()
         else:
             user.role = role
-            user.branch_id = branch.id if branch else user.branch_id
+            user.branch_id = branch_id or user.branch_id
             db.session.commit()
         session["user_id"] = user.id
         session["user_name"] = user.name
-        session["branch_id"] = user.branch_id
+        session["branch_id"] = branch_ids[0] if branch_ids else user.branch_id
+        session["branch_ids"] = branch_ids
         session["is_admin"] = user.is_admin
-        session.permanent = True
         if request.is_json:
             return jsonify({"ok": True, "redirect": "/admin" if user.is_admin else "/user"})
+        return get_redirect_after_login()
+
+    @app.route("/auth/sso")
+    def auth_sso():
+        """SSO ze Směrosu: ověření tokenu u auth-system a vytvoření lokální session."""
+        token = (request.args.get("token") or "").strip()
+        if not token:
+            flash("Chybí SSO token.", "error")
+            return redirect(url_for("login"))
+        auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
+        if not requests:
+            flash("Modul requests není nainstalován.", "error")
+            return redirect(url_for("login"))
+        try:
+            r = requests.get(auth_url + "/api/sso/verify", params={"token": token}, timeout=10)
+            data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+            if r.status_code != 200 or not data.get("ok"):
+                flash(data.get("error", "Neplatný nebo vypršený SSO token."), "error")
+                return redirect(url_for("login"))
+        except requests.RequestException as e:
+            flash(f"Nepodařilo se ověřit token: {e}", "error")
+            return redirect(url_for("login"))
+        username = (data.get("username") or "").strip()
+        if not username:
+            flash("Neplatná odpověď přihlášení.", "error")
+            return redirect(url_for("login"))
+        _sync_branches_from_auth()
+        role = data.get("role", "user")
+        branch_ids = []
+        if data.get("branches") and isinstance(data["branches"], list):
+            for item in data["branches"]:
+                name = (item.get("name") if isinstance(item, dict) else str(item)).strip()
+                if not name:
+                    continue
+                b = Branch.query.filter_by(name=name).first()
+                if not b:
+                    b = Branch(name=name)
+                    db.session.add(b)
+                    db.session.commit()
+                branch_ids.append(b.id)
+        if not branch_ids and (data.get("branch") or "").strip():
+            branch_name = (data.get("branch") or "").strip()
+            branch = Branch.query.filter_by(name=branch_name).first()
+            if not branch:
+                branch = Branch(name=branch_name)
+                db.session.add(branch)
+                db.session.commit()
+            branch_ids = [branch.id]
+        branch_id = branch_ids[0] if branch_ids else None
+        user = User.query.filter_by(name=username).first()
+        if not user:
+            user = User(name=username, role=role, branch_id=branch_id)
+            user.set_pin("0000")
+            db.session.add(user)
+            db.session.commit()
+        else:
+            user.role = role
+            user.branch_id = branch_id or user.branch_id
+            db.session.commit()
+        session["user_id"] = user.id
+        session["user_name"] = user.name
+        session["branch_id"] = branch_ids[0] if branch_ids else user.branch_id
+        session["branch_ids"] = branch_ids
+        session["is_admin"] = user.is_admin
         return get_redirect_after_login()
 
     @app.route("/logout")
     def logout():
         session.clear()
-        return redirect(url_for("login"))
+        next_url = request.args.get("next", "").strip()
+        if next_url and next_url.startswith("http"):
+            return redirect(next_url)
+        url = os.environ.get("ROUTER_URL", "").strip()
+        if url:
+            router_url = url.rstrip("/")
+        else:
+            try:
+                from urllib.parse import urlparse
+                p = urlparse(request.url_root)
+                router_url = f"{p.scheme}://{p.hostname}" if p.port in (80, 8000, None) else f"{p.scheme}://{p.hostname}:8000"
+            except Exception:
+                router_url = "http://localhost:8000"
+        if request.args.get("chain") == "1":
+            return redirect(router_url + "/login")
+        return redirect(router_url + "/logout")
+
+    @app.route("/branch-switch", methods=["POST"])
+    @login_required
+    def branch_switch():
+        branch_id = request.form.get("branch_id", type=int)
+        branch_ids = session.get("branch_ids") or []
+        if branch_id is not None and branch_id in branch_ids:
+            session["branch_id"] = branch_id
+            flash("Pobočka změněna.", "success")
+        return redirect(request.referrer or url_for("user_index"))
+
 
     # ---------- User: formulář Obálka + Kasička ----------
     @app.route("/user")
     @login_required
     def user_index():
-        branches = Branch.query.order_by(Branch.name).all() if session.get("is_admin") else None
+        # Pobočka se bere z auth-system, výběr je v navbaru (branch_switch) – na formuláři žádný filtr pobočky
         return render_template(
             "user_index.html",
             obalka_denoms=OBALKA_DENOMINATIONS,
             kasa_denoms=KASA_DENOMINATIONS,
-            branches=branches,
         )
 
     @app.route("/api/entry/today")
     @login_required
     def api_entry_today():
+        # Pobočka vždy ze session (navbar) – společný přístup pro uživatele i admina
         branch_id = session.get("branch_id")
-        if session.get("is_admin"):
-            branch_id = request.args.get("branch_id", type=int) or branch_id
         if not branch_id:
             return jsonify({"ok": True, "entry": None})
         today = date.today()
@@ -185,20 +342,12 @@ def create_app():
         data = request.get_json() or {}
         if not isinstance(data, dict):
             return jsonify({"ok": False, "error": "Neplatná data."}), 400
+        # Pobočka vždy ze session (výběr v navbaru) – společný přístup pro uživatele i admina
         branch_id = session.get("branch_id")
-        if session.get("is_admin"):
-            bid = data.get("branch_id")
-            if bid is not None:
-                try:
-                    branch_id = int(bid)
-                except (TypeError, ValueError):
-                    branch_id = None
-            if not branch_id:
-                return jsonify({"ok": False, "error": "Vyberte pobočku."}), 400
-            if not Branch.query.get(branch_id):
-                return jsonify({"ok": False, "error": "Neplatná pobočka."}), 400
-        elif not branch_id:
-            return jsonify({"ok": False, "error": "Nemáte přiřazenou pobočku."}), 403
+        if not branch_id:
+            return jsonify({"ok": False, "error": "Nemáte přiřazenou pobočku. Vyberte pobočku v horní liště."}), 403
+        if not Branch.query.get(branch_id):
+            return jsonify({"ok": False, "error": "Neplatná pobočka."}), 400
         today = date.today()
         tyden_z = week_start(today)
         tyden_k = week_end(today)
@@ -283,17 +432,7 @@ def create_app():
 
         if request.method == "POST" and request.is_json:
             data = request.get_json() or {}
-            bid = data.get("branch_id")
-            if bid is not None:
-                try:
-                    bid = int(bid)
-                    b = Branch.query.get(bid)
-                    if b:
-                        branch_id = bid
-                        branch = b
-                        branch_name = b.name
-                except (TypeError, ValueError):
-                    pass
+            # Pobočka vždy ze session (navbar) – na formuláři není výběr pobočky
             obalka = data.get("obalka") if isinstance(data.get("obalka"), dict) else {}
             today = date.today()
             datum = today
@@ -360,68 +499,17 @@ def create_app():
     @login_required
     @admin_required
     def admin_dashboard():
+        # Pobočky jen z auth-system (sync před načtením) – filtr entry jen na dashboardu
+        _sync_branches_from_auth()
         branches = Branch.query.order_by(Branch.name).all()
         return render_template("admin_dashboard.html", branches=branches)
-
-    @app.route("/admin/branches")
-    @login_required
-    @admin_required
-    def admin_branches():
-        return render_template("admin_branches.html")
 
     @app.route("/admin/users")
     @login_required
     @admin_required
     def admin_users():
-        branches = Branch.query.order_by(Branch.name).all()
-        return render_template("admin_users.html", branches=branches)
-
-    @app.route("/api/admin/branches", methods=["GET", "POST"])
-    @login_required
-    @admin_required
-    def api_admin_branches():
-        if request.method == "GET":
-            branches = Branch.query.order_by(Branch.name).all()
-            return jsonify([{"id": b.id, "name": b.name, "code": b.code or ""} for b in branches])
-        data = request.get_json() or {}
-        name = (data.get("name") or "").strip()
-        code = (data.get("code") or "").strip()
-        if not name:
-            return jsonify({"ok": False, "error": "Název pobočky je povinný."}), 400
-        if Branch.query.filter(Branch.name == name).first():
-            return jsonify({"ok": False, "error": "Pobočka s tímto názvem již existuje."}), 400
-        branch = Branch(name=name, code=code)
-        db.session.add(branch)
-        db.session.commit()
-        return jsonify({"ok": True, "branch": {"id": branch.id, "name": branch.name, "code": branch.code or ""}})
-
-    @app.route("/api/admin/branches/<int:branch_id>", methods=["GET", "PUT", "DELETE"])
-    @login_required
-    @admin_required
-    def api_admin_branch(branch_id):
-        branch = Branch.query.get(branch_id)
-        if not branch:
-            return jsonify({"ok": False, "error": "Pobočka nenalezena."}), 404
-        if request.method == "GET":
-            return jsonify({"ok": True, "branch": {"id": branch.id, "name": branch.name, "code": branch.code or ""}})
-        if request.method == "DELETE":
-            if User.query.filter_by(branch_id=branch_id).first():
-                return jsonify({"ok": False, "error": "Pobočka má přiřazené uživatele. Nejprve je odeberte."}), 400
-            db.session.delete(branch)
-            db.session.commit()
-            return jsonify({"ok": True})
-        data = request.get_json() or {}
-        name = (data.get("name") or "").strip()
-        code = (data.get("code") or "").strip()
-        if not name:
-            return jsonify({"ok": False, "error": "Název pobočky je povinný."}), 400
-        other = Branch.query.filter(Branch.name == name, Branch.id != branch_id).first()
-        if other:
-            return jsonify({"ok": False, "error": "Pobočka s tímto názvem již existuje."}), 400
-        branch.name = name
-        branch.code = code
-        db.session.commit()
-        return jsonify({"ok": True, "branch": {"id": branch.id, "name": branch.name, "code": branch.code or ""}})
+        flash("Správa uživatelů je v centrálním auth-system (Směrovač → Správa uživatelů).", "info")
+        return redirect(url_for("admin_dashboard"))
 
     @app.route("/api/admin/users", methods=["GET", "POST"])
     @login_required
@@ -545,13 +633,17 @@ def create_app():
             })
         return jsonify(out)
 
-    @app.route("/api/admin/entries/<int:entry_id>")
+    @app.route("/api/admin/entries/<int:entry_id>", methods=["GET", "DELETE"])
     @login_required
     @admin_required
     def api_admin_entry_detail(entry_id):
         entry = Entry.query.get(entry_id)
         if not entry:
             return jsonify({"ok": False, "error": "Záznam nenalezen."}), 404
+        if request.method == "DELETE":
+            db.session.delete(entry)
+            db.session.commit()
+            return jsonify({"ok": True})
         branch = Branch.query.get(entry.branch_id)
         user = User.query.get(entry.user_id)
         return jsonify({

@@ -7,7 +7,13 @@
         <span class="navbar-subtitle">Service Router</span>
     </div>
     <div class="navbar-server">
-        Server: <span id="hostname">{{ request.host.split(':')[0] }}</span>
+        {% if user %}
+        <span style="margin-right: 1rem;">{{ user.username }}</span>
+        <a href="{{ url_for('logout') }}" style="color: var(--text-muted); text-decoration: none;">Odhlásit</a>
+        {% else %}
+        <a href="{{ url_for('login') }}" style="color: var(--btn); text-decoration: none;">Přihlásit</a>
+        {% endif %}
+        &nbsp;|&nbsp; Server: <span id="hostname">{{ request.host.split(':')[0] }}</span>
     </div>
 </header>
 
@@ -18,9 +24,9 @@
             <div class="card-icon" aria-hidden="true">{{ app.icon }}</div>
             <h2 class="card-title">{{ app.name }}</h2>
             <p class="card-description">{{ app.description }}</p>
-            <button type="button" class="card-btn" data-port="{{ app.port }}" onclick="openApp({{ app.port }})">
+            <a href="{{ url_for('open_app', port=app.port) }}" class="card-btn" style="display: inline-block; text-align: center; text-decoration: none; color: inherit;">
                 Otevřít
-            </button>
+            </a>
         </article>
         {% endfor %}
     </div>

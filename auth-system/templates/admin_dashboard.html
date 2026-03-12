@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Uživatelé</h1>
-<p><a href="{{ url_for('admin.user_add') }}" class="btn btn-green">Přidat uživatele</a></p>
+<p>
+    <a href="{{ url_for('admin.user_add') }}" class="btn btn-green">Přidat uživatele</a>
+    <a href="{{ url_for('admin.branches') }}" class="btn btn-gray" style="margin-left: 0.5rem;">Pobočky</a>
+    <a href="{{ url_for('admin.warehouses') }}" class="btn btn-gray" style="margin-left: 0.5rem;">Sklady</a>
+</p>
 <table>
     <thead>
         <tr>
@@ -15,11 +19,11 @@
         </tr>
     </thead>
     <tbody>
-        {% for u in users %}
+        {% for u, branch_names in users_branches %}
         <tr>
             <td>{{ u.username }}</td>
             <td>{{ u.role }}</td>
-            <td>{{ u.branch or '—' }}</td>
+            <td>{% if branch_names %}{{ branch_names|join(', ') }}{% else %}{{ u.branch or '—' }}{% endif %}</td>
             <td>{{ u.objednavac_role or '—' }}</td>
             <td>{{ u.warehouse or '—' }}</td>
             <td>{{ 'Ano' if u.active else 'Ne' }}</td>

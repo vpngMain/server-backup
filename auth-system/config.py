@@ -16,7 +16,12 @@ SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 # PIN: 4–6 číslic (dle app.md)
 PIN_MIN_LENGTH = 4
-PIN_MAX_LENGTH = 6
+PIN_MAX_LENGTH = 10
 
 # Role pro Objednávač
 OBJEDNAVAC_ROLES = ("admin", "branch", "warehouse")
+
+# SSO: sdílené heslo pro vytváření tokenů ze Směrosu (Stejnou hodnotu nastavte ve Směrosu!)
+# Bez nastavení se použije výchozí – SSO pak funguje bez konfigurace; v produkci nastavte silné heslo.
+SSO_SECRET = (os.environ.get("SSO_SECRET") or "sso-dev-secret").strip()
+SSO_TOKEN_TTL_SECONDS = 60

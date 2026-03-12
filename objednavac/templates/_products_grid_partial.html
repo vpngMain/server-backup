@@ -1,0 +1,65 @@
+<div class="products-grid" id="products-grid">
+    <article class="product-card product-card-custom" id="product-card-custom">
+        <div class="product-card-inner">
+            <h3 class="product-card-title">Produkt nenalezen v seznamu?</h3>
+            <p class="product-card-meta">Vlastní položka</p>
+            <form method="post" action="{{ url_for('cart_add_custom') }}" class="product-card-form" id="form-custom">
+                <input type="text" name="custom_product_name" class="input-custom-name" placeholder="Napište název produktu…" required>
+                <span class="input-custom-sep">×</span>
+                <input type="number" name="quantity" value="1" min="0.01" step="any" class="input-qty" placeholder="ks">
+                <button type="submit" class="btn btn-sm btn-primary">Přidat do košíku</button>
+            </form>
+        </div>
+    </article>
+    {% for brand, plist in products_by_brand %}
+    {% for p in plist %}
+    {% set qty_in_cart = (cart.get((p.id)|string, 0)) or 0 %}
+    {% set waiting_qty = (waiting_by_product|default({})).get(p.id, 0) or 0 %}
+    {% set cat = p.nazev | product_category %}
+    <article class="product-card product-row {{ 'product-card-in-cart' if qty_in_cart > 0 else '' }} {{ 'product-card-waiting-warehouse' if waiting_qty > 0 else '' }}" id="product-{{ p.id }}" data-name="{{ (p.nazev or '')|lower }}" data-sku="{{ (p.kod_zbozi or '')|lower }}" data-ean="{{ (p.ean or '')|lower }}" data-group="{{ (p.naz_skup or '')|lower }}" data-brand="{{ brand|lower }}" data-category="{{ cat|lower }}">
+        <div class="product-card-inner">
+            <div class="product-card-header">
+                <h3 class="product-card-title">{{ p.nazev }}</h3>
+                {% if cat %}<span class="product-card-category product-category-{{ cat }}">{{ cat }}</span>{% endif %}
+            </div>
+            <dl class="product-card-meta-list">
+                <dt>Jednotka</dt><dd>{{ p.mj or 'ks' }}</dd>
+                {% if p.kod_zbozi %}
+                <dt>Kód zboží</dt><dd class="td-sku">{{ p.kod_zbozi }}</dd>
+                {% endif %}
+                {% if p.ean %}
+                <dt>EAN</dt><dd>{{ p.ean }}</dd>
+                {% endif %}
+                {% if p.naz_skup %}
+                <dt>Skupina</dt><dd>{{ p.naz_skup }}</dd>
+                {% endif %}
+            </dl>
+            {% if qty_in_cart > 0 %}<p class="product-card-cart-badge">V košíku: {{ qty_in_cart | format_qty }}</p>{% endif %}
+            {% if waiting_qty > 0 %}<p class="product-card-waiting-badge" title="Čeká v objednávce na zpracování skladem">Čeká v objednávce: {{ waiting_qty | format_qty }} ks</p>{% endif %}
+            <form id="form-add-{{ p.id }}" method="post" action="{{ url_for('cart_add') }}" class="product-card-form">
+                <input type="hidden" name="product_id" value="{{ p.id }}">
+                <div class="product-card-qty-row">
+                    <button type="button" class="btn btn-sm btn-qty-minus js-cart-minus" data-product-id="{{ p.id }}" aria-label="Odebrat">−</button>
+                    <label for="qty-{{ p.id }}" class="sr-only">Množství</label>
+                    <input type="number" id="qty-{{ p.id }}" name="quantity" value="{{ qty_in_cart or 1 }}" min="0.01" step="any" class="input-qty js-cart-qty-input" data-product-id="{{ p.id }}" placeholder="ks">
+                    <button type="button" class="btn btn-sm btn-qty-plus js-cart-plus" data-product-id="{{ p.id }}" aria-label="Přidat">+</button>
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary">Přidat do košíku</button>
+            </form>
+        </div>
+    </article>
+    {% endfor %}
+    {% endfor %}
+</div>
+{% if total_pages is defined and total_pages > 1 %}
+<nav class="pagination" aria-label="Stránkování produktů">
+    {% if page > 1 %}
+    <a href="{{ url_for('index', page=page-1, q=search_q or none, group=group_filter or none, brand=brand_filter or none, category=category_filter or none) }}" class="btn btn-sm pagination-link">← Předchozí</a>
+    {% endif %}
+    <span class="pagination-info">Stránka {{ page }} / {{ total_pages }} (celkem {{ total }})</span>
+    {% if page < total_pages %}
+    <a href="{{ url_for('index', page=page+1, q=search_q or none, group=group_filter or none, brand=brand_filter or none, category=category_filter or none) }}" class="btn btn-sm pagination-link">Další →</a>
+    {% endif %}
+</nav>
+{% endif %}
+<p class="muted" id="live-search-no-results" style="display: none;">Žádný produkt nevyhovuje filtru.</p>
