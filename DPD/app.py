@@ -141,6 +141,8 @@ def create_app():
             data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
             if r.status_code == 200 and data.get("ok"):
                 return data, None
+            if r.status_code == 403:
+                return None, data.get("error", "Nemáte přístup k této aplikaci.")
             return None, data.get("error", "Neplatné přihlašovací údaje.")
         except requests.RequestException as e:
             return None, str(e)
@@ -223,8 +225,11 @@ def create_app():
             flash("Modul requests není nainstalován.", "error")
             return redirect(url_for("login"))
         try:
-            r = requests.get(auth_url + "/api/sso/verify", params={"token": token}, timeout=10)
+            r = requests.get(auth_url + "/api/sso/verify", params={"token": token, "application": "dpd"}, timeout=10)
             data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+            if r.status_code == 403:
+                flash(data.get("error", "Nemáte přístup k této aplikaci."), "error")
+                return redirect(url_for("login"))
             if r.status_code != 200 or not data.get("ok"):
                 flash(data.get("error", "Neplatný nebo vypršený SSO token."), "error")
                 return redirect(url_for("login"))
@@ -295,6 +300,51 @@ def create_app():
             return redirect(router_url + "/login")
         return redirect(router_url + "/logout")
 
+    def _get_router_url():
+        url = os.environ.get("ROUTER_URL", "").strip()
+        if url:
+            return url.rstrip("/")
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(request.url_root)
+            return f"{p.scheme}://{p.hostname}" if p.port in (80, 8000, None) else f"{p.scheme}://{p.hostname}:8000"
+        except Exception:
+            return "http://localhost:8000"
+
+    @app.route("/redirect-to-smeros")
+    @login_required
+    def redirect_to_smeros():
+        """Přesměruje na Směros s SSO tokenem, aby byl uživatel přihlášen bez znovu zadávání PINu."""
+        auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
+        sso_secret = (os.environ.get("SSO_SECRET") or "sso-dev-secret").strip()
+        username = (session.get("user_name") or "").strip()
+        if not username:
+            flash("Nelze vytvořit odkaz na směrovač.", "error")
+            return redirect(request.referrer or url_for("user_index"))
+        if not requests:
+            flash("SSO vyžaduje modul requests.", "error")
+            return redirect(request.referrer or url_for("user_index"))
+        try:
+            r = requests.post(
+                auth_url + "/api/sso/create-token",
+                json={"username": username},
+                headers={"X-SSO-Secret": sso_secret},
+                timeout=5,
+            )
+            data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+            if r.status_code != 200 or not data.get("ok"):
+                flash(data.get("error", "SSO token se nepodařilo vytvořit."), "error")
+                return redirect(request.referrer or url_for("user_index"))
+            token = data.get("token", "")
+            if not token:
+                flash("Prázdný SSO token.", "error")
+                return redirect(request.referrer or url_for("user_index"))
+            router = _get_router_url()
+            return redirect(router + "/auth/sso?token=" + token)
+        except requests.RequestException as e:
+            flash(f"Nepodařilo se spojit s auth: {e}", "error")
+            return redirect(request.referrer or url_for("user_index"))
+
     @app.route("/branch-switch", methods=["POST"])
     @login_required
     def branch_switch():
@@ -310,11 +360,18 @@ def create_app():
     @app.route("/user")
     @login_required
     def user_index():
-        # Pobočka se bere z auth-system, výběr je v navbaru (branch_switch) – na formuláři žádný filtr pobočky
+        # Výchozí týden ve formuláři = minulý týden k datu splatnosti (pondělí)
+        today = date.today()
+        splatnost = datum_splatnosti(today)
+        tyden_splatnosti = week_start(splatnost)
+        minuly_tyden_po = tyden_splatnosti - timedelta(days=7)
+        iso = minuly_tyden_po.isocalendar()
+        default_entry_week = "{}-W{:02d}".format(iso[0], iso[1])
         return render_template(
             "user_index.html",
             obalka_denoms=OBALKA_DENOMINATIONS,
             kasa_denoms=KASA_DENOMINATIONS,
+            default_entry_week=default_entry_week,
         )
 
     @app.route("/api/entry/today")
@@ -600,6 +657,10 @@ def create_app():
         q = Entry.query.join(Branch).order_by(Entry.datum.desc())
         if branch_id:
             q = q.filter(Entry.branch_id == branch_id)
+        if not tyden and not mesic:
+            today = date.today()
+            first = week_start(today) - timedelta(days=7)
+            q = q.filter(Entry.datum >= first, Entry.datum <= today)
         if tyden:
             try:
                 d = datetime.strptime(tyden, "%Y-%m-%d").date()

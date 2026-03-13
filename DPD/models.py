@@ -22,8 +22,8 @@ def week_end(d: date) -> date:
 
 
 def datum_splatnosti(d: date) -> date:
-    """Středa daného týdne."""
-    return week_start(d) + timedelta(days=2)
+    """Úterý daného týdne."""
+    return week_start(d) + timedelta(days=1)
 
 
 class Branch(db.Model):

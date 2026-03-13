@@ -8,9 +8,8 @@
 <div class="filters" style="margin-bottom: 1rem;">
   <label>
     Evidovat za týden (pondělí)
-    <input type="week" id="entry-week" aria-label="Týden pro evidenci">
+    <input type="week" id="entry-week" value="{{ default_entry_week }}" aria-label="Týden pro evidenci">
   </label>
-  <p class="section-hint" style="margin: 0.25rem 0 0;">Ponechte prázdné pro aktuální týden.</p>
   <label>
     K zaplacení (Kč) *
     <input type="number" step="0.01" min="0" id="k-zaplaceni" placeholder="0" class="input-amount" aria-label="K zaplacení v Kč" required>

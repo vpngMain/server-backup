@@ -32,6 +32,21 @@ def _pin_valid(pin: str) -> bool:
     return PIN_MIN_LENGTH <= len(pin) <= PIN_MAX_LENGTH and re.match(r"^\d+$", pin) is not None
 
 
+def _user_can_access_app(user, application):
+    """Vrátí True, pokud má uživatel přístup k dané aplikaci (podle allowed_apps). Admin má přístup všude. Směrovač (smeros) může každý."""
+    if getattr(user, "role", None) == "admin":
+        return True
+    if not application or not isinstance(application, str):
+        return True
+    app_code = application.strip().lower()
+    if not app_code:
+        return True
+    if app_code == "smeros":
+        return True
+    allowed = user.get_allowed_app_codes()
+    return app_code in [a.lower() for a in allowed] if allowed else False
+
+
 def _user_branches_payload(user):
     """Vrátí seznam {id, name} poboček uživatele. Čte z user_branches, fallback na relationship a user.branch."""
     out = []
@@ -70,6 +85,10 @@ def login():
     user = User.find_by_username(username)
     if not user or not user.check_pin(pin):
         return jsonify({"ok": False, "error": "Neplatné přihlašovací údaje."}), 401
+
+    # Kontrola přístupu k aplikaci (pokud je application uvedené)
+    if application and not _user_can_access_app(user, application):
+        return jsonify({"ok": False, "error": "Nemáte přístup k této aplikaci."}), 403
 
     # Log
     log = LoginLog(
@@ -157,6 +176,9 @@ def sso_verify():
         sso.used = True
         db.session.commit()
         return jsonify({"ok": False, "error": "Uživatel nenalezen."}), 401
+    application = (request.args.get("application") or request.form.get("application") or (request.get_json(silent=True) or {}).get("application") or "").strip() or None
+    if application and not _user_can_access_app(user, application):
+        return jsonify({"ok": False, "error": "Nemáte přístup k této aplikaci."}), 403
     sso.used = True
     db.session.commit()
     return jsonify(_user_payload(user)), 200

@@ -14,6 +14,12 @@
   if (filterMesic) {
     filterMesic.value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
   }
+  // Výchozí týden ve formuláři = minulý týden (pondělí)
+  if (filterTyden) {
+    var d = new Date(now);
+    d.setDate(d.getDate() - d.getDay() + 1 - 7);
+    filterTyden.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
 
   document.querySelectorAll('.view-tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
@@ -35,6 +41,14 @@
     var parts = String(isoStr).split('-');
     if (parts.length !== 3) return isoStr;
     return parts[2] + '/' + parts[1] + '/' + parts[0].slice(-2);
+  }
+
+  function formatNum(n) {
+    if (n == null || n === '' || isNaN(n)) return n;
+    var num = Number(n);
+    var parts = num.toFixed(2).split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
+    return parts[1] === '00' ? parts[0] : parts[0] + ',' + parts[1];
   }
 
   function buildParams() {
@@ -70,15 +84,15 @@
           var tyden = row.tyden_zacatek && row.tyden_konec
             ? csDate(row.tyden_zacatek) + ' – ' + csDate(row.tyden_konec)
             : '';
-          var kzp = row.k_zaplaceni != null ? Number(row.k_zaplaceni) : '—';
-          if (typeof kzp === 'number' && kzp % 1 !== 0) kzp = kzp.toFixed(2);
+          var kzp = row.k_zaplaceni != null ? Number(row.k_zaplaceni) : null;
+          var kzpDisplay = (kzp != null && !isNaN(kzp)) ? formatNum(kzp) + ' Kč' : '—';
           return '<tr>' +
             '<td>' + csDate(row.datum) + '</td>' +
             '<td>' + tyden + '</td>' +
             '<td>' + (row.pobocka || '') + '</td>' +
-            '<td>' + kzp + '</td>' +
-            '<td>' + row.obalka_celkem + ' Kč</td>' +
-            '<td>' + row.kasa_celkem + ' Kč</td>' +
+            '<td>' + kzpDisplay + '</td>' +
+            '<td>' + formatNum(row.obalka_celkem != null ? row.obalka_celkem : 0) + ' Kč</td>' +
+            '<td>' + formatNum(row.kasa_celkem != null ? row.kasa_celkem : 0) + ' Kč</td>' +
             '<td><button type="button" class="btn btn-small btn-detail" data-entry-id="' + row.id + '">Detail</button> ' +
             '<button type="button" class="btn btn-small btn-danger btn-delete-entry" data-entry-id="' + row.id + '">Smazat</button></td>' +
             '</tr>';
@@ -100,13 +114,13 @@
           detailModalBody.innerHTML = '<p>Záznam nenalezen.</p>';
         } else {
           var e = data.entry;
-          var kzp = e.k_zaplaceni != null ? Number(e.k_zaplaceni) : '—';
-          if (typeof kzp === 'number' && kzp % 1 !== 0) kzp = kzp.toFixed(2);
+          var kzp = e.k_zaplaceni != null ? Number(e.k_zaplaceni) : null;
+          var kzpDisplay = (kzp != null && !isNaN(kzp)) ? formatNum(kzp) + ' Kč' : '—';
           var obalkaRows = Object.keys(e.obalka || {}).sort(function(a,b){ return parseInt(b,10) - parseInt(a,10); }).map(function(d) {
-            return '<tr><td>' + d + ' Kč</td><td>' + (e.obalka[d] || 0) + '</td></tr>';
+            return '<tr><td>' + formatNum(d) + ' Kč</td><td>' + (e.obalka[d] || 0) + '</td></tr>';
           }).join('');
           var kasaRows = Object.keys(e.kasa || {}).sort(function(a,b){ return parseInt(b,10) - parseInt(a,10); }).map(function(d) {
-            return '<tr><td>' + d + ' Kč</td><td>' + (e.kasa[d] || 0) + '</td></tr>';
+            return '<tr><td>' + formatNum(d) + ' Kč</td><td>' + (e.kasa[d] || 0) + '</td></tr>';
           }).join('');
           detailModalBody.innerHTML =
             '<p><strong>Datum:</strong> ' + csDate(e.datum) + '</p>' +
@@ -114,9 +128,9 @@
             '<p><strong>Datum splatnosti:</strong> ' + csDate(e.datum_splatnosti) + '</p>' +
             '<p><strong>Pobočka:</strong> ' + (e.pobocka || '') + '</p>' +
             '<p><strong>Uživatel:</strong> ' + (e.uzivatel || '') + '</p>' +
-            '<p><strong>K zaplacení:</strong> ' + kzp + '</p>' +
-            '<h3>Obálka</h3><table class="data-table"><thead><tr><th>Nominál</th><th>Počet</th></tr></thead><tbody>' + obalkaRows + '</tbody></table><p><strong>Celkem obálka:</strong> ' + (e.obalka_celkem || 0) + ' Kč</p>' +
-            '<h3>Kasička</h3><table class="data-table"><thead><tr><th>Nominál</th><th>Počet</th></tr></thead><tbody>' + kasaRows + '</tbody></table><p><strong>Celkem kasička:</strong> ' + (e.kasa_celkem || 0) + ' Kč</p>' +
+            '<p><strong>K zaplacení:</strong> ' + kzpDisplay + '</p>' +
+            '<h3>Obálka</h3><table class="data-table"><thead><tr><th>Nominál</th><th>Počet</th></tr></thead><tbody>' + obalkaRows + '</tbody></table><p><strong>Celkem obálka:</strong> ' + formatNum(e.obalka_celkem != null ? e.obalka_celkem : 0) + ' Kč</p>' +
+            '<h3>Kasička</h3><table class="data-table"><thead><tr><th>Nominál</th><th>Počet</th></tr></thead><tbody>' + kasaRows + '</tbody></table><p><strong>Celkem kasička:</strong> ' + formatNum(e.kasa_celkem != null ? e.kasa_celkem : 0) + ' Kč</p>' +
             '<p style="margin-top: 1rem;"><button type="button" class="btn btn-danger btn-delete-entry" data-entry-id="' + e.id + '">Smazat záznam</button></p>';
         }
         if (detailModal) {
@@ -150,14 +164,14 @@
     var tyden = row.tyden_zacatek && row.tyden_konec
       ? csDate(row.tyden_zacatek) + ' – ' + csDate(row.tyden_konec)
       : '';
-    var kzp = row.k_zaplaceni != null ? Number(row.k_zaplaceni) : '—';
-    if (typeof kzp === 'number' && kzp % 1 !== 0) kzp = kzp.toFixed(2);
+    var kzp = row.k_zaplaceni != null ? Number(row.k_zaplaceni) : null;
+    var kzpDisplay = (kzp != null && !isNaN(kzp)) ? formatNum(kzp) + ' Kč' : '—';
     return '<tr>' +
       '<td>' + csDate(row.datum) + '</td>' +
       '<td>' + tyden + '</td>' +
-      '<td>' + kzp + '</td>' +
-      '<td>' + row.obalka_celkem + ' Kč</td>' +
-      '<td>' + row.kasa_celkem + ' Kč</td>' +
+      '<td>' + kzpDisplay + '</td>' +
+      '<td>' + formatNum(row.obalka_celkem != null ? row.obalka_celkem : 0) + ' Kč</td>' +
+      '<td>' + formatNum(row.kasa_celkem != null ? row.kasa_celkem : 0) + ' Kč</td>' +
       '<td><button type="button" class="btn btn-small btn-detail" data-entry-id="' + row.id + '">Detail</button> ' +
       '<button type="button" class="btn btn-small btn-danger btn-delete-entry" data-entry-id="' + row.id + '">Smazat</button></td>' +
       '</tr>';

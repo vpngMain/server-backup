@@ -1,37 +1,35 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>{{ 'Upravit uživatele' if user else 'Přidat uživatele' }}</h1>
+<h1 class="auth-form-page-title">{{ 'Upravit uživatele' if user else 'Přidat uživatele' }}</h1>
+<div class="auth-form-wrap">
 <form method="post">
-    <div class="row">
-        <label for="username">Uživatelské jméno *</label>
-        <input type="text" id="username" name="username" value="{{ user.username if user else '' }}" required>
+    <div class="form-row-2">
+        <div class="row">
+            <label for="username">Uživatelské jméno *</label>
+            <input type="text" id="username" name="username" value="{{ user.username if user else '' }}" required>
+        </div>
+        <div class="row">
+            <label for="pin">PIN (4–6 číslic) {{ '(nevyplňovat = nechat beze změny)' if user else '*' }}</label>
+            <input type="password" id="pin" name="pin" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" placeholder="4–6 číslic" {{ '' if user else 'required' }}>
+        </div>
     </div>
-    <div class="row">
-        <label for="pin">PIN (4–6 číslic) {{ '(nevyplňovat = nechat beze změny)' if user else '*' }}</label>
-        <input type="password" id="pin" name="pin" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" placeholder="4–6 číslic" {{ '' if user else 'required' }}>
-    </div>
-    <div class="row">
-        <label for="role">Role</label>
-        <select id="role" name="role">
-            <option value="user" {{ 'selected' if user and user.role == 'user' else '' }}>user</option>
-            <option value="admin" {{ 'selected' if user and user.role == 'admin' else '' }}>admin</option>
-        </select>
-    </div>
-    <div class="row">
-        <label>Pobočky (může být více)</label>
-        {% for b in all_branches %}
-        <label style="display:block;"><input type="checkbox" name="branch_ids" value="{{ b.id }}" {{ 'checked' if b.id in user_branch_ids else '' }}> {{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</label>
-        {% endfor %}
-        {% if not all_branches %}<span class="text-muted">Žádné pobočky. Přidejte je v sekci Pobočky.</span>{% endif %}
-    </div>
-    <div class="row">
-        <label for="objednavac_role">Objednávač – role</label>
-        <select id="objednavac_role" name="objednavac_role">
-            <option value="">—</option>
-            {% for r in objednavac_roles %}
-            <option value="{{ r }}" {{ 'selected' if user and user.objednavac_role == r else '' }}>{{ r }}</option>
-            {% endfor %}
-        </select>
+    <div class="form-row-2">
+        <div class="row">
+            <label for="role">Role</label>
+            <select id="role" name="role">
+                <option value="user" {{ 'selected' if user and user.role == 'user' else '' }}>user</option>
+                <option value="admin" {{ 'selected' if user and user.role == 'admin' else '' }}>admin</option>
+            </select>
+        </div>
+        <div class="row">
+            <label for="objednavac_role">Objednávač – role</label>
+            <select id="objednavac_role" name="objednavac_role">
+                <option value="">—</option>
+                {% for r in objednavac_roles %}
+                <option value="{{ r }}" {{ 'selected' if user and user.objednavac_role == r else '' }}>{{ r }}</option>
+                {% endfor %}
+            </select>
+        </div>
     </div>
     <div class="row">
         <label for="warehouse">Objednávač – sklad</label>
@@ -44,11 +42,20 @@
         {% if not all_warehouses %}<span class="text-muted">Žádné sklady. Přidejte je v sekci Sklady.</span>{% endif %}
     </div>
     <div class="row">
+        <label>Pobočky (může být více)</label>
+        {% for b in all_branches %}
+        <label style="display:block;"><input type="checkbox" name="branch_ids" value="{{ b.id }}" {{ 'checked' if b.id in user_branch_ids else '' }}> {{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</label>
+        {% endfor %}
+        {% if not all_branches %}<span class="text-muted">Žádné pobočky. Přidejte je v sekci Pobočky.</span>{% endif %}
+    </div>
+    <div class="row">
         <label>Aplikace na směrovači (co uživatel uvidí po přihlášení)</label>
-        <p class="text-muted" style="margin: 0.25rem 0 0.5rem 0; font-size: 0.9rem;">Uživatel uvidí jen zaškrtnuté karty. Admin vidí vždy všechno včetně Správy uživatelů.</p>
+        <p class="text-muted" style="margin: 0.15rem 0 0.35rem 0; font-size: 0.875rem;">Uživatel uvidí jen zaškrtnuté karty. Admin vidí vždy všechno včetně Správy uživatelů.</p>
+        <div class="form-apps-grid">
         {% for code in router_app_codes %}
         <label style="display:block;"><input type="checkbox" name="allowed_apps" value="{{ code }}" {{ 'checked' if code in user_allowed_app_codes else '' }}> {% if code == 'odberos' %}Odběros{% elif code == 'objednavac' %}Objednávač{% elif code == 'dpd' %}DPD – počítač{% else %}{{ code }}{% endif %}</label>
         {% endfor %}
+        </div>
     </div>
     <div class="row">
         <label><input type="checkbox" name="active" value="1" {{ 'checked' if not user or user.active else '' }}> Aktivní</label>
@@ -56,4 +63,5 @@
     <button type="submit" class="btn btn-green">Uložit</button>
     <a href="{{ url_for('admin.dashboard') }}" class="btn btn-gray">Zrušit</a>
 </form>
+</div>
 {% endblock %}

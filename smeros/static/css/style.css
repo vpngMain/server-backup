@@ -12,7 +12,7 @@
     --card-hover-shadow: 0 4px 12px -4px rgba(67, 89, 113, 0.12);
     --btn: #696cff;
     --btn-hover: #5f61e6;
-    --text: #566a7f;
+    --text: #000;
     --text-muted: #697a8d;
 }
 
@@ -24,7 +24,7 @@ html[data-theme="dark"] {
     --card-hover-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
     --btn: #696cff;
     --btn-hover: #787bff;
-    --text: #f1f5f9;
+    --text: #fff;
     --text-muted: #94a3b8;
 }
 
@@ -36,7 +36,7 @@ body.theme-viktorinka {
     --card-hover-shadow: 0 4px 12px -4px rgba(236, 72, 153, 0.25);
     --btn: #ec4899;
     --btn-hover: #db2777;
-    --text: #5c3344;
+    --text: #000;
     --text-muted: #a85c7a;
     font-family: "Nunito", system-ui, sans-serif;
     background: linear-gradient(165deg, #fff5f9 0%, #ffe4ec 25%, #fff0f6 50%, #fce7f3 75%, #fffbfc 100%);
@@ -60,7 +60,7 @@ html[data-theme="dark"] body.theme-viktorinka {
     --card-hover-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
     --btn: #f472b6;
     --btn-hover: #f9a8d4;
-    --text: #fce7f3;
+    --text: #fff;
     --text-muted: #f9a8d4;
     background: linear-gradient(165deg, #2d1b24 0%, #3d2430 40%, #2d1b24 70%, #4a2c3d 100%);
 }

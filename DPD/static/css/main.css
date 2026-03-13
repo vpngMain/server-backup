@@ -8,7 +8,7 @@
   --color-primary: #696cff;
   --color-primary-hover: #5f61e6;
   --color-bg: #f5f5f9;
-  --color-text: #566a7f;
+  --color-text: #000;
   --color-error: #ff3e1d;
   --color-header-bg: #fff;
   --color-header-border: #d9dee3;
@@ -27,7 +27,7 @@
 
 html[data-theme="dark"] {
   --color-bg: #232333;
-  --color-text: #a1acb8;
+  --color-text: #fff;
   --color-primary: #696cff;
   --color-primary-hover: #787bff;
   --color-error: #ff3e1d;
@@ -51,7 +51,7 @@ body.theme-viktorinka {
   --color-primary: #ec4899;
   --color-primary-hover: #db2777;
   --color-bg: #fff0f6;
-  --color-text: #5c3344;
+  --color-text: #000;
   --color-header-bg: #fffbfc;
   --color-header-border: #f8c6d4;
   --color-section-bg: #fffbfc;
@@ -77,7 +77,7 @@ body.theme-viktorinka::before {
 }
 html[data-theme="dark"] body.theme-viktorinka {
   --color-bg: #2d1b24;
-  --color-text: #fce7f3;
+  --color-text: #fff;
   --color-header-bg: #3d2430;
   --color-header-border: #6b3a4d;
   --color-section-bg: #3d2430;

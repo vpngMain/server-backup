@@ -182,7 +182,7 @@ def user_add():
         db.session.commit()
         flash("Uživatel byl přidán.", "success")
         return redirect(url_for("admin.dashboard"))
-    return render_template("admin_user_form.html", user=None, objednavac_roles=OBJEDNAVAC_ROLES, all_branches=all_branches, user_branch_ids=[], router_app_codes=ROUTER_APP_CODES, user_allowed_app_codes=list(ROUTER_APP_CODES))
+    return render_template("admin_user_form.html", user=None, objednavac_roles=OBJEDNAVAC_ROLES, all_branches=all_branches, all_warehouses=all_warehouses, user_branch_ids=[], router_app_codes=ROUTER_APP_CODES, user_allowed_app_codes=list(ROUTER_APP_CODES))
 
 
 @admin_bp.route("/user/<int:user_id>/edit", methods=["GET", "POST"])

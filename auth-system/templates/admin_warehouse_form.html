@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>{% if warehouse %}Upravit sklad{% else %}Přidat sklad{% endif %}</h1>
+<h1 class="auth-form-page-title">{% if warehouse %}Upravit sklad{% else %}Přidat sklad{% endif %}</h1>
+<div class="auth-form-wrap auth-form-wrap--center">
 <form method="post">
     <div class="row">
         <label for="name">Název skladu *</label>
@@ -15,4 +16,5 @@
         <a href="{{ url_for('admin.warehouses') }}" class="btn btn-gray" style="margin-left: 0.5rem;">Zrušit</a>
     </div>
 </form>
+</div>
 {% endblock %}

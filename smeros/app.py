@@ -82,6 +82,31 @@ def login():
     return render_template("login.html")
 
 
+@app.route("/auth/sso")
+def auth_sso():
+    """SSO z jiné aplikace (Objednávač, DPD, Odběros): ověření tokenu u auth-system a nastavení session Směrosu."""
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        flash("Chybí SSO token.", "error")
+        return redirect(url_for("login"))
+    if not requests:
+        flash("SSO vyžaduje modul requests.", "error")
+        return redirect(url_for("login"))
+    try:
+        r = requests.get(AUTH_API_URL + "/api/sso/verify", params={"token": token}, timeout=10)
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if r.status_code != 200 or not data.get("ok"):
+            flash(data.get("error", "Neplatný nebo vypršený SSO token."), "error")
+            return redirect(url_for("login"))
+        session["smeros_user"] = {"username": data.get("username", ""), "role": data.get("role", "user")}
+        session["allowed_apps"] = data.get("allowed_apps") or []
+        flash("Přihlášení do Směrosu proběhlo.", "success")
+        return redirect(url_for("index"))
+    except Exception as e:
+        flash(f"Nepodařilo se ověřit token: {e}", "error")
+        return redirect(url_for("login"))
+
+
 @app.route("/logout")
 def logout():
     session.pop("smeros_user", None)

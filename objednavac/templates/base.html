@@ -150,7 +150,7 @@
             {% endif %}
             {% endif %}
             <span class="admin-nav-section admin-nav-section-end">Účet</span>
-            <a href="{{ router_url }}" class="admin-nav-item">
+            <a href="{{ url_for('redirect_to_smeros') }}" class="admin-nav-item">
                 <span class="admin-nav-icon" aria-hidden="true">🏠</span>
                 <span>Na směrovač</span>
             </a>
@@ -171,7 +171,7 @@
             <button type="button" class="admin-menu-toggle" id="admin-menu-toggle" aria-label="Otevřít menu" aria-expanded="false">
                 <span class="admin-menu-toggle-icon" aria-hidden="true"></span>
             </button>
-            <a href="{{ router_url }}" class="smeros-btn" style="text-decoration:none;color:inherit;">Na směrovač</a>
+            <a href="{{ url_for('redirect_to_smeros') }}" class="smeros-btn" style="text-decoration:none;color:inherit;">Na směrovač</a>
             <span class="admin-user">{{ current_user.username }} <span class="admin-role">{% if current_user.role == 'admin' and not acting_as_role %}admin{% elif current_user.role == 'warehouse' or acting_as_role == 'warehouse' %}sklad{% else %}pobočka{% endif %}{% if acting_as_warehouse %} – {{ acting_as_warehouse.name }}{% elif current_warehouse %} – {{ current_warehouse.name }}{% elif acting_as_branch %} – {{ acting_as_branch.name }}{% elif current_branch %} – {{ current_branch.name }}{% endif %}</span></span>
         </header>
     {% else %}
@@ -203,7 +203,7 @@
             <a href="{{ url_for('warehouse_orders') }}">Objednávky</a>
             {% endif %}
             <a href="{{ url_for('logout') }}">Odhlásit</a>
-            <a href="{{ router_url }}">Na směrovač</a>
+            <a href="{{ url_for('redirect_to_smeros') }}">Na směrovač</a>
             <button type="button" id="dark-mode-toggle" class="theme-toggle" aria-label="Přepnout režim">
                 <span id="theme-icon">🌙</span>
                 <span id="theme-label">Tmavý režim</span>

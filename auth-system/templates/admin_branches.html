@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="auth-content-header">
 <h1>Pobočky</h1>
-<p><a href="{{ url_for('admin.branch_add') }}" class="btn btn-green">Přidat pobočku</a></p>
+<p style="margin: 0;"><a href="{{ url_for('admin.branch_add') }}" class="btn btn-green">Přidat pobočku</a></p>
+</div>
+<div class="auth-table-wrap">
 <table>
     <thead>
         <tr>
@@ -25,5 +28,5 @@
         {% endfor %}
     </tbody>
 </table>
-<p><a href="{{ url_for('admin.dashboard') }}" class="btn btn-gray">← Zpět na uživatele</a></p>
+</div>
 {% endblock %}

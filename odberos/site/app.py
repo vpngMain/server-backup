@@ -14,7 +14,7 @@ except ImportError:
 import os
 import re
 import csv
-from sqlalchemy import func, delete, insert
+from sqlalchemy import func, delete, insert, text
 try:
     import requests
 except ImportError:
@@ -304,6 +304,7 @@ class Pobocka(db.Model):
     nazev = db.Column(db.String(100), nullable=False)
     adresa = db.Column(db.String(200), nullable=True)  # Adresa pobočky
     firma = db.Column(db.String(200), nullable=True)  # Název firmy
+    auth_branch_id = db.Column(db.Integer, unique=True, nullable=True)  # ID pobočky v auth-system pro propojení a přejmenování
 
 class Odber(db.Model):
     __table_args__ = (
@@ -925,10 +926,25 @@ def load_user(user_id):
         return None
 
 
+def _ensure_auth_branch_id_column():
+    """Přidá sloupec auth_branch_id do tabulky pobocka, pokud neexistuje (jednorázová migrace)."""
+    try:
+        with db.engine.connect() as conn:
+            if db.engine.dialect.name == 'sqlite':
+                r = conn.execute(text("PRAGMA table_info(pobocka)"))
+                names = [row[1] for row in r]
+                if 'auth_branch_id' not in names:
+                    conn.execute(text("ALTER TABLE pobocka ADD COLUMN auth_branch_id INTEGER"))
+                    conn.commit()
+    except Exception as e:
+        app.logger.debug('_ensure_auth_branch_id_column: %s', e)
+
+
 def sync_pobocky_from_auth():
-    """Synchronizuje pobočky s auth-system: přidá chybějící, smaže ty co v auth-system už nejsou (bez závislých dat)."""
+    """Synchronizuje pobočky s auth-system podle ID: aktualizuje názvy (přejmenování), přidá chybějící, smaže ty co v auth už nejsou."""
     if not requests:
         return
+    _ensure_auth_branch_id_column()
     auth_url = (os.environ.get('AUTH_API_URL') or 'http://localhost:8080').rstrip('/')
     try:
         r = requests.get(auth_url + '/api/branches', timeout=10)
@@ -940,35 +956,62 @@ def sync_pobocky_from_auth():
             data = []
         if not isinstance(data, list):
             data = []
-        auth_names = {(item.get('name') or '').strip() for item in data if (item.get('name') or '').strip()}
-        # Přidat chybějící pobočky
+        auth_branch_ids = {item.get('id') for item in data if item.get('id') is not None and item.get('id') != 0}
         for item in data:
+            bid = item.get('id') if item.get('id') != 0 else None
             name = (item.get('name') or '').strip()
-            if not name or Pobocka.query.filter_by(nazev=name).first():
+            if not name:
                 continue
-            db.session.add(Pobocka(nazev=name))
-        # Odstranit pobočky, které v auth-system už nejsou (jen pokud nemají odběry/reklamace)
+            p = Pobocka.query.filter_by(auth_branch_id=bid).first() if bid else None
+            if not p and name:
+                p = Pobocka.query.filter_by(nazev=name).first()
+            if p:
+                p.nazev = name
+                if bid is not None:
+                    p.auth_branch_id = bid
+            else:
+                db.session.add(Pobocka(nazev=name, auth_branch_id=bid))
         for p in Pobocka.query.all():
-            if p.nazev in auth_names:
+            if p.auth_branch_id is None or p.auth_branch_id in auth_branch_ids:
                 continue
             odbery = Odber.query.filter_by(pobocka_id=p.id).count()
             reklamace = Reklamace.query.filter_by(pobocka_id=p.id).count()
             if odbery > 0 or reklamace > 0:
                 app.logger.info('sync_pobocky_from_auth: pobočka "%s" nebyla smazána (má %s odběrů, %s reklamací)', p.nazev, odbery, reklamace)
                 continue
-            # Odebrat z uživatelů (M:N a pobocka_id)
             for u in User.query.filter((User.pobocka_id == p.id) | (User.pobocky.any(Pobocka.id == p.id))).all():
                 if u.pobocka_id == p.id:
                     u.pobocka_id = None
                 if p in u.pobocky:
                     u.pobocky.remove(p)
-            # Akce: nastavit pobocka_id na NULL tam, kde odkazuje na tuto pobočku
             Akce.query.filter_by(pobocka_id=p.id).update({Akce.pobocka_id: None})
             db.session.delete(p)
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         app.logger.debug('sync_pobocky_from_auth: %s', e)
+
+
+def _get_or_create_pobocka(branch_id=None, name=None):
+    """Najde nebo vytvoří Pobocka podle auth branch id / názvu. Při nalezení aktualizuje nazev a auth_branch_id. Vrací Pobocka nebo None."""
+    bid = branch_id if branch_id else None
+    nazev = (name or '').strip()
+    if not nazev and bid is None:
+        return None
+    p = Pobocka.query.filter_by(auth_branch_id=bid).first() if bid is not None else None
+    if not p and nazev:
+        p = Pobocka.query.filter_by(nazev=nazev).first()
+    if p:
+        p.nazev = nazev or p.nazev
+        if bid is not None:
+            p.auth_branch_id = bid
+        return p
+    if nazev:
+        p = Pobocka(nazev=nazev, auth_branch_id=bid)
+        db.session.add(p)
+        db.session.flush()
+        return p
+    return None
 
 
 # Routy
@@ -1932,6 +1975,8 @@ def _auth_api_login(username_val, pin_val):
         data = r.json() if r.headers.get('content-type', '').startswith('application/json') else {}
         if r.status_code == 200 and data.get('ok'):
             return data, None
+        if r.status_code == 403:
+            return None, data.get('error', 'Nemáte přístup k této aplikaci.')
         return None, data.get('error', 'Neplatné přihlašovací údaje.')
     except requests.RequestException as e:
         return None, f'Nepodařilo se spojit s centrálním přihlášením: {e}'
@@ -1961,25 +2006,20 @@ def admin_login():
                 pobocky_list = []
                 if data.get('branches') and isinstance(data['branches'], list):
                     for item in data['branches']:
-                        name = (item.get('name') if isinstance(item, dict) else str(item)).strip()
-                        if not name:
-                            continue
-                        p = Pobocka.query.filter_by(nazev=name).first()
-                        if not p and role == 'user':
-                            p = Pobocka(nazev=name)
-                            db.session.add(p)
-                            db.session.commit()
+                        it = item if isinstance(item, dict) else {}
+                        bid = it.get('id') if it.get('id') != 0 else None
+                        name = (it.get('name') if isinstance(item, dict) else str(item)).strip()
+                        p = _get_or_create_pobocka(bid, name) if (bid is not None or name) and role == 'user' else (Pobocka.query.filter_by(auth_branch_id=bid).first() if bid else Pobocka.query.filter_by(nazev=name).first())
                         if p:
                             pobocky_list.append(p)
+                    if pobocky_list:
+                        db.session.commit()
                 if not pobocky_list and (data.get('branch') or '').strip():
                     branch_name = (data.get('branch') or '').strip()
-                    pobocka = Pobocka.query.filter_by(nazev=branch_name).first()
-                    if not pobocka and role == 'user':
-                        pobocka = Pobocka(nazev=branch_name)
-                        db.session.add(pobocka)
-                        db.session.commit()
+                    pobocka = _get_or_create_pobocka(None, branch_name) if role == 'user' else Pobocka.query.filter_by(nazev=branch_name).first()
                     if pobocka:
                         pobocky_list.append(pobocka)
+                        db.session.commit()
                 first_p = pobocky_list[0] if pobocky_list else None
                 user = User.query.filter(func.lower(User.username) == username_val.lower()).first() if username_val else None
                 if not user:
@@ -2040,8 +2080,11 @@ def auth_sso():
         return redirect(url_for('admin_login'))
     auth_url = (os.environ.get('AUTH_API_URL') or 'http://localhost:8080').rstrip('/')
     try:
-        r = requests.get(auth_url + '/api/sso/verify', params={'token': token}, timeout=10)
+        r = requests.get(auth_url + '/api/sso/verify', params={'token': token, 'application': 'odberos'}, timeout=10)
         data = r.json() if r.headers.get('content-type', '').startswith('application/json') else {}
+        if r.status_code == 403:
+            flash(data.get('error', 'Nemáte přístup k této aplikaci.'), 'danger')
+            return redirect(url_for('admin_login'))
         if r.status_code != 200 or not data.get('ok'):
             flash(data.get('error', 'Neplatný nebo vypršený SSO token.'), 'danger')
             return redirect(url_for('admin_login'))
@@ -2057,25 +2100,20 @@ def auth_sso():
     pobocky_list = []
     if data.get('branches') and isinstance(data['branches'], list):
         for item in data['branches']:
-            name = (item.get('name') if isinstance(item, dict) else str(item)).strip()
-            if not name:
-                continue
-            p = Pobocka.query.filter_by(nazev=name).first()
-            if not p and role == 'user':
-                p = Pobocka(nazev=name)
-                db.session.add(p)
-                db.session.commit()
+            it = item if isinstance(item, dict) else {}
+            bid = it.get('id') if it.get('id') != 0 else None
+            name = (it.get('name') if isinstance(item, dict) else str(item)).strip()
+            p = _get_or_create_pobocka(bid, name) if (bid is not None or name) and role == 'user' else (Pobocka.query.filter_by(auth_branch_id=bid).first() if bid else Pobocka.query.filter_by(nazev=name).first())
             if p:
                 pobocky_list.append(p)
+        if pobocky_list:
+            db.session.commit()
     if not pobocky_list and (data.get('branch') or '').strip():
         branch_name = (data.get('branch') or '').strip()
-        pobocka = Pobocka.query.filter_by(nazev=branch_name).first()
-        if not pobocka and role == 'user':
-            pobocka = Pobocka(nazev=branch_name)
-            db.session.add(pobocka)
-            db.session.commit()
+        pobocka = _get_or_create_pobocka(None, branch_name) if role == 'user' else Pobocka.query.filter_by(nazev=branch_name).first()
         if pobocka:
             pobocky_list.append(pobocka)
+            db.session.commit()
     first_p = pobocky_list[0] if pobocky_list else None
     user = User.query.filter(func.lower(User.username) == username_val.lower()).first() if username_val else None
     if not user:
@@ -2103,6 +2141,41 @@ def auth_sso():
     login_user(user, remember=False)
     flash(f'Vítejte, {user.jmeno or user.username}!', 'success')
     return redirect(url_for('admin_dashboard') if user.is_admin() else url_for('index'))
+
+
+@app.route('/redirect-to-smeros')
+@login_required
+def redirect_to_smeros():
+    """Přesměruje na Směros s SSO tokenem, aby byl uživatel přihlášen bez znovu zadávání PINu."""
+    auth_url = (os.environ.get('AUTH_API_URL') or 'http://localhost:8080').rstrip('/')
+    sso_secret = (os.environ.get('SSO_SECRET') or 'sso-dev-secret').strip()
+    username = (getattr(current_user, 'username', None) or '').strip()
+    if not username:
+        flash('Nelze vytvořit odkaz na směrovač.', 'danger')
+        return redirect(request.referrer or url_for('index'))
+    if not requests:
+        flash('SSO vyžaduje modul requests.', 'danger')
+        return redirect(request.referrer or url_for('index'))
+    try:
+        r = requests.post(
+            auth_url + '/api/sso/create-token',
+            json={'username': username},
+            headers={'X-SSO-Secret': sso_secret},
+            timeout=5,
+        )
+        data = r.json() if r.headers.get('content-type', '').startswith('application/json') else {}
+        if r.status_code != 200 or not data.get('ok'):
+            flash(data.get('error', 'SSO token se nepodařilo vytvořit.'), 'danger')
+            return redirect(request.referrer or url_for('index'))
+        token = data.get('token', '')
+        if not token:
+            flash('Prázdný SSO token.', 'danger')
+            return redirect(request.referrer or url_for('index'))
+        router = _router_url()
+        return redirect(router + '/auth/sso?token=' + token)
+    except requests.RequestException as e:
+        flash(f'Nepodařilo se spojit s auth: {e}', 'danger')
+        return redirect(request.referrer or url_for('index'))
 
 
 def _set_user_pobocky_explicit(user_id, pobocky_list):

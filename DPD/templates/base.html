@@ -37,7 +37,7 @@
         </select>
       </form>
       {% endif %}
-      <a href="{{ router_url }}" class="btn btn-small">Na směrovač</a>
+      <a href="{{ url_for('redirect_to_smeros') }}" class="btn btn-small">Na směrovač</a>
       <button type="button" id="theme-toggle-btn" class="btn btn-small theme-toggle" aria-label="Přepnout režim">Tmavý režim</button>
       <a href="{{ url_for('logout') }}" class="btn btn-small">Odhlásit</a>
       {% else %}

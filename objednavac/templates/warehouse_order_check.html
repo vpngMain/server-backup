@@ -29,21 +29,32 @@
             <th>EAN</th>
             <th>Očekávané množství</th>
             <th>Výsledek kontroly</th>
+            <th>Úpravy</th>
         </tr>
     </thead>
     <tbody>
         {% for i in (check_items if check_items is defined and check_items else order.items) %}
-        <tr id="check-row-{{ i.id }}" class="{% if item_results.get(i.id) %}{% if item_results[i.id].result == 'correct' %}item-check-correct{% else %}item-check-incorrect{% endif %}{% endif %}" data-order-item-id="{{ i.id }}" data-ean="{{ i.product.ean if i.product and i.product.ean else '' }}">
+        {% set total_scanned = (item_scanned_qty.get(i.id, 0) or 0) %}
+        {% set expected_qty = (i.shipped_quantity or 0) %}
+        {% set is_correct = (total_scanned > 0 and (total_scanned - expected_qty)|abs < 0.001) %}
+        {% set is_incorrect = (total_scanned > 0 and (total_scanned - expected_qty)|abs >= 0.001) %}
+        <tr id="check-row-{{ i.id }}" class="{% if is_correct %}item-check-correct{% elif is_incorrect %}item-check-incorrect{% endif %}" data-order-item-id="{{ i.id }}" data-ean="{{ i.product.ean if i.product and i.product.ean else '' }}" data-expected="{{ expected_qty }}">
             <td>{{ i.display_name() }}</td>
             <td>{{ i.product.ean if i.product and i.product.ean else '—' }}</td>
             <td>{{ (i.shipped_quantity | format_qty) if i.shipped_quantity is not none else '—' }}</td>
             <td class="check-result-cell">
-                {% if item_results.get(i.id) %}
-                {{ item_results[i.id].scanned_quantity | format_qty }} skenováno → {{ 'Správně' if item_results[i.id].result == 'correct' else 'Nesprávně' }}
-                ({{ item_results[i.id].created_at | format_datetime }})
+                {% if total_scanned > 0 %}
+                <span class="check-result-total">{{ total_scanned | format_qty }}</span> skenováno → {{ 'Správně' if is_correct else 'Nesprávně' }}
                 {% else %}
                 —
                 {% endif %}
+            </td>
+            <td class="check-actions-cell">
+                <div class="check-actions-btns">
+                    <button type="button" class="btn btn-sm btn-check-adjust" data-order-item-id="{{ i.id }}" data-delta="1" title="Přidat 1 ks">+1</button>
+                    <button type="button" class="btn btn-sm btn-check-adjust" data-order-item-id="{{ i.id }}" data-delta="-1" title="Odebrat 1 ks">−1</button>
+                    <button type="button" class="btn btn-sm btn-check-restart" data-order-item-id="{{ i.id }}" title="Restart kontroly této položky">Restart</button>
+                </div>
             </td>
         </tr>
         {% endfor %}
@@ -110,6 +121,76 @@
             if (scannerActive) stopScanner(); else startScanner();
         });
     }
+
+    function updateRowFromResponse(data) {
+        var row = document.getElementById('check-row-' + data.order_item_id);
+        if (!row) return;
+        var total = data.total_scanned_for_item != null ? data.total_scanned_for_item : 0;
+        var result = data.result;
+        row.classList.remove('item-check-correct', 'item-check-incorrect');
+        if (total > 0 && result) {
+            row.classList.add(result === 'correct' ? 'item-check-correct' : 'item-check-incorrect');
+        }
+        var td = row.querySelector('.check-result-cell');
+        if (td) {
+            if (total > 0) {
+                var expected = parseFloat(row.getAttribute('data-expected')) || 0;
+                var label = (Math.abs(total - expected) < 0.001) ? 'Správně' : 'Nesprávně';
+                td.innerHTML = '<span class="check-result-total">' + (total === Math.floor(total) ? total : total) + '</span> skenováno → ' + label;
+            } else {
+                td.textContent = '—';
+            }
+        }
+        var badgeEl = document.getElementById('check-result-badge');
+        if (badgeEl && data.order_check_status) {
+            var text = data.order_check_status === 'verified' ? '✅ Zkontrolováno' : '❌ Chyba kontroly';
+            badgeEl.innerHTML = '<span class="status-badge status-' + data.order_check_status + '" title="Výsledek kontroly čtečkou">' + text + '</span>';
+        }
+    }
+
+    document.getElementById('check-table').addEventListener('click', function(e) {
+        var adj = e.target.closest('.btn-check-adjust');
+        var rest = e.target.closest('.btn-check-restart');
+        if (adj) {
+            e.preventDefault();
+            var itemId = adj.getAttribute('data-order-item-id');
+            var delta = adj.getAttribute('data-delta');
+            if (!itemId || !delta) return;
+            adj.disabled = true;
+            fetch('/warehouse/order/' + orderId + '/check/adjust', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+                body: 'order_item_id=' + encodeURIComponent(itemId) + '&delta=' + encodeURIComponent(delta)
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                adj.disabled = false;
+                if (data.ok) {
+                    if (feedback) feedback.textContent = (delta === '1' ? '+1' : '−1') + ' ks. Celkem ' + data.total_scanned_for_item;
+                    updateRowFromResponse(data);
+                } else {
+                    if (feedback) feedback.textContent = data.error || 'Chyba';
+                }
+            }).catch(function() { adj.disabled = false; if (feedback) feedback.textContent = 'Chyba spojení'; });
+        } else if (rest) {
+            e.preventDefault();
+            var itemId = rest.getAttribute('data-order-item-id');
+            if (!itemId) return;
+            if (!confirm('Restartovat kontrolu této položky? Všechny skeny pro ni se zruší.')) return;
+            rest.disabled = true;
+            fetch('/warehouse/order/' + orderId + '/check/restart-item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+                body: 'order_item_id=' + encodeURIComponent(itemId)
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                rest.disabled = false;
+                if (data.ok) {
+                    if (feedback) feedback.textContent = 'Kontrola položky restartována.';
+                    updateRowFromResponse(data);
+                } else {
+                    if (feedback) feedback.textContent = data.error || 'Chyba';
+                }
+            }).catch(function() { rest.disabled = false; if (feedback) feedback.textContent = 'Chyba spojení'; });
+        }
+    });
 
     if (typeof orderCheckInit === 'function') {
         orderCheckInit({ orderId: orderId, scanInput: scanInput, feedback: feedback });

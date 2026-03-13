@@ -971,6 +971,8 @@ def _auth_api_login(username, pin):
         data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
         if r.status_code == 200 and data.get("ok"):
             return data, None
+        if r.status_code == 403:
+            return None, data.get("error", "Nemáte přístup k této aplikaci.")
         return None, data.get("error", "Neplatné přihlašovací údaje.")
     except requests.RequestException as e:
         return None, str(e)
@@ -1110,8 +1112,11 @@ def auth_sso():
         return redirect(url_for("login"))
     auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
     try:
-        r = requests.get(auth_url + "/api/sso/verify", params={"token": token}, timeout=10)
+        r = requests.get(auth_url + "/api/sso/verify", params={"token": token, "application": "objednavac"}, timeout=10)
         data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if r.status_code == 403:
+            flash(data.get("error", "Nemáte přístup k této aplikaci."), "error")
+            return redirect(url_for("login"))
         if r.status_code != 200 or not data.get("ok"):
             flash(data.get("error", "Neplatný nebo vypršený SSO token."), "error")
             return redirect(url_for("login"))
@@ -1259,6 +1264,38 @@ def _router_url():
         return f"{p.scheme}://{p.hostname}" if p.port in (80, 8000, None) else f"{p.scheme}://{p.hostname}:8000"
     except Exception:
         return "http://localhost:8000"
+
+
+@app.route("/redirect-to-smeros")
+@login_required
+def redirect_to_smeros():
+    """Přesměruje na Směros s SSO tokenem, aby byl uživatel přihlášen bez znovu zadávání PINu."""
+    auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
+    sso_secret = (os.environ.get("SSO_SECRET") or "sso-dev-secret").strip()
+    user = get_current_user()
+    if not user or not user.username:
+        flash("Nelze vytvořit odkaz na směrovač.", "error")
+        return redirect(request.referrer or url_for("admin_dashboard"))
+    try:
+        r = requests.post(
+            auth_url + "/api/sso/create-token",
+            json={"username": user.username},
+            headers={"X-SSO-Secret": sso_secret},
+            timeout=5,
+        )
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if r.status_code != 200 or not data.get("ok"):
+            flash(data.get("error", "SSO token se nepodařilo vytvořit."), "error")
+            return redirect(request.referrer or url_for("admin_dashboard"))
+        token = data.get("token", "")
+        if not token:
+            flash("Prázdný SSO token.", "error")
+            return redirect(request.referrer or url_for("admin_dashboard"))
+        router = _router_url()
+        return redirect(router + "/auth/sso?token=" + token)
+    except requests.RequestException as e:
+        flash(f"Nepodařilo se spojit s auth: {e}", "error")
+        return redirect(request.referrer or url_for("admin_dashboard"))
 
 
 def _logout_chain_next_url():
@@ -2751,6 +2788,33 @@ def _update_product_only_missing(existing, name, sku, unit, group_name, pc_float
         existing.nc = nc_float
 
 
+def _update_product_overwrite(existing, name, sku, unit, group_name, pc_float, ean, nc_float=None):
+    """Přepíše existující produkt hodnotami z importu (např. oprava diakritiky v názvu při shodě kod_zbozi). Pole se mění jen když je v importu uvedené (není None)."""
+    if name is not None:
+        existing.nazev = name
+    if sku is not None:
+        existing.kod_zbozi = sku
+    if unit is not None:
+        existing.mj = unit
+    if group_name is not None:
+        existing.naz_skup = group_name
+    if pc_float is not None:
+        existing.pc = pc_float
+    if ean is not None:
+        existing.ean = ean
+    if nc_float is not None:
+        existing.nc = nc_float
+
+
+def _merge_duplicate_products(keep_product, duplicate_products):
+    """Převede položky objednávek a příjmů z duplicit na ponechaný produkt a duplicity smaže. Vrací počet smazaných."""
+    for product in duplicate_products:
+        OrderItem.query.filter_by(product_id=product.id).update({"product_id": keep_product.id})
+        GoodsReceiptItem.query.filter_by(product_id=product.id).update({"product_id": keep_product.id})
+        db.session.delete(product)  # ProductEan se smaže díky cascade
+    return len(duplicate_products)
+
+
 def _import_csv(path):
     import csv
     added, updated, skipped, errors = 0, 0, 0, 0
@@ -2774,23 +2838,46 @@ def _import_csv(path):
                 pc = _norm(row.get("pc"))
                 ean = _norm(row.get("ean"))
                 nc_float = _pc_to_float(row.get("nc"))
-                # Párování: nejdřív podle EAN (Product.ean i ProductEan), pak kod_zbozi, pak název
-                existing = None
-                if ean:
-                    existing = find_product_by_ean(ean)
-                if not existing and sku:
-                    existing = Product.query.filter_by(kod_zbozi=sku).first()
-                if not existing:
-                    existing = Product.query.filter(Product.nazev == name).first()
-                if existing:
-                    _update_product_only_missing(
-                        existing, name, sku, unit, group_name, _pc_to_float(pc), ean, nc_float
-                    )
-                    updated += 1
+                pc_float = _pc_to_float(pc)
+                # Párování: nejdřív podle kod_zbozi (při shodě se přepíší VŠECHNY záznamy s tímto kódem), pak EAN, pak název
+                existing_list = []
+                matched_by_kod = False
+                if sku:
+                    existing_list = Product.query.filter_by(kod_zbozi=sku).all()
+                    if existing_list:
+                        matched_by_kod = True
+                if not existing_list and ean:
+                    p = find_product_by_ean(ean)
+                    if p:
+                        existing_list = [p]
+                if not existing_list:
+                    p = Product.query.filter(Product.nazev == name).first()
+                    if p:
+                        existing_list = [p]
+                if existing_list:
+                    if matched_by_kod and len(existing_list) > 1:
+                        # Ponech první produkt, duplicity odstraň (položky objednávek/příjmů převedeme na něj)
+                        keep = existing_list[0]
+                        _merge_duplicate_products(keep, existing_list[1:])
+                        _update_product_overwrite(
+                            keep, name, sku, unit, group_name, pc_float, ean, nc_float
+                        )
+                        updated += 1
+                    else:
+                        for existing in existing_list:
+                            if matched_by_kod:
+                                _update_product_overwrite(
+                                    existing, name, sku, unit, group_name, pc_float, ean, nc_float
+                                )
+                            else:
+                                _update_product_only_missing(
+                                    existing, name, sku, unit, group_name, pc_float, ean, nc_float
+                                )
+                        updated += len(existing_list)
                 else:
                     db.session.add(Product(
                         nazev=name, kod_zbozi=sku, mj=unit, naz_skup=group_name,
-                        pc=_pc_to_float(pc), ean=ean, nc=nc_float
+                        pc=pc_float, ean=ean, nc=nc_float
                     ))
                     added += 1
                 db.session.commit()
@@ -2870,24 +2957,46 @@ def _import_excel(path):
             skipped += 1
             return
         name, sku, unit, group_name, pc, ean, nc_float = t
+        pc_float = _pc_to_float(pc)
         try:
-            # Párování: nejdřív podle EAN (Product.ean i ProductEan), pak kod_zbozi, pak název
-            existing = None
-            if ean:
-                existing = find_product_by_ean(ean)
-            if not existing and sku:
-                existing = Product.query.filter_by(kod_zbozi=sku).first()
-            if not existing:
-                existing = Product.query.filter(Product.nazev == name).first()
-            if existing:
-                _update_product_only_missing(
-                    existing, name, sku, unit, group_name, _pc_to_float(pc), ean, nc_float
-                )
-                updated += 1
+            # Párování: nejdřív podle kod_zbozi (při shodě se přepíší VŠECHNY záznamy s tímto kódem), pak EAN, pak název
+            existing_list = []
+            matched_by_kod = False
+            if sku:
+                existing_list = Product.query.filter_by(kod_zbozi=sku).all()
+                if existing_list:
+                    matched_by_kod = True
+            if not existing_list and ean:
+                p = find_product_by_ean(ean)
+                if p:
+                    existing_list = [p]
+            if not existing_list:
+                p = Product.query.filter(Product.nazev == name).first()
+                if p:
+                    existing_list = [p]
+            if existing_list:
+                if matched_by_kod and len(existing_list) > 1:
+                    keep = existing_list[0]
+                    _merge_duplicate_products(keep, existing_list[1:])
+                    _update_product_overwrite(
+                        keep, name, sku, unit, group_name, pc_float, ean, nc_float
+                    )
+                    updated += 1
+                else:
+                    for existing in existing_list:
+                        if matched_by_kod:
+                            _update_product_overwrite(
+                                existing, name, sku, unit, group_name, pc_float, ean, nc_float
+                            )
+                        else:
+                            _update_product_only_missing(
+                                existing, name, sku, unit, group_name, pc_float, ean, nc_float
+                            )
+                    updated += len(existing_list)
             else:
                 db.session.add(Product(
                     nazev=name, kod_zbozi=sku, mj=unit, naz_skup=group_name,
-                    pc=_pc_to_float(pc), ean=ean, nc=nc_float
+                    pc=pc_float, ean=ean, nc=nc_float
                 ))
                 added += 1
             db.session.commit()
@@ -4191,10 +4300,12 @@ def _order_check_view(order_id, redirect_back_route, for_branch=False):
         last_check = OrderItemCheck.query.filter_by(order_item_id=item.id).order_by(OrderItemCheck.created_at.desc()).first()
         if last_check:
             item_results[item.id] = last_check
+    item_scanned_qty = _order_item_scanned_qtys(order)
     return render_template(
         "warehouse_order_check.html",
         order=order,
         item_results=item_results,
+        item_scanned_qty=item_scanned_qty,
         check_items=check_items,
         user=get_current_user(),
         status_cz=status_cz,
@@ -4309,6 +4420,136 @@ def warehouse_order_check_scan(order_id):
         "all_correct": all_correct,
         "already_scanned": total_already > 0,
         "total_scanned_for_item": total_after,
+    })
+
+
+def _order_check_recompute_status(order, all_items_with_product, item_totals):
+    """Po úpravě skenů přepočítá order.check_status (verified/error)."""
+    all_checked = all(item_totals.get(it.id, 0) > 0 for it in all_items_with_product)
+    all_correct = all(
+        abs((item_totals.get(it.id) or 0) - (it.shipped_quantity or 0)) < 0.001
+        for it in all_items_with_product
+    )
+    if all_checked:
+        order.check_status = "verified" if all_correct else "error"
+        db.session.commit()
+        if all_correct:
+            audit_log("order_verified", "order", order.id, "Všechny položky zkontrolovány správně")
+        else:
+            audit_log("order_check_error", "order", order.id, "Kontrola odhalila chybu")
+    else:
+        order.check_status = None
+        db.session.commit()
+
+
+@app.route("/warehouse/order/<int:order_id>/check/adjust", methods=["POST"])
+@login_required
+@role_required("warehouse", "admin", "branch")
+def warehouse_order_check_adjust(order_id):
+    """Úprava skenovaného množství u položky: +1 nebo -1 (např. když někdo omylem naskenoval špatně). Vrací JSON."""
+    order = Order.query.get_or_404(order_id)
+    user = get_current_user()
+    if user and user.role == "branch" and get_current_branch_id() != order.branch_id:
+        return jsonify({"ok": False, "error": "Objednávka nepatří vaší pobočce."}), 403
+    if order.status not in ("shipped", "partially_shipped", "verified", "error"):
+        return jsonify({"ok": False, "error": "Kontrola není k dispozici."}), 400
+    order_item_id = request.form.get("order_item_id") or request.json.get("order_item_id")
+    try:
+        order_item_id = int(order_item_id)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Neplatné order_item_id"}), 400
+    delta = request.form.get("delta") or request.json.get("delta")
+    try:
+        delta = float(delta)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Neplatný delta (očekáváno +1 nebo -1)"}), 400
+    if delta not in (1, -1, 1.0, -1.0):
+        return jsonify({"ok": False, "error": "Delta musí být +1 nebo -1"}), 400
+    delta = int(delta)
+    order_item = OrderItem.query.filter_by(id=order_item_id, order_id=order.id).first()
+    if not order_item:
+        return jsonify({"ok": False, "error": "Položka nenalezena"}), 404
+    if user and user.role == "branch" and (order_item.unavailable or (order_item.shipped_quantity or 0) <= 0):
+        return jsonify({"ok": False, "error": "Tato položka se v kontrole neověřuje."}), 400
+    expected = order_item.shipped_quantity if order_item.shipped_quantity is not None else 0
+    total_before = db.session.query(func.coalesce(func.sum(OrderItemCheck.scanned_quantity), 0)).filter(
+        OrderItemCheck.order_item_id == order_item.id
+    ).scalar() or 0
+    total_after = total_before + delta
+    if total_after < 0:
+        total_after = 0
+        delta = -total_before
+    check = OrderItemCheck(
+        order_item_id=order_item.id,
+        scanned_quantity=float(delta),
+        expected_quantity=expected,
+        result="correct" if abs(total_after - expected) < 0.001 else "incorrect",
+    )
+    db.session.add(check)
+    db.session.commit()
+    audit_log("order_check_adjust", "order_item", order_item.id, f"Úprava: delta={delta}, celkem={total_after}")
+    all_items = [i for i in order.items if i.product_id and i.product]
+    if user and user.role == "branch":
+        all_items = [i for i in all_items if (i.shipped_quantity or 0) > 0 and not i.unavailable]
+    item_totals = {}
+    for it in order.items:
+        s = db.session.query(func.coalesce(func.sum(OrderItemCheck.scanned_quantity), 0)).filter(
+            OrderItemCheck.order_item_id == it.id
+        ).scalar() or 0
+        item_totals[it.id] = s
+    _order_check_recompute_status(order, all_items, item_totals)
+    result = "correct" if abs(total_after - expected) < 0.001 else "incorrect"
+    return jsonify({
+        "ok": True,
+        "order_item_id": order_item.id,
+        "total_scanned_for_item": total_after,
+        "expected_quantity": expected,
+        "result": result,
+        "order_check_status": getattr(order, "check_status", None),
+    })
+
+
+@app.route("/warehouse/order/<int:order_id>/check/restart-item", methods=["POST"])
+@login_required
+@role_required("warehouse", "admin", "branch")
+def warehouse_order_check_restart_item(order_id):
+    """Restart kontroly u jedné položky: smaže všechny záznamy skenů pro danou order_item (když někdo omylem naskenoval něco jiného). Vrací JSON."""
+    order = Order.query.get_or_404(order_id)
+    user = get_current_user()
+    if user and user.role == "branch" and get_current_branch_id() != order.branch_id:
+        return jsonify({"ok": False, "error": "Objednávka nepatří vaší pobočce."}), 403
+    if order.status not in ("shipped", "partially_shipped", "verified", "error"):
+        return jsonify({"ok": False, "error": "Kontrola není k dispozici."}), 400
+    order_item_id = request.form.get("order_item_id") or request.json.get("order_item_id")
+    try:
+        order_item_id = int(order_item_id)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Neplatné order_item_id"}), 400
+    order_item = OrderItem.query.filter_by(id=order_item_id, order_id=order.id).first()
+    if not order_item:
+        return jsonify({"ok": False, "error": "Položka nenalezena"}), 404
+    if user and user.role == "branch" and (order_item.unavailable or (order_item.shipped_quantity or 0) <= 0):
+        return jsonify({"ok": False, "error": "Tato položka se v kontrole neověřuje."}), 400
+    deleted = OrderItemCheck.query.filter_by(order_item_id=order_item.id).delete()
+    db.session.commit()
+    audit_log("order_check_restart_item", "order_item", order_item.id, f"Restart kontroly položky (smazáno záznamů: {deleted})")
+    all_items = [i for i in order.items if i.product_id and i.product]
+    if user and user.role == "branch":
+        all_items = [i for i in all_items if (i.shipped_quantity or 0) > 0 and not i.unavailable]
+    item_totals = {}
+    for it in order.items:
+        s = db.session.query(func.coalesce(func.sum(OrderItemCheck.scanned_quantity), 0)).filter(
+            OrderItemCheck.order_item_id == it.id
+        ).scalar() or 0
+        item_totals[it.id] = s
+    _order_check_recompute_status(order, all_items, item_totals)
+    return jsonify({
+        "ok": True,
+        "order_item_id": order_item.id,
+        "total_scanned_for_item": 0,
+        "expected_quantity": order_item.shipped_quantity or 0,
+        "result": None,
+        "order_check_status": getattr(order, "check_status", None),
     })
 
 
@@ -4708,6 +4949,105 @@ def check_ean_consistency_cmd():
                 click.echo("  Product.ean: EAN %s u %s produktů" % (ean, cnt))
         else:
             click.echo("OK: Žádné duplicitní EAN v ProductEan ani v Product.ean.")
+
+
+@app.cli.command("delete-products-only")
+@click.option("--yes", "-y", is_flag=True, help="Potvrdit bez dotazu")
+def delete_products_only_cmd(yes):
+    """Smaže jen katalog produktů (products, product_eans, internal_products) a položky, které na ně odkazují (order_items, goods_receipt_items, order_item_checks). Nechá uživatele, pobočky, sklady, hlavičky objednávek a příjmů."""
+    def _run():
+        _run_migrations()  # zajistí existenci tabulek
+        deleted = {}
+        # Pořadí kvůli cizím klíčům: nejdřív závislé tabulky
+        deleted["order_item_checks"] = OrderItemCheck.query.delete()
+        deleted["order_items"] = OrderItem.query.delete()
+        deleted["goods_receipt_items"] = GoodsReceiptItem.query.delete()
+        deleted["product_eans"] = ProductEan.query.delete()
+        deleted["products"] = Product.query.delete()
+        deleted["internal_products"] = InternalProduct.query.delete()
+        db.session.commit()
+        return deleted
+
+    if not yes:
+        click.echo("Tím se smažou: všechny produkty (products), product_eans, internal_products,")
+        click.echo("všechny položky objednávek (order_items), položky příjmů (goods_receipt_items), order_item_checks.")
+        click.echo("Zůstanou: uživatelé, pobočky, sklady, hlavičky objednávek (orders), hlavičky příjmů (goods_receipts), dodavatelé.")
+        if not click.confirm("Pokračovat?"):
+            click.echo("Zrušeno.")
+            return
+    with app.app_context():
+        d = _run()
+    click.echo("Smazáno: " + ", ".join("%s=%d" % (k, v) for k, v in d.items()))
+
+
+def _is_numeric_code(s):
+    """True pokud je kod_zbozi čistě číselný (pro detekci párů 50001 vs 0050001)."""
+    if not s or not str(s).strip():
+        return False
+    return str(s).strip().isdigit()
+
+
+@app.cli.command("merge-short-product-codes")
+@click.option("--yes", "-y", is_flag=True, help="Provést bez dotazu")
+@click.option("--dry-run", is_flag=True, help="Pouze vypsat, co by se sloučilo, nic neměnit")
+def merge_short_product_codes_cmd(yes, dry_run):
+    """Sloučí duplicity, kde kod_zbozi je stejné číslo v různém tvaru (50001 vs 0050001). Ponechá kód s větší délkou (s nulami), ostatní sloučí do něj a smaže."""
+    with app.app_context():
+        _run_migrations()
+        products_with_code = [
+            p for p in Product.query.filter(Product.kod_zbozi.isnot(None)).all()
+            if _is_numeric_code(p.kod_zbozi)
+        ]
+        # Seskupit podle číselné hodnoty: int("50001") == int("0050001")
+        from collections import defaultdict
+        by_num = defaultdict(list)
+        for p in products_with_code:
+            try:
+                by_num[int(str(p.kod_zbozi).strip())].append(p)
+            except ValueError:
+                continue
+        to_merge = []
+        for num, group in by_num.items():
+            if len(group) < 2:
+                continue
+            codes = {str(p.kod_zbozi).strip() for p in group}
+            if len(codes) < 2:
+                continue
+            group_sorted = sorted(group, key=lambda p: len(str(p.kod_zbozi)), reverse=True)
+            to_merge.append((group_sorted[0], group_sorted[1:]))
+        if not to_merge:
+            click.echo("Žádné duplicity (stejné číslo, jiný tvar kódu) nenalezeny.")
+            return
+        if not dry_run and not yes:
+            n_remove = sum(len(dups) for _, dups in to_merge)
+            click.echo("Nalezeno %d skupin, celkem %d produktů se sloučí/smaže (zůstane delší kód)." % (len(to_merge), n_remove))
+            for keep, dups in to_merge[:10]:
+                click.echo("  Ponechat %s (id=%s), odstranit: %s" % (
+                    keep.kod_zbozi, keep.id, ", ".join("%s (id=%s)" % (p.kod_zbozi, p.id) for p in dups)
+                ))
+            if len(to_merge) > 10:
+                click.echo("  ... a dalších %d skupin" % (len(to_merge) - 10))
+            if not click.confirm("Pokračovat?"):
+                click.echo("Zrušeno.")
+                return
+        merged_count = 0
+        deleted_count = 0
+        for keep, duplicates in to_merge:
+            if dry_run:
+                click.echo("Sloučit do %s (id=%s): %s" % (
+                    keep.kod_zbozi, keep.id,
+                    ", ".join("%s (id=%s)" % (p.kod_zbozi, p.id) for p in duplicates)
+                ))
+            merged_count += 1
+            deleted_count += len(duplicates)
+            if not dry_run:
+                _merge_duplicate_products(keep, duplicates)
+        if not dry_run and (merged_count or deleted_count):
+            db.session.commit()
+        if dry_run:
+            click.echo("Dry-run: sloučeno %d skupin, odstraněno by %d produktů. Spusť bez --dry-run pro provedení." % (merged_count, deleted_count))
+        else:
+            click.echo("Sloučeno %d skupin, odstraněno %d produktů se špatným (kratším) kódem." % (merged_count, deleted_count))
 
 
 if __name__ == "__main__":
