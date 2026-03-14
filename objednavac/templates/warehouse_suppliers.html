@@ -22,6 +22,14 @@
         <label for="edit_supplier_municipality">Obec</label>
         <input type="text" id="edit_supplier_municipality" name="municipality" class="input-warehouse" maxlength="255" value="{{ edit_supplier.municipality or '' }}">
     </div>
+    <div class="form-group">
+        <label for="edit_supplier_ico">IČO</label>
+        <input type="text" id="edit_supplier_ico" name="ico" class="input-warehouse" maxlength="20" value="{{ edit_supplier.ico or '' }}" placeholder="např. 12345678">
+    </div>
+    <div class="form-group">
+        <label for="edit_supplier_dic">DIČ</label>
+        <input type="text" id="edit_supplier_dic" name="dic" class="input-warehouse" maxlength="20" value="{{ edit_supplier.dic or '' }}" placeholder="doplní ARES">
+    </div>
     <button type="submit" class="btn btn-primary">Uložit</button>
     <a href="{{ url_for('warehouse_suppliers') }}" class="btn btn-secondary">Zrušit</a>
 </form>
@@ -38,6 +46,12 @@
     <button type="submit" class="btn btn-primary">Přidat dodavatele</button>
 </form>
 {% if user.role == 'admin' %}
+<div class="warehouse-suppliers-ares-box" style="margin-top: 1rem;">
+    <form method="post" action="{{ url_for('admin_fakturace_ares_refresh') }}" class="inline-form">
+        <button type="submit" class="btn">Doplň IČO/DIČ z ARES</button>
+    </form>
+    <p class="muted" style="margin-top: 0.25rem;">Pro dodavatele s vyplněným IČO stáhne DIČ (a údaje) z ARES.</p>
+</div>
 <div class="warehouse-suppliers-import-box" style="margin-top: 1.5rem;">
     <h3 class="warehouse-suppliers-import-title">Import z .xlsx (admin)</h3>
     <p class="muted" style="margin-bottom: 0.5rem;">Hlavička: <strong>Číslo firmy | Název firmy | Ulice | Obec</strong></p>
@@ -57,6 +71,8 @@
         <tr>
             <th>Číslo firmy</th>
             <th>Název firmy</th>
+            <th>IČO</th>
+            <th>DIČ</th>
             <th>Ulice</th>
             <th>Obec</th>
             <th>Sklad</th>
@@ -68,6 +84,8 @@
         <tr>
             <td>{{ s.supplier_id }}</td>
             <td>{{ s.supplier_name }}</td>
+            <td>{{ s.ico or '—' }}</td>
+            <td>{{ s.dic or '—' }}</td>
             <td>{{ s.street or '—' }}</td>
             <td>{{ s.municipality or '—' }}</td>
             <td>{{ s.warehouse.name if s.warehouse else '—' }}</td>

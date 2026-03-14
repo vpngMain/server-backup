@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Rozvrh směn – tisk/PDF{% endblock %}
+{% block body %}
+<div class="export-pdf">
+  <div class="no-print mb-4">
+    <button type="button" class="btn btn-primary" onclick="window.print()">Tisknout / Uložit jako PDF</button>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Zpět</a>
+  </div>
+  <h1>Rozvrh směn {{ from_date }} – {{ to_date }}</h1>
+  {% for date in by_date.keys()|sort %}
+  <div class="pdf-day">
+    <h2>{{ date }}</h2>
+    <table>
+      <thead><tr><th>Zaměstnanec</th><th>Čas</th><th>Poznámka</th></tr></thead>
+      <tbody>
+        {% for s in by_date[date] %}
+        <tr><td>{{ s.employee.name }}</td><td>{{ s.start_time }} – {{ s.end_time }}</td><td>{{ s.note or '' }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</div>
+<style>
+@media print { .no-print { display: none !important; } }
+.export-pdf { max-width: 800px; margin: 0 auto; padding: 1rem; }
+.pdf-day { margin-bottom: 1.5rem; page-break-inside: avoid; }
+.pdf-day h2 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+.pdf-day table { width: 100%; border-collapse: collapse; }
+.pdf-day th, .pdf-day td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left; }
+</style>
+{% endblock %}

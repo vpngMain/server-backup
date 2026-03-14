@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Přihlášení{% endblock %}
+{% block body %}
+<div class="auth-page">
+  <a href="/" class="auth-back">← Zpět na úvod</a>
+  <div class="auth-box">
+    <h1>Přihlášení</h1>
+    <p class="text-muted" style="font-size:0.8rem;margin-bottom:1rem">Demo: demo@demo.cz / demo</p>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <form method="post" class="auth-form">
+      <label>E-mail</label>
+      <input type="email" name="email" required placeholder="vas@email.cz">
+      <label>Heslo</label>
+      <input type="password" name="password" required>
+      <button type="submit" class="btn btn-primary btn-block">Přihlásit se</button>
+      <p class="auth-foot" style="margin-top:0.75rem"><a href="{{ url_for('forgot_password') }}">Zapomněli jste heslo?</a></p>
+    </form>
+    {% if allow_registration %}<p class="auth-foot"><a href="{{ url_for('register') }}">Nemáte účet? Začněte zdarma</a></p>{% endif %}
+  </div>
+</div>
+{% endblock %}

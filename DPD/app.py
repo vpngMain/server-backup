@@ -99,7 +99,7 @@ def create_app():
         return out
 
     def _sync_branches_from_auth():
-        """Synchronizuje pobočky s auth-system: přidá chybějící, smaže ty co v auth-system už nejsou (bez záznamů)."""
+        """Synchronizuje pobočky s auth-system podle kódu: přepíše názvy, přidá chybějící, smaže ty co v auth-system už nejsou (bez záznamů)."""
         if not requests:
             return
         auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
@@ -110,14 +110,30 @@ def create_app():
             data = r.json() if r.headers.get("content-type", "").startswith("application/json") else []
             if not isinstance(data, list):
                 return
+            auth_codes = {(item.get("code") or "").strip() for item in data if (item.get("code") or "").strip()}
             auth_names = {(item.get("name") or "").strip() for item in data if (item.get("name") or "").strip()}
             for item in data:
                 name = (item.get("name") or "").strip()
-                if not name or Branch.query.filter_by(name=name).first():
+                code = (item.get("code") or "").strip() or None
+                if not name:
                     continue
-                db.session.add(Branch(name=name))
+                b = None
+                if code:
+                    b = Branch.query.filter_by(code=code).first()
+                if b:
+                    b.name = name
+                    if code is not None:
+                        b.code = code
+                else:
+                    b = Branch.query.filter_by(name=name).first()
+                    if b:
+                        b.name = name
+                        if code is not None:
+                            b.code = code
+                    else:
+                        db.session.add(Branch(name=name, code=code or ""))
             for b in Branch.query.all():
-                if b.name in auth_names:
+                if (b.code and b.code in auth_codes) or b.name in auth_names:
                     continue
                 if Entry.query.filter_by(branch_id=b.id).count() > 0:
                     continue

@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block title %}Admin – Dodací list {{ invoice.invoice_number or invoice.id }}{% endblock %}
+{% block content %}
+<p class="order-detail-actions">
+    <a href="{{ url_for('admin_fakturace') }}" class="btn btn-back">← Zpět na Fakturace</a>
+    <a href="{{ url_for('admin_fakturace_print_tax', invoice_id=invoice.id) }}" class="btn" target="_blank">Tisk – Dodací list daňový doklad</a>
+    <a href="{{ url_for('admin_fakturace_print_invoice', invoice_id=invoice.id) }}" class="btn" target="_blank">Tisk – Dodací list</a>
+    <form method="post" action="{{ url_for('admin_fakturace_delete', invoice_id=invoice.id) }}" class="inline-form" style="display: inline;" onsubmit="return confirm('Opravdu smazat tento dodací list z databáze?');">
+        <button type="submit" class="btn btn-danger">Smazat dodací list</button>
+    </form>
+</p>
+<h2>Dodací list {{ invoice.invoice_number or invoice.id }}</h2>
+<p class="hint">Údaje z importu můžete upravit. Průběžné ukládání probíhá automaticky při změně polí.</p>
+<span id="js-fakturace-save-status" class="fakturace-save-status" aria-live="polite" style="display: block; margin-bottom: 0.5rem;"></span>
+
+<form method="post" action="{{ url_for('admin_fakturace_edit', invoice_id=invoice.id) }}" id="js-fakturace-form" class="fakturace-edit-form">
+    <input type="hidden" name="items_json" id="js-items-json-hidden" value="">
+    <div class="fakturace-layout">
+        <section class="fakturace-section">
+            <h3 class="fakturace-section-title">Odběratel</h3>
+            <div class="form-group">
+                <label for="recipient_supplier_id">Odběratel z databáze (dodavatel)</label>
+                <select id="recipient_supplier_id" name="recipient_supplier_id" class="input-warehouse js-fakturace-field js-recipient-select">
+                    <option value="">— vyberte odběratele (dodavatele) —</option>
+                    {% for s in suppliers %}
+                    <option value="{{ s.id }}" {{ 'selected' if invoice.recipient_supplier_id == s.id else '' }}>{{ s.supplier_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="recipient_raw">Údaje odběratele (vyplní se z DB)</label>
+                <textarea id="recipient_raw" name="recipient_raw" rows="5" class="input-warehouse js-fakturace-field">{{ invoice.recipient_raw or '' }}</textarea>
+            </div>
+        </section>
+        <section class="fakturace-section">
+            <h3 class="fakturace-section-title">Dodavatel</h3>
+            <div class="form-group">
+                <label for="supplier_id">Dodavatel z databáze (výchozí ApexVISIONARY s.r.o.)</label>
+                <select id="supplier_id" name="supplier_id" class="input-warehouse js-fakturace-field js-supplier-select">
+                    <option value="">— vyberte dodavatele —</option>
+                    {% for s in suppliers %}
+                    <option value="{{ s.id }}" {{ 'selected' if invoice.supplier_id == s.id else '' }}>{{ s.supplier_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="supplier_raw">Údaje dodavatele (vyplní se z DB)</label>
+                <textarea id="supplier_raw" name="supplier_raw" rows="4" class="input-warehouse js-fakturace-field">{{ invoice.supplier_raw or '' }}</textarea>
+            </div>
+        </section>
+    </div>
+
+    <div class="fakturace-layout">
+        <section class="fakturace-section">
+            <h3 class="fakturace-section-title">Platební údaje</h3>
+            <div class="form-group">
+                <label for="payment_bank">Banka</label>
+                <input type="text" id="payment_bank" name="payment_bank" class="input-warehouse js-fakturace-field" value="{{ invoice.payment_bank or payment_settings.payment_bank or 'Komerční banka' }}">
+            </div>
+            <div class="form-group">
+                <label for="payment_account">Číslo účtu</label>
+                <input type="text" id="payment_account" name="payment_account" class="input-warehouse js-fakturace-field" value="{{ invoice.payment_account or payment_settings.payment_account or '131-2227570277/0100' }}">
+            </div>
+            <div class="form-group">
+                <label for="payment_iban">IBAN</label>
+                <input type="text" id="payment_iban" name="payment_iban" class="input-warehouse js-fakturace-field" value="{{ invoice.payment_iban or payment_settings.payment_iban or 'CZ4601000001312227570277' }}">
+            </div>
+            <div class="form-group">
+                <label for="payment_swift">SWIFT</label>
+                <input type="text" id="payment_swift" name="payment_swift" class="input-warehouse js-fakturace-field" value="{{ invoice.payment_swift or payment_settings.payment_swift or 'KOMBCZPPXXX' }}">
+            </div>
+            <div class="form-group">
+                <label for="payment_vs">Variabilní symbol</label>
+                <input type="text" id="payment_vs" name="payment_vs" class="input-warehouse js-fakturace-field" value="{{ invoice.payment_vs or '' }}">
+            </div>
+            <div class="form-group">
+                <label for="payment_ks">Konstantní symbol</label>
+                <input type="text" id="payment_ks" name="payment_ks" class="input-warehouse js-fakturace-field" value="{{ invoice.payment_ks or '' }}">
+            </div>
+            <div class="form-group">
+                <label for="payment_message">Zpráva pro příjemce</label>
+                <input type="text" id="payment_message" name="payment_message" class="input-warehouse js-fakturace-field" value="{{ invoice.payment_message or '' }}">
+            </div>
+        </section>
+        <section class="fakturace-section">
+            <h3 class="fakturace-section-title">QR kód pro platbu</h3>
+            <div class="fakturace-qr-wrap">
+                <img id="js-fakturace-qr" src="{{ url_for('admin_fakturace_qr', invoice_id=invoice.id) }}?t={{ invoice.updated_at.timestamp() if invoice.updated_at else '' }}" alt="QR platba" style="max-width: 180px; height: auto;" onerror="this.style.display='none'">
+            </div>
+        </section>
+    </div>
+
+    <section class="fakturace-section fakturace-section-items">
+        <h3 class="fakturace-section-title">Položky</h3>
+        <div class="table-wrapper">
+            <table class="table" id="js-items-table">
+                <thead>
+                    <tr>
+                        <th>Kód</th>
+                        <th>Název zboží</th>
+                        <th>Barva / velikost</th>
+                        <th>Množství</th>
+                        <th>DPH</th>
+                        <th>Cena</th>
+                        <th>Cena celkem</th>
+                        <th style="width: 80px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="js-items-tbody">
+                    {% for row in items %}
+                    <tr class="js-item-row">
+                        <td><input type="text" class="input-warehouse js-item-code" value="{{ row.get('code') or '' }}" placeholder="Kód"></td>
+                        <td><input type="text" class="input-warehouse js-item-name" value="{{ row.name or '' }}" placeholder="Název zboží"></td>
+                        <td><input type="text" class="input-warehouse js-item-color-size" value="{{ row.get('color_size') or '' }}" placeholder="Barva/velikost"></td>
+                        <td><input type="text" class="input-warehouse js-item-qty" value="{{ row.qty or '' }}" placeholder="1"></td>
+                        <td><input type="text" class="input-warehouse js-item-dph" value="{{ row.get('dph') or '' }}" placeholder="21"></td>
+                        <td><input type="text" class="input-warehouse js-item-price" value="{{ row.get('price_no_vat') or '' }}" placeholder="0"></td>
+                        <td><input type="text" class="input-warehouse js-item-line-total" value="{{ row.get('line_total') or '' }}" placeholder="0"></td>
+                        <td><button type="button" class="btn btn-sm js-remove-row" aria-label="Odebrat řádek">✕</button></td>
+                    </tr>
+                    {% endfor %}
+                    {% if not items %}
+                    <tr class="js-item-row">
+                        <td><input type="text" class="input-warehouse js-item-code" placeholder="Kód"></td>
+                        <td><input type="text" class="input-warehouse js-item-name" placeholder="Název zboží"></td>
+                        <td><input type="text" class="input-warehouse js-item-color-size" placeholder="Barva/velikost"></td>
+                        <td><input type="text" class="input-warehouse js-item-qty" placeholder="1"></td>
+                        <td><input type="text" class="input-warehouse js-item-dph" placeholder="21"></td>
+                        <td><input type="text" class="input-warehouse js-item-price" placeholder="0"></td>
+                        <td><input type="text" class="input-warehouse js-item-line-total" placeholder="0"></td>
+                        <td><button type="button" class="btn btn-sm js-remove-row" aria-label="Odebrat řádek">✕</button></td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        <button type="button" class="btn btn-sm js-add-row" style="margin-top: 0.5rem;">Přidat položku</button>
+    </section>
+
+    <section class="fakturace-section">
+        <h3 class="fakturace-section-title">Datumy</h3>
+        <div class="form-group">
+            <label for="issue_date">Datum vystavení</label>
+            <input type="date" id="issue_date" name="issue_date" class="input-warehouse js-fakturace-field" value="{{ invoice.issue_date.strftime('%Y-%m-%d') if invoice.issue_date else '' }}">
+        </div>
+        <div class="form-group">
+            <label for="due_date">Datum splatnosti</label>
+            <input type="date" id="due_date" name="due_date" class="input-warehouse js-fakturace-field" value="{{ invoice.due_date.strftime('%Y-%m-%d') if invoice.due_date else '' }}">
+        </div>
+        <div class="form-group">
+            <label for="tax_supply_date">Datum uskut. zdaň. plnění (jen daňový doklad)</label>
+            <input type="date" id="tax_supply_date" name="tax_supply_date" class="input-warehouse js-fakturace-field" value="{{ invoice.tax_supply_date.strftime('%Y-%m-%d') if invoice.tax_supply_date else '' }}">
+        </div>
+    </section>
+    <div class="fakturace-form-actions">
+        <button type="submit" class="btn btn-primary">Uložit</button>
+    </div>
+</form>
+
+<style>
+.fakturace-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+@media (max-width: 768px) { .fakturace-layout { grid-template-columns: 1fr; } }
+.fakturace-section { padding: 1rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text); }
+.fakturace-section .form-group label { color: var(--text); }
+.fakturace-section input, .fakturace-section select, .fakturace-section textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+.fakturace-section-title { margin: 0 0 0.75rem 0; font-size: 1rem; color: var(--text); }
+.fakturace-section-items { background: var(--bg-card); color: var(--text); }
+.fakturace-section-items .table-wrapper { overflow-x: auto; }
+.fakturace-section-items input.input-warehouse { width: 100%; min-width: 0; box-sizing: border-box; background: var(--bg); color: var(--text); }
+.fakturace-form-actions { margin-top: 1rem; }
+</style>
+
+<script>
+var supplierTexts = {{ supplier_texts | tojson }};
+(function() {
+    var form = document.getElementById('js-fakturace-form');
+    var tbody = document.getElementById('js-items-tbody');
+    var hiddenItems = document.getElementById('js-items-json-hidden');
+    var statusEl = document.getElementById('js-fakturace-save-status');
+    var qrImg = document.getElementById('js-fakturace-qr');
+    var patchUrl = {{ url_for('admin_fakturace_patch', invoice_id=invoice.id) | tojson }};
+    var qrUrlBase = {{ url_for('admin_fakturace_qr', invoice_id=invoice.id) | tojson }};
+    var debounceMs = 800;
+    var debounceTimer = null;
+
+    var recSelect = document.getElementById('recipient_supplier_id');
+    if (recSelect) recSelect.addEventListener('change', function() {
+        var id = this.value;
+        var el = document.getElementById('recipient_raw');
+        if (el && id && supplierTexts[id] !== undefined) el.value = supplierTexts[id];
+        scheduleSave();
+    });
+    var supSelect = document.getElementById('supplier_id');
+    if (supSelect) supSelect.addEventListener('change', function() {
+        var id = this.value;
+        var el = document.getElementById('supplier_raw');
+        if (el && id && supplierTexts[id] !== undefined) el.value = supplierTexts[id];
+        scheduleSave();
+    });
+
+    function rowToItem(row) {
+        return {
+            code: (row.querySelector('.js-item-code') || {}).value || '',
+            name: (row.querySelector('.js-item-name') || {}).value || '',
+            color_size: (row.querySelector('.js-item-color-size') || {}).value || '',
+            qty: (row.querySelector('.js-item-qty') || {}).value || '1',
+            dph: (row.querySelector('.js-item-dph') || {}).value || '',
+            price_no_vat: (row.querySelector('.js-item-price') || {}).value || '0',
+            line_total: (row.querySelector('.js-item-line-total') || {}).value || ''
+        };
+    }
+    function getItemsJson() {
+        var rows = tbody.querySelectorAll('.js-item-row');
+        var items = [];
+        for (var i = 0; i < rows.length; i++) { items.push(rowToItem(rows[i])); }
+        return JSON.stringify(items);
+    }
+    function syncHidden() { hiddenItems.value = getItemsJson(); }
+
+    function addRow() {
+        var tr = document.createElement('tr');
+        tr.className = 'js-item-row';
+        tr.innerHTML = '<td><input type="text" class="input-warehouse js-item-code" placeholder="Kód"></td>' +
+            '<td><input type="text" class="input-warehouse js-item-name" placeholder="Název zboží"></td>' +
+            '<td><input type="text" class="input-warehouse js-item-color-size" placeholder="Barva/velikost"></td>' +
+            '<td><input type="text" class="input-warehouse js-item-qty" placeholder="1"></td>' +
+            '<td><input type="text" class="input-warehouse js-item-dph" placeholder="21"></td>' +
+            '<td><input type="text" class="input-warehouse js-item-price" placeholder="0"></td>' +
+            '<td><input type="text" class="input-warehouse js-item-line-total" placeholder="0"></td>' +
+            '<td><button type="button" class="btn btn-sm js-remove-row" aria-label="Odebrat řádek">✕</button></td>';
+        tbody.appendChild(tr);
+        tr.querySelector('.js-remove-row').onclick = function() { tr.remove(); scheduleSave(); };
+        [].forEach.call(tr.querySelectorAll('input'), function(inp) { inp.addEventListener('input', scheduleSave); });
+    }
+    document.querySelector('.js-add-row').onclick = function() { addRow(); syncHidden(); scheduleSave(); };
+
+    tbody.querySelectorAll('.js-remove-row').forEach(function(btn) {
+        btn.onclick = function() { btn.closest('tr').remove(); syncHidden(); scheduleSave(); };
+    });
+    tbody.querySelectorAll('input').forEach(function(inp) {
+        inp.addEventListener('input', function() { syncHidden(); scheduleSave(); });
+    });
+
+    form.onsubmit = function() { syncHidden(); };
+
+    function payload() {
+        syncHidden();
+        var recId = document.getElementById('recipient_supplier_id');
+        var supId = document.getElementById('supplier_id');
+        return {
+            recipient_supplier_id: recId && recId.value ? parseInt(recId.value, 10) : null,
+            recipient_raw: (document.getElementById('recipient_raw') || {}).value || '',
+            supplier_id: supId && supId.value ? parseInt(supId.value, 10) : null,
+            supplier_raw: (document.getElementById('supplier_raw') || {}).value || '',
+            items_json: hiddenItems.value || '[]',
+            issue_date: (document.getElementById('issue_date') || {}).value || '',
+            due_date: (document.getElementById('due_date') || {}).value || '',
+            tax_supply_date: (document.getElementById('tax_supply_date') || {}).value || '',
+            payment_bank: (document.getElementById('payment_bank') || {}).value || '',
+            payment_account: (document.getElementById('payment_account') || {}).value || '',
+            payment_iban: (document.getElementById('payment_iban') || {}).value || '',
+            payment_swift: (document.getElementById('payment_swift') || {}).value || '',
+            payment_vs: (document.getElementById('payment_vs') || {}).value || '',
+            payment_ks: (document.getElementById('payment_ks') || {}).value || '',
+            payment_message: (document.getElementById('payment_message') || {}).value || ''
+        };
+    }
+    function save() {
+        if (!statusEl) return;
+        statusEl.textContent = 'Ukládám…';
+        var xhr = new XMLHttpRequest();
+        xhr.open('PATCH', patchUrl);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                statusEl.textContent = 'Uloženo';
+                if (qrImg && qrUrlBase) qrImg.src = qrUrlBase + '?t=' + Date.now();
+            } else statusEl.textContent = 'Chyba ukládání';
+        };
+        xhr.onerror = function() { statusEl.textContent = 'Chyba'; };
+        xhr.send(JSON.stringify(payload()));
+    }
+    function scheduleSave() {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function() { save(); }, debounceMs);
+    }
+    document.querySelectorAll('.js-fakturace-field').forEach(function(el) {
+        el.addEventListener('input', scheduleSave);
+        el.addEventListener('change', scheduleSave);
+        el.addEventListener('blur', function() { if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; save(); } });
+    });
+    syncHidden();
+})();
+</script>
+{% endblock %}

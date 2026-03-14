@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import threading
 import requests
@@ -250,6 +251,100 @@ def _ensure_orders_drop_invoice_columns():
         db.session.rollback()
 
 
+def _ensure_branches_auth_branch_id_column():
+    """Přidá sloupec auth_branch_id do branches (ID z auth-system pro sync po přejmenování)."""
+    if getattr(_ensure_branches_auth_branch_id_column, "_done", False):
+        return
+    _ensure_branches_auth_branch_id_column._done = True
+    from sqlalchemy import text
+    try:
+        r = db.session.execute(text("PRAGMA table_info(branches)"))
+        cols = [row[1] for row in r.fetchall()]
+        if "auth_branch_id" not in cols:
+            db.session.execute(text("ALTER TABLE branches ADD COLUMN auth_branch_id INTEGER"))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_branches_invoice_columns():
+    """Přidá sloupce street, municipality, ico, dic do branches pro fakturaci (odběratel)."""
+    if getattr(_ensure_branches_invoice_columns, "_done", False):
+        return
+    _ensure_branches_invoice_columns._done = True
+    from sqlalchemy import text as _text
+    try:
+        r = db.session.execute(_text("PRAGMA table_info(branches)"))
+        cols = [row[1] for row in r.fetchall()]
+        for col, typ in [("street", "VARCHAR(255)"), ("municipality", "VARCHAR(255)"), ("ico", "VARCHAR(20)"), ("dic", "VARCHAR(20)")]:
+            if col not in cols:
+                db.session.execute(_text("ALTER TABLE branches ADD COLUMN " + col + " " + typ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_invoices_recipient_supplier_payment():
+    """Přidá recipient_branch_id, supplier_id, payment_bank, payment_account, payment_swift do invoices."""
+    if getattr(_ensure_invoices_recipient_supplier_payment, "_done", False):
+        return
+    _ensure_invoices_recipient_supplier_payment._done = True
+    from sqlalchemy import text as _text
+    try:
+        r = db.session.execute(_text("PRAGMA table_info(invoices)"))
+        cols = [row[1] for row in r.fetchall()]
+        for col, typ in [
+            ("recipient_branch_id", "INTEGER"), ("recipient_supplier_id", "INTEGER"), ("supplier_id", "INTEGER"),
+            ("payment_bank", "VARCHAR(255)"), ("payment_account", "VARCHAR(100)"), ("payment_swift", "VARCHAR(20)"),
+            ("invoice_number", "VARCHAR(20)"),
+        ]:
+            if col not in cols:
+                db.session.execute(_text("ALTER TABLE invoices ADD COLUMN " + col + " " + typ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_invoices_invoice_number_backfill():
+    """Doplní invoice_number u existujících faktur, které ho nemají (rok z created_at, sekvence 1,2,...)."""
+    if getattr(_ensure_invoices_invoice_number_backfill, "_done", False):
+        return
+    _ensure_invoices_invoice_number_backfill._done = True
+    try:
+        from collections import defaultdict
+        need = Invoice.query.filter(db.or_(Invoice.invoice_number.is_(None), Invoice.invoice_number == "")).order_by(Invoice.created_at).all()
+        if not need:
+            return
+        by_year = defaultdict(list)
+        for inv in need:
+            y = inv.created_at.year if inv.created_at else datetime.now().year
+            by_year[y].append(inv)
+        for year, invs in by_year.items():
+            prefix = str(year)
+            for seq, inv in enumerate(invs, 1):
+                inv.invoice_number = prefix + str(seq).zfill(5)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_invoice_settings_bank_columns():
+    """Přidá payment_bank, payment_account, payment_swift do invoice_settings a nastaví výchozí hodnoty."""
+    if getattr(_ensure_invoice_settings_bank_columns, "_done", False):
+        return
+    _ensure_invoice_settings_bank_columns._done = True
+    from sqlalchemy import text as _text
+    try:
+        r = db.session.execute(_text("PRAGMA table_info(invoice_settings)"))
+        cols = [row[1] for row in r.fetchall()]
+        for col, typ in [("payment_bank", "VARCHAR(255)"), ("payment_account", "VARCHAR(100)"), ("payment_swift", "VARCHAR(20)")]:
+            if col not in cols:
+                db.session.execute(_text("ALTER TABLE invoice_settings ADD COLUMN " + col + " " + typ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _ensure_suppliers_table():
     """Vytvoří tabulku dodavatelů, pokud neexistuje."""
     try:
@@ -282,6 +377,76 @@ def _ensure_suppliers_street_municipality():
         db.session.rollback()
 
 
+def _ensure_suppliers_ico_dic():
+    """Přidá sloupce ico a dic do suppliers (pro ARES a fakturaci)."""
+    if getattr(_ensure_suppliers_ico_dic, "_done", False):
+        return
+    _ensure_suppliers_ico_dic._done = True
+    from sqlalchemy import text as _text
+    try:
+        r = db.session.execute(_text("PRAGMA table_info(suppliers)"))
+        cols = [row[1] for row in r.fetchall()]
+        if "ico" not in cols:
+            db.session.execute(_text("ALTER TABLE suppliers ADD COLUMN ico VARCHAR(20)"))
+        if "dic" not in cols:
+            db.session.execute(_text("ALTER TABLE suppliers ADD COLUMN dic VARCHAR(20)"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_invoices_table():
+    """Vytvoří tabulku invoices (drafty faktur pro admin sekci Fakturace)."""
+    if getattr(_ensure_invoices_table, "_done", False):
+        return
+    _ensure_invoices_table._done = True
+    from sqlalchemy import text as _text
+    try:
+        db.session.execute(_text("""
+            CREATE TABLE IF NOT EXISTS invoices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                recipient_raw TEXT,
+                supplier_raw TEXT,
+                items_json TEXT,
+                issue_date DATE,
+                due_date DATE,
+                tax_supply_date DATE,
+                payment_iban VARCHAR(100),
+                payment_vs VARCHAR(50),
+                payment_ks VARCHAR(50),
+                payment_message TEXT,
+                source_pdf_path VARCHAR(500)
+            )
+        """))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_invoice_settings_table():
+    """Tabulka nastavení fakturace (platební údaje z referenčního PDF, jeden řádek)."""
+    if getattr(_ensure_invoice_settings_table, "_done", False):
+        return
+    _ensure_invoice_settings_table._done = True
+    from sqlalchemy import text as _text
+    try:
+        db.session.execute(_text("""
+            CREATE TABLE IF NOT EXISTS invoice_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                payment_iban VARCHAR(100),
+                payment_vs VARCHAR(50),
+                payment_ks VARCHAR(50),
+                payment_message TEXT,
+                payment_pdf_path VARCHAR(500)
+            )
+        """))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _run_migrations():
     """Spustí migrace (sloupce/tabulky). Voláno z before_request a při startu aplikace."""
     _ensure_warehouse_note_column()
@@ -296,6 +461,14 @@ def _run_migrations():
     _ensure_warehouse_code_column()
     _ensure_order_warehouse_id_for_created_by_warehouse()
     _ensure_orders_drop_invoice_columns()
+    _ensure_branches_auth_branch_id_column()
+    _ensure_suppliers_ico_dic()
+    _ensure_invoices_table()
+    _ensure_invoice_settings_table()
+    _ensure_branches_invoice_columns()
+    _ensure_invoices_recipient_supplier_payment()
+    _ensure_invoices_invoice_number_backfill()
+    _ensure_invoice_settings_bank_columns()
 
 
 @app.before_request
@@ -331,6 +504,258 @@ def find_product_by_ean_or_code(ean, kod_zbozi=None):
     if ean and str(ean).strip():
         return find_product_by_ean(ean)
     return None
+
+
+# --- Fakturace: parsování PDF ---
+def _fakturace_parse_delivery_note_pdf(filepath):
+    """Z dodacího listu nebo faktury (PDF) vyextrahuje položky. Nejprve zkusí tabulku, pak řádky textu. Vrací dict: recipient_raw, items_json, items_raw_text."""
+    try:
+        import pdfplumber
+    except ImportError:
+        return {"recipient_raw": "", "items_json": "[]", "items_raw_text": ""}
+    import re
+    import json
+    recipient_raw = ""
+    items_raw_text = ""
+    items = []
+
+    def norm_num(s):
+        if s is None or (isinstance(s, str) and not s.strip()):
+            return 0.0
+        s = str(s).strip().replace(",", ".")
+        try:
+            return float(re.sub(r"[^\d.]", "", s) or "0")
+        except ValueError:
+            return 0.0
+
+    def norm_str(s, maxlen=200):
+        if s is None:
+            return ""
+        return (str(s).strip() or "")[:maxlen]
+
+    def map_headers_to_cols(headers):
+        """Vrátí dict: 'code' -> idx, 'name' -> idx, ... podle názvů sloupců."""
+        h = [norm_str(x).lower() for x in headers]
+        out = {}
+        for idx, cell in enumerate(h):
+            if "kód" in cell or "cislo" in cell or "číslo" in cell or "code" in cell:
+                out.setdefault("code", idx)
+            if "název" in cell or "nazev" in cell or "položka" in cell or "polozka" in cell:
+                out.setdefault("name", idx)
+            if "barva" in cell or "velikost" in cell or "barva" in cell:
+                out.setdefault("color_size", idx)
+            if "množství" in cell or "mnozstvi" in cell or "počet" in cell or "pocet" in cell:
+                out.setdefault("qty", idx)
+            if cell == "dph" or "dph" in cell:
+                out.setdefault("dph", idx)
+            if "cena" in cell and "celkem" not in cell:
+                out.setdefault("price_no_vat", idx)
+            if "celkem" in cell or "cena celkem" in cell:
+                out.setdefault("line_total", idx)
+        return out
+
+    try:
+        with pdfplumber.open(filepath) as pdf:
+            full_text = ""
+            for page in pdf.pages:
+                t = page.extract_text()
+                if t:
+                    full_text += t + "\n"
+            # 1) Zkusit extrakci tabulek (faktury s mřížkou)
+            for page in pdf.pages:
+                tables = page.extract_tables()
+                for table in (tables or []):
+                    if len(table) < 2:
+                        continue
+                    header_row = table[0]
+                    if not header_row:
+                        continue
+                    cols = map_headers_to_cols(header_row)
+                    if not cols:
+                        continue
+                    for row in table[1:]:
+                        if not row or not any(c and str(c).strip() for c in row):
+                            continue
+                        code = norm_str(row[cols["code"]], 50) if "code" in cols else ""
+                        name = norm_str(row[cols["name"]], 200) if "name" in cols else ""
+                        color_size = norm_str(row[cols["color_size"]], 50) if "color_size" in cols else ""
+                        qty_cell = row[cols["qty"]] if "qty" in cols else "1"
+                        qty = norm_str(qty_cell) or "1"
+                        dph_cell = row[cols["dph"]] if "dph" in cols else ""
+                        dph = norm_str(dph_cell, 10)
+                        price = norm_num(row[cols["price_no_vat"]] if "price_no_vat" in cols else 0)
+                        total = norm_num(row[cols["line_total"]] if "line_total" in cols else 0)
+                        if not code and not name:
+                            continue
+                        if not code and re.match(r"^\d{4,}", str(row[0] or "").strip()):
+                            code = str(row[0]).strip()[:50]
+                        items.append({
+                            "code": code,
+                            "name": name,
+                            "color_size": color_size,
+                            "qty": qty,
+                            "unit": "ks",
+                            "dph": dph,
+                            "price_no_vat": str(price).replace(".", ","),
+                            "line_total": str(total).replace(".", ","),
+                        })
+                if items:
+                    break
+            if not items:
+                # 2) Fallback: parsování z řádků textu (dodací list / faktura)
+                lines = [ln.strip() for ln in full_text.splitlines() if ln.strip()]
+                seen_table = False
+                recipient_lines = []
+                item_lines = []
+                for ln in lines:
+                    if re.match(r"^\d+\s", ln) or re.search(r"\d+\s+[ksKč]", ln) or re.match(r"^(položka|název|množství)", ln, re.I):
+                        seen_table = True
+                    if not seen_table and (len(recipient_lines) < 15 or "odběratel" in ln.lower() or "příjemce" in ln.lower() or "firma" in ln.lower() or "@" in ln or re.match(r"^\d{8,}", ln)):
+                        recipient_lines.append(ln)
+                    elif seen_table or re.search(r"\d+[,.]?\d*\s*[ks]?", ln):
+                        item_lines.append(ln)
+                recipient_raw = "\n".join(recipient_lines) if recipient_lines else full_text[:2000]
+                items_raw_text = "\n".join(item_lines) if item_lines else ""
+
+                def parse_one_line(ln):
+                    """Parsuje jeden řádek: CODE NAME... QTY DPH PRICE TOTAL (odděleno mezerami). Vrací dict nebo None."""
+                    parts = ln.split()
+                    if len(parts) < 6:
+                        return None
+                    code = (parts[0] or "").strip()
+                    if not re.match(r"^\d{4,}$", code):
+                        return None
+                    # Poslední 4 číselné hodnoty: total, price, dph, qty
+                    total_s = (parts[-1] or "").replace(",", ".")
+                    price_s = (parts[-2] or "").replace(",", ".")
+                    dph_s = (parts[-3] or "").strip()
+                    qty_s = (parts[-4] or "").replace(",", ".")
+                    if not re.search(r"[\d,.]", total_s) or not re.search(r"[\d,.]", price_s):
+                        return None
+                    name_rest = " ".join(parts[1:-4])
+                    color_size = ""
+                    if re.search(r"\d+\s*g\s", name_rest, re.I):
+                        m = re.search(r"\s+(\d+\s*g\s*\S*)$", name_rest, re.I)
+                        if m:
+                            color_size = m.group(1).strip()[:50]
+                            name_rest = name_rest[: m.start()].strip()
+                    return {
+                        "code": code[:50],
+                        "name": name_rest[:200],
+                        "color_size": color_size,
+                        "qty": qty_s,
+                        "unit": "ks",
+                        "dph": dph_s,
+                        "price_no_vat": str(norm_num(price_s)).replace(".", ","),
+                        "line_total": str(norm_num(total_s)).replace(".", ","),
+                    }
+
+                # A) Řádky s dvojitými mezerami (původní logika)
+                for ln in item_lines:
+                    parts = re.split(r"\s{2,}|\t", ln)
+                    if len(parts) >= 6:
+                        code = (parts[0] or "").strip()
+                        if re.match(r"^\d{4,}", code):
+                            price = norm_num(parts[-2])
+                            total = norm_num(parts[-1])
+                            middle = " ".join(parts[1:-2])
+                            name, qty, dph = middle, "1", ""
+                            mid = middle.split()
+                            if len(mid) >= 2 and re.match(r"^\d+[,.]?\d*$", mid[0].replace(",", ".")):
+                                qty = mid[0]
+                                dph = mid[1] if len(mid) >= 2 and re.match(r"^\d+$", mid[1]) else ""
+                                name = " ".join(mid[2:]) if len(mid) > 2 and re.match(r"^\d+$", mid[1]) else " ".join(mid[1:])
+                            color_size = ""
+                            if re.search(r"\d+\s*g\s", name, re.I):
+                                m = re.search(r"\s+(\d+\s*g\s*\S*)$", name, re.I)
+                                if m:
+                                    color_size = m.group(1).strip()[:50]
+                                    name = name[: m.start()].strip()
+                            items.append({"code": code[:50], "name": name[:200], "color_size": color_size, "qty": qty, "unit": "ks", "dph": dph, "price_no_vat": str(price).replace(".", ","), "line_total": str(total).replace(".", ",")})
+                            continue
+                    # B) Jeden řádek = jeden produkt (jednoduché mezerování)
+                    row = parse_one_line(ln)
+                    if row:
+                        items.append(row)
+                    else:
+                        # C) Řádek obsahuje více položek v jednom bloku (např. …867,800040001 KILLA…)
+                        chunks = re.split(r"(?=\d{6,7}\s)", ln)
+                        for chunk in chunks:
+                            chunk = chunk.strip()
+                            if not chunk or len(chunk) < 10:
+                                continue
+                            row = parse_one_line(chunk)
+                            if row and row.get("name"):
+                                items.append(row)
+
+                # D) Celý text v jednom bloku (žádné řádky) – rozsekat podle kódu
+                if not items and items_raw_text:
+                    chunks = re.split(r"(?=\d{6,7}\s)", items_raw_text)
+                    for chunk in chunks:
+                        chunk = chunk.strip()
+                        if not chunk or len(chunk) < 10 or "Kód" in chunk or "Název zboží" in chunk:
+                            continue
+                        row = parse_one_line(chunk)
+                        if row and row.get("name"):
+                            items.append(row)
+                if not items and full_text:
+                    chunks = re.split(r"(?=\d{6,7}\s)", full_text)
+                    for chunk in chunks:
+                        chunk = chunk.strip()
+                        if not chunk or len(chunk) < 10 or "Kód" in chunk or "Název zboží" in chunk:
+                            continue
+                        row = parse_one_line(chunk)
+                        if row and row.get("name"):
+                            items.append(row)
+        if not items and items_raw_text:
+            items = [{"code": "", "name": items_raw_text[:300], "color_size": "", "qty": "1", "unit": "ks", "dph": "", "price_no_vat": "0", "line_total": "0"}]
+        items_json = json.dumps(items, ensure_ascii=False)
+    except Exception:
+        items_json = "[]"
+    return {"recipient_raw": "", "items_json": items_json, "items_raw_text": items_raw_text or ""}
+
+
+DEFAULT_PAYMENT_BANK = "Komerční banka"
+DEFAULT_PAYMENT_ACCOUNT = "131-2227570277/0100"
+DEFAULT_PAYMENT_IBAN = "CZ4601000001312227570277"
+DEFAULT_PAYMENT_SWIFT = "KOMBCZPPXXX"
+
+
+def _fakturace_get_payment_settings():
+    """Vrátí globální platební nastavení (jeden řádek invoice_settings) s výchozími hodnotami."""
+    s = InvoiceSetting.query.get(1)
+    if s:
+        return {
+            "payment_bank": s.payment_bank or DEFAULT_PAYMENT_BANK,
+            "payment_account": s.payment_account or DEFAULT_PAYMENT_ACCOUNT,
+            "payment_iban": s.payment_iban or DEFAULT_PAYMENT_IBAN,
+            "payment_swift": s.payment_swift or DEFAULT_PAYMENT_SWIFT,
+            "payment_vs": s.payment_vs,
+            "payment_ks": s.payment_ks,
+            "payment_message": s.payment_message,
+        }
+    return {
+        "payment_bank": DEFAULT_PAYMENT_BANK,
+        "payment_account": DEFAULT_PAYMENT_ACCOUNT,
+        "payment_iban": DEFAULT_PAYMENT_IBAN,
+        "payment_swift": DEFAULT_PAYMENT_SWIFT,
+        "payment_vs": None,
+        "payment_ks": None,
+        "payment_message": None,
+    }
+
+
+def _fakturace_ensure_settings_row():
+    """Zajistí existenci řádku id=1 v invoice_settings s výchozími platebními údaji."""
+    if InvoiceSetting.query.get(1) is None:
+        db.session.add(InvoiceSetting(
+            id=1,
+            payment_bank=DEFAULT_PAYMENT_BANK,
+            payment_account=DEFAULT_PAYMENT_ACCOUNT,
+            payment_iban=DEFAULT_PAYMENT_IBAN,
+            payment_swift=DEFAULT_PAYMENT_SWIFT,
+        ))
+        db.session.commit()
 
 
 ROLES = ("admin", "branch", "warehouse")
@@ -426,6 +851,11 @@ class Branch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
     code = db.Column(db.String(50), nullable=True)
+    auth_branch_id = db.Column(db.Integer, nullable=True, unique=True)  # ID pobočky v auth-system pro sync po přejmenování
+    street = db.Column(db.String(255), nullable=True)
+    municipality = db.Column(db.String(255), nullable=True)
+    ico = db.Column(db.String(20), nullable=True)
+    dic = db.Column(db.String(20), nullable=True)
     orders = db.relationship("Order", backref="branch", lazy="dynamic")
 
 
@@ -548,15 +978,60 @@ class GoodsReceiptItem(db.Model):
 
 
 class Supplier(db.Model):
-    """Dodavatel (kód, název, ulice, obec). Volitelně vázaný na sklad."""
+    """Dodavatel (kód, název, ulice, obec, IČO, DIČ). Volitelně vázaný na sklad."""
     __tablename__ = "suppliers"
     id = db.Column(db.Integer, primary_key=True)
     supplier_id = db.Column(db.String(100), nullable=False, unique=True)
     supplier_name = db.Column(db.String(255), nullable=False)
     street = db.Column(db.String(255), nullable=True)
     municipality = db.Column(db.String(255), nullable=True)
+    ico = db.Column(db.String(20), nullable=True)
+    dic = db.Column(db.String(20), nullable=True)
     warehouse_id = db.Column(db.Integer, db.ForeignKey("warehouses.id"), nullable=True)
     warehouse = db.relationship("Warehouse", backref="suppliers")
+
+
+class Invoice(db.Model):
+    """Draft faktury (admin sekce Fakturace)."""
+    __tablename__ = "invoices"
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+    recipient_branch_id = db.Column(db.Integer, db.ForeignKey("branches.id"), nullable=True)
+    recipient_branch = db.relationship("Branch", foreign_keys=[recipient_branch_id])
+    recipient_supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"), nullable=True)
+    recipient_supplier = db.relationship("Supplier", foreign_keys=[recipient_supplier_id])
+    recipient_raw = db.Column(db.Text, nullable=True)
+    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"), nullable=True)
+    supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
+    supplier_raw = db.Column(db.Text, nullable=True)
+    items_json = db.Column(db.Text, nullable=True)  # JSON: [{"name","qty","unit","price_no_vat"}, ...]
+    issue_date = db.Column(db.Date, nullable=True)
+    due_date = db.Column(db.Date, nullable=True)
+    tax_supply_date = db.Column(db.Date, nullable=True)
+    payment_bank = db.Column(db.String(255), nullable=True)
+    payment_account = db.Column(db.String(100), nullable=True)
+    payment_iban = db.Column(db.String(100), nullable=True)
+    payment_swift = db.Column(db.String(20), nullable=True)
+    payment_vs = db.Column(db.String(50), nullable=True)
+    payment_ks = db.Column(db.String(50), nullable=True)
+    payment_message = db.Column(db.Text, nullable=True)
+    source_pdf_path = db.Column(db.String(500), nullable=True)
+    invoice_number = db.Column(db.String(20), nullable=True)
+
+
+class InvoiceSetting(db.Model):
+    """Globální nastavení fakturace (platební údaje, jeden řádek id=1)."""
+    __tablename__ = "invoice_settings"
+    id = db.Column(db.Integer, primary_key=True)
+    payment_bank = db.Column(db.String(255), nullable=True)
+    payment_account = db.Column(db.String(100), nullable=True)
+    payment_iban = db.Column(db.String(100), nullable=True)
+    payment_swift = db.Column(db.String(20), nullable=True)
+    payment_vs = db.Column(db.String(50), nullable=True)
+    payment_ks = db.Column(db.String(50), nullable=True)
+    payment_message = db.Column(db.Text, nullable=True)
+    payment_pdf_path = db.Column(db.String(500), nullable=True)
 
 
 class BranchCart(db.Model):
@@ -739,6 +1214,16 @@ def audit_log(action, entity_type=None, entity_id=None, details=None):
         db.session.rollback()
 
 
+@app.template_filter("normlines")
+def normlines_filter(s):
+    """Sjednotí řádkové zlomy: více prázdných řádků zredukuje na jeden (bez mezer mezi řádky)."""
+    if s is None:
+        return ""
+    s = (s or "").replace("\r\n", "\n").replace("\r", "\n")
+    s = re.sub(r"\n+", "\n", s).strip()
+    return s
+
+
 @app.template_filter("format_datetime")
 def format_datetime_filter(dt):
     if dt is None:
@@ -898,7 +1383,7 @@ def inject_user():
 
 
 def _sync_branches_from_auth():
-    """Synchronizuje pobočky s auth-system: přidá chybějící, smaže ty co v auth-system už nejsou (bez objednávek)."""
+    """Synchronizuje pobočky s auth-system: podle auth ID nebo kódu/jména přepíše názvy, přidá chybějící, smaže ty co v auth už nejsou (bez objednávek). Po přejmenování v auth se název u objednávek zobrazí správně."""
     auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
     try:
         r = requests.get(auth_url + "/api/branches", timeout=10)
@@ -907,14 +1392,32 @@ def _sync_branches_from_auth():
         data = r.json() if r.headers.get("content-type", "").startswith("application/json") else []
         if not isinstance(data, list):
             return
+        auth_ids = {item.get("id") for item in data if item.get("id") is not None}
+        auth_codes = {(item.get("code") or "").strip() for item in data if (item.get("code") or "").strip()}
         auth_names = {(item.get("name") or "").strip() for item in data if (item.get("name") or "").strip()}
         for item in data:
             name = (item.get("name") or "").strip()
-            if not name or Branch.query.filter_by(name=name).first():
+            code = (item.get("code") or "").strip() or None
+            auth_id = item.get("id") if item.get("id") is not None else None
+            if not name:
                 continue
-            db.session.add(Branch(name=name))
+            b = None
+            if auth_id is not None:
+                b = Branch.query.filter_by(auth_branch_id=auth_id).first()
+            if not b and code:
+                b = Branch.query.filter_by(code=code).first()
+            if not b:
+                b = Branch.query.filter_by(name=name).first()
+            if b:
+                b.name = name
+                if code is not None:
+                    b.code = code
+                if auth_id is not None:
+                    b.auth_branch_id = auth_id
+            else:
+                db.session.add(Branch(name=name, code=code, auth_branch_id=auth_id))
         for b in Branch.query.all():
-            if b.name in auth_names:
+            if (b.auth_branch_id is not None and b.auth_branch_id in auth_ids) or (b.code and b.code in auth_codes) or b.name in auth_names:
                 continue
             if Order.query.filter_by(branch_id=b.id).count() > 0:
                 continue
@@ -929,7 +1432,7 @@ def _sync_branches_from_auth():
 
 
 def _sync_warehouses_from_auth():
-    """Synchronizuje sklady s auth-system: přidá chybějící, smaže ty co v auth-system už nejsou (bez objednávek a příjmů)."""
+    """Synchronizuje sklady s auth-system podle kódu: přepíše názvy, přidá chybějící, smaže ty co v auth-system už nejsou (bez objednávek a příjmů)."""
     auth_url = (os.environ.get("AUTH_API_URL") or "http://localhost:8080").rstrip("/")
     try:
         r = requests.get(auth_url + "/api/warehouses", timeout=10)
@@ -938,14 +1441,30 @@ def _sync_warehouses_from_auth():
         data = r.json() if r.headers.get("content-type", "").startswith("application/json") else []
         if not isinstance(data, list):
             return
+        auth_codes = {(item.get("code") or "").strip() for item in data if (item.get("code") or "").strip()}
         auth_names = {(item.get("name") or "").strip() for item in data if (item.get("name") or "").strip()}
         for item in data:
             name = (item.get("name") or "").strip()
-            if not name or Warehouse.query.filter_by(name=name).first():
+            code = (item.get("code") or "").strip() or None
+            if not name:
                 continue
-            db.session.add(Warehouse(name=name, code=(item.get("code") or "").strip() or None))
+            w = None
+            if code:
+                w = Warehouse.query.filter_by(code=code).first()
+            if w:
+                w.name = name
+                if code is not None:
+                    w.code = code
+            else:
+                w = Warehouse.query.filter_by(name=name).first()
+                if w:
+                    w.name = name
+                    if code is not None:
+                        w.code = code
+                else:
+                    db.session.add(Warehouse(name=name, code=code))
         for w in Warehouse.query.all():
-            if w.name in auth_names:
+            if (w.code and w.code in auth_codes) or w.name in auth_names:
                 continue
             if Order.query.filter_by(warehouse_id=w.id).count() > 0 or GoodsReceipt.query.filter_by(warehouse_id=w.id).count() > 0:
                 continue
@@ -2236,6 +2755,7 @@ def admin_order_detail(order_id):
     )
     order_total_selling = _order_total_selling(order)
     warehouses = Warehouse.query.order_by(Warehouse.name).all()
+    branches = Branch.query.order_by(Branch.name).all()
     order_check_status = getattr(order, "check_status", None) or ""
     check_ok_items, check_error_items = _order_check_results(order) if order_check_status in ("verified", "error") else ([], [])
     item_scanned_qty = _order_item_scanned_qtys(order)
@@ -2249,6 +2769,7 @@ def admin_order_detail(order_id):
         order_audit_log=order_audit_log,
         order_total_selling=order_total_selling,
         warehouses=warehouses,
+        branches=branches,
         check_ok_items=check_ok_items,
         check_error_items=check_error_items,
         order_check_status=order_check_status,
@@ -2276,6 +2797,28 @@ def admin_order_set_warehouse(order_id):
         order.warehouse_id = None
         db.session.commit()
         flash("Sklad odeslání byl odebrán.")
+    return redirect(url_for("admin_order_detail", order_id=order_id))
+
+
+@app.route("/admin/orders/<int:order_id>/set-branch", methods=["POST"])
+@login_required
+@role_required("admin")
+def admin_order_set_branch(order_id):
+    """Změna pobočky (odběratele) u objednávky – např. když sklad vytvořil objednávku pro jinou pobočku."""
+    order = Order.query.get_or_404(order_id)
+    branch_id = request.form.get("branch_id", type=int)
+    if not branch_id:
+        flash("Vyberte pobočku.", "error")
+        return redirect(url_for("admin_order_detail", order_id=order_id))
+    branch = Branch.query.get(branch_id)
+    if not branch:
+        flash("Zvolená pobočka neexistuje.", "error")
+        return redirect(url_for("admin_order_detail", order_id=order_id))
+    old_name = order.branch.name if order.branch else "—"
+    order.branch_id = branch.id
+    db.session.commit()
+    audit_log("order_updated", "order", order.id, f"Admin změnil pobočku z {old_name} na {branch.name}")
+    flash("Pobočka (odběratel) u objednávky byla změněna.")
     return redirect(url_for("admin_order_detail", order_id=order_id))
 
 
@@ -2314,8 +2857,13 @@ def admin_monthly_overview():
         month_end = datetime(year + 1, 1, 1)
     else:
         month_end = datetime(year, month + 1, 1)
-    # Všechny objednávky v měsíci (bez filtru na status) – částečně odeslané se zahrnou
-    orders = Order.query.filter(Order.created_at >= month_start, Order.created_at < month_end).all()
+    # Všechny objednávky v měsíci (bez filtru na status) – částečně odeslané se zahrnou; načteme položky a produkt (nc)
+    orders = (
+        Order.query.filter(Order.created_at >= month_start, Order.created_at < month_end)
+        .options(joinedload(Order.items).joinedload(OrderItem.product), joinedload(Order.branch), joinedload(Order.warehouse))
+        .order_by(Order.created_at.desc())
+        .all()
+    )
     # (warehouse_id, branch_id) -> total nc a total pc
     totals_nc = defaultdict(float)
     totals_pc = defaultdict(float)
@@ -2341,6 +2889,12 @@ def admin_monthly_overview():
     keys_sorted = sorted(set(totals_nc.keys()) | set(totals_pc.keys()), key=lambda x: (str(x[0] or ""), x[1]))
     rows = []
     for (wh_id, br_id) in keys_sorted:
+        orders_for_row = [o for o in orders if o.warehouse_id == wh_id and o.branch_id == br_id]
+        order_summaries = []
+        for o in orders_for_row:
+            o_nc = sum((it.product.nc or 0) * (it.shipped_quantity or 0) for it in o.items if it.product and (it.shipped_quantity or 0) > 0)
+            o_pc = sum((it.product.pc or 0) * (it.shipped_quantity or 0) for it in o.items if it.product and (it.shipped_quantity or 0) > 0)
+            order_summaries.append({"order": o, "order_nc": o_nc, "order_pc": o_pc})
         rows.append({
             "warehouse_id": wh_id,
             "warehouse_name": warehouse_names.get(wh_id) or "—",
@@ -2348,6 +2902,7 @@ def admin_monthly_overview():
             "branch_name": branch_names.get(br_id) or "—",
             "total_nc": totals_nc.get((wh_id, br_id), 0),
             "total_pc": totals_pc.get((wh_id, br_id), 0),
+            "order_summaries": order_summaries,
         })
     # Příjmy zboží v daném měsíci – seskupené podle dodavatele (supplier)
     receipts = (
@@ -2368,12 +2923,17 @@ def admin_monthly_overview():
             receipt_by_supplier[key]["supplier_name"] = rec.supplier.supplier_name if rec.supplier else "Bez dodavatele"
         rec_nc = sum((it.product.nc or 0) * (it.quantity or 0) for it in rec.items if it.product)
         rec_pc = sum((it.product.pc or 0) * (it.quantity or 0) for it in rec.items if it.product)
+        items_with_nc = [
+            {"name": it.product.nazev if it.product else "—", "quantity": it.quantity or 0, "nc": it.product.nc if it.product else None, "line_nc": (it.product.nc or 0) * (it.quantity or 0) if it.product else 0}
+            for it in rec.items
+        ]
         receipt_by_supplier[key]["receipts"].append({
             "id": rec.id,
             "label": f"Příjem #{rec.id}",
             "received_at": rec.received_at,
             "total_nc": rec_nc,
             "total_pc": rec_pc,
+            "items": items_with_nc,
         })
         receipt_by_supplier[key]["total_nc"] += rec_nc
         receipt_by_supplier[key]["total_pc"] += rec_pc
@@ -2400,6 +2960,7 @@ def admin_monthly_overview():
         month=month,
         years=years,
         months=months,
+        status_cz=status_cz,
     )
 
 
@@ -2486,24 +3047,75 @@ def admin_user_delete(user_id):
 @login_required
 @role_required("admin")
 def admin_branches():
-    flash("Pobočky a sklady se spravují v centrálním systému (Směrovač → Správa uživatelů → Pobočky / Sklady).", "info")
-    return redirect(url_for("admin_management"))
+    if request.method == "POST" and request.form.get("action") == "sync":
+        _sync_branches_from_auth()
+        flash("Pobočky byly synchronizovány z centrálního systému (auth).", "success")
+        return redirect(url_for("admin_branches"))
+    if request.method == "POST" and request.form.get("action") == "create":
+        name = (request.form.get("name") or "").strip()
+        code = (request.form.get("code") or "").strip() or None
+        if name:
+            if Branch.query.filter_by(name=name).first():
+                flash(f'Pobočka s názvem "{name}" již existuje.', "warning")
+            else:
+                db.session.add(Branch(name=name, code=code))
+                db.session.commit()
+                flash("Pobočka byla přidána.", "success")
+        else:
+            flash("Název pobočky je povinný.", "warning")
+        return redirect(url_for("admin_branches"))
+    _sync_branches_from_auth()
+    branches = Branch.query.order_by(Branch.name).all()
+    edit_branch_id = request.args.get("edit", type=int)
+    return render_template(
+        "admin_branches.html",
+        branches=branches,
+        edit_branch_id=edit_branch_id,
+        user=get_current_user(),
+    )
 
 
 @app.route("/admin/branches/<int:branch_id>/edit", methods=["POST"])
 @login_required
 @role_required("admin")
 def admin_branch_edit(branch_id):
-    flash("Pobočky a sklady se spravují v centrálním systému (Směrovač → Správa uživatelů).", "info")
-    return redirect(url_for("admin_management"))
+    b = Branch.query.get_or_404(branch_id)
+    name = (request.form.get("name") or "").strip()
+    code = (request.form.get("code") or "").strip() or None
+    if not name:
+        flash("Název pobočky je povinný.", "warning")
+        return redirect(url_for("admin_branches", edit=branch_id))
+    other = Branch.query.filter(Branch.name == name, Branch.id != branch_id).first()
+    if other:
+        flash(f"Pobočka s názvem „{name}\u201d již existuje.", "warning")
+        return redirect(url_for("admin_branches", edit=branch_id))
+    b.name = name
+    b.code = code
+    b.street = (request.form.get("street") or "").strip() or None
+    b.municipality = (request.form.get("municipality") or "").strip() or None
+    b.ico = (request.form.get("ico") or "").strip() or None
+    b.dic = (request.form.get("dic") or "").strip() or None
+    db.session.commit()
+    flash("Pobočka byla upravena. U objednávek se nyní zobrazí aktuální název.", "success")
+    return redirect(url_for("admin_branches"))
 
 
 @app.route("/admin/branches/<int:branch_id>/delete", methods=["POST"])
 @login_required
 @role_required("admin")
 def admin_branch_delete(branch_id):
-    flash("Pobočky a sklady se spravují v centrálním systému (Směrovač → Správa uživatelů).", "info")
-    return redirect(url_for("admin_management"))
+    b = Branch.query.get_or_404(branch_id)
+    if Order.query.filter_by(branch_id=branch_id).count() > 0:
+        flash("Pobočku nelze smazat, má přiřazené objednávky.", "warning")
+        return redirect(url_for("admin_branches"))
+    User.query.filter_by(branch_id=branch_id).update({"branch_id": None})
+    for u in User.query.filter(User.branches.any(Branch.id == branch_id)).all():
+        u.branches.remove(b)
+    BranchCart.query.filter_by(branch_id=branch_id).delete()
+    db.session.delete(b)
+    db.session.commit()
+    flash("Pobočka byla smazána.", "success")
+    return redirect(url_for("admin_branches"))
 
 
 @app.route("/admin/warehouses", methods=["GET", "POST"])
@@ -2528,6 +3140,562 @@ def admin_warehouse_edit(warehouse_id):
 def admin_warehouse_delete(warehouse_id):
     flash("Pobočky a sklady se spravují v centrálním systému (Směrovač → Správa uživatelů).", "info")
     return redirect(url_for("admin_management"))
+
+
+# ---------- Fakturace (admin) ----------
+DEFAULT_SUPPLIER_RAW = "ApexVISIONARY s.r.o."
+
+
+def _fakturace_normlines(s):
+    """Sjednotí řádkové zlomy na jeden (bez prázdných řádků mezi textem)."""
+    if s is None or not isinstance(s, str):
+        return (s or "").strip() or None
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    s = re.sub(r"\n+", "\n", s).strip()
+    return s or None
+
+
+def _fakturace_branch_to_recipient_text(branch):
+    """Sestaví text odběratele z pobočky (název, adresa, IČO, DIČ)."""
+    if not branch:
+        return ""
+    parts = [branch.name]
+    if branch.code:
+        parts.append(" (" + branch.code + ")")
+    if getattr(branch, "street", None):
+        parts.append("\n" + branch.street)
+    if getattr(branch, "municipality", None):
+        parts.append("\n" + branch.municipality)
+    if getattr(branch, "ico", None):
+        parts.append("\nIČO: " + branch.ico)
+    if getattr(branch, "dic", None):
+        parts.append("\nDIČ: " + branch.dic)
+    return "\n".join(parts).strip() if parts else branch.name
+
+
+def _fakturace_supplier_to_text(supplier):
+    """Sestaví text dodavatele z dodavatele v DB."""
+    if not supplier:
+        return ""
+    parts = [supplier.supplier_name]
+    if supplier.street:
+        parts.append("\n" + supplier.street)
+    if supplier.municipality:
+        parts.append("\n" + supplier.municipality)
+    if supplier.ico:
+        parts.append("\nIČO: " + supplier.ico)
+    if supplier.dic:
+        parts.append("\nDIČ: " + supplier.dic)
+    return "\n".join(parts).strip() if parts else supplier.supplier_name
+
+
+def _fakturace_default_supplier():
+    """Vrátí výchozího dodavatele (ApexVISIONARY s.r.o.) z DB, nebo None."""
+    for name in ("ApexVISIONARY s.r.o.", "apexvisionary s.r.o.", "ApexVISIONARY"):
+        s = Supplier.query.filter(Supplier.supplier_name.ilike("%" + name.split()[0] + "%")).first()
+        if s:
+            return s
+    return Supplier.query.filter(Supplier.supplier_name.ilike("%apex%")).first()
+
+
+def _fakturace_next_invoice_number():
+    """Vrátí další číslo faktury v aktuálním roce: ROK + 5místné pořadové číslo (např. 202500001)."""
+    year = datetime.now().year
+    prefix = str(year)
+    existing = (
+        db.session.query(Invoice.invoice_number)
+        .filter(Invoice.invoice_number.isnot(None), Invoice.invoice_number != "", Invoice.invoice_number.like(prefix + "%"))
+        .all()
+    )
+    max_seq = 0
+    for (num,) in existing:
+        if num and len(num) >= len(prefix) + 1:
+            try:
+                seq = int(num[len(prefix) :])
+                if seq > max_seq:
+                    max_seq = seq
+            except ValueError:
+                pass
+    return prefix + str(max_seq + 1).zfill(5)
+
+
+def _fakturace_next_free_id():
+    """Vrátí nejmenší volné ID pro novou fakturu (reuse po smazání)."""
+    used = {r[0] for r in db.session.query(Invoice.id).all()}
+    if not used:
+        return 1
+    max_id = max(used)
+    for i in range(1, max_id + 2):
+        if i not in used:
+            return i
+    return max_id + 1
+
+
+@app.route("/admin/fakturace")
+@login_required
+@role_required("admin")
+def admin_fakturace():
+    """Seznam draftů faktur. Řazení: číslo faktury sestupně (null na konec), pak updated_at."""
+    invoices = (
+        Invoice.query.order_by(
+            db.case((Invoice.invoice_number.is_(None), 1), else_=0),
+            Invoice.invoice_number.desc(),
+            Invoice.updated_at.desc(),
+        ).all()
+    )
+    return render_template("admin_fakturace.html", invoices=invoices, user=get_current_user())
+
+
+@app.route("/admin/fakturace/new")
+@login_required
+@role_required("admin")
+def admin_fakturace_new():
+    """Vytvoření nového draftu s výchozími hodnotami."""
+    today = datetime.now().date()
+    default_sup = _fakturace_default_supplier()
+    pay = _fakturace_get_payment_settings()
+    next_id = _fakturace_next_free_id()
+    next_num = _fakturace_next_invoice_number()
+    inv = Invoice(
+        id=next_id,
+        recipient_raw="",
+        supplier_id=default_sup.id if default_sup else None,
+        supplier_raw=_fakturace_supplier_to_text(default_sup) if default_sup else DEFAULT_SUPPLIER_RAW,
+        items_json="[]",
+        issue_date=today,
+        due_date=today,
+        tax_supply_date=today,
+        payment_bank=pay.get("payment_bank"),
+        payment_account=pay.get("payment_account"),
+        payment_iban=pay.get("payment_iban"),
+        payment_swift=pay.get("payment_swift"),
+        payment_vs=next_num,
+        payment_ks=pay.get("payment_ks"),
+        payment_message=pay.get("payment_message"),
+        invoice_number=next_num,
+    )
+    db.session.add(inv)
+    db.session.commit()
+    return redirect(url_for("admin_fakturace_edit", invoice_id=inv.id))
+
+
+@app.route("/admin/fakturace/<int:invoice_id>", methods=["GET", "POST"])
+@login_required
+@role_required("admin")
+def admin_fakturace_edit(invoice_id):
+    """Editor draftu faktury. POST = klasické uložit. Odběratel i dodavatel z dropdownu (dodavatelé z DB)."""
+    inv = Invoice.query.get_or_404(invoice_id)
+    suppliers = Supplier.query.order_by(Supplier.supplier_name).all()
+    if request.method == "POST":
+        rs_id = request.form.get("recipient_supplier_id", type=int)
+        if rs_id:
+            sup = Supplier.query.get(rs_id)
+            inv.recipient_supplier_id = rs_id
+            inv.recipient_branch_id = None
+            inv.recipient_raw = _fakturace_supplier_to_text(sup) if sup else _fakturace_normlines(request.form.get("recipient_raw")) or None
+        else:
+            inv.recipient_supplier_id = None
+            inv.recipient_branch_id = None
+            inv.recipient_raw = _fakturace_normlines(request.form.get("recipient_raw")) or None
+        sup_id = request.form.get("supplier_id", type=int)
+        if sup_id:
+            sup = Supplier.query.get(sup_id)
+            inv.supplier_id = sup_id
+            inv.supplier_raw = _fakturace_supplier_to_text(sup) if sup else (_fakturace_normlines(request.form.get("supplier_raw")) or DEFAULT_SUPPLIER_RAW)
+        else:
+            inv.supplier_id = None
+            inv.supplier_raw = _fakturace_normlines(request.form.get("supplier_raw")) or DEFAULT_SUPPLIER_RAW
+        inv.items_json = (request.form.get("items_json") or "").strip() or "[]"
+        try:
+            if request.form.get("issue_date"):
+                inv.issue_date = datetime.strptime(request.form.get("issue_date"), "%Y-%m-%d").date()
+            if request.form.get("due_date"):
+                inv.due_date = datetime.strptime(request.form.get("due_date"), "%Y-%m-%d").date()
+            if request.form.get("tax_supply_date"):
+                inv.tax_supply_date = datetime.strptime(request.form.get("tax_supply_date"), "%Y-%m-%d").date()
+        except ValueError:
+            pass
+        inv.payment_bank = (request.form.get("payment_bank") or "").strip() or None
+        inv.payment_account = (request.form.get("payment_account") or "").strip() or None
+        inv.payment_iban = (request.form.get("payment_iban") or "").strip() or None
+        inv.payment_swift = (request.form.get("payment_swift") or "").strip() or None
+        inv.payment_vs = (request.form.get("payment_vs") or "").strip() or None
+        inv.payment_ks = (request.form.get("payment_ks") or "").strip() or None
+        inv.payment_message = (request.form.get("payment_message") or "").strip() or None
+        db.session.commit()
+        flash("Faktura uložena.", "success")
+        return redirect(url_for("admin_fakturace_edit", invoice_id=inv.id))
+    items = _fakturace_parse_items(inv)
+    supplier_texts = {s.id: _fakturace_supplier_to_text(s) for s in suppliers}
+    return render_template(
+        "admin_fakturace_edit.html",
+        invoice=inv,
+        items=items,
+        suppliers=suppliers,
+        supplier_texts=supplier_texts,
+        user=get_current_user(),
+        payment_settings=_fakturace_get_payment_settings(),
+    )
+
+
+@app.route("/admin/fakturace/<int:invoice_id>/delete", methods=["POST"])
+@login_required
+@role_required("admin")
+def admin_fakturace_delete(invoice_id):
+    """Admin: smazání draftu faktury z databáze."""
+    inv = Invoice.query.get_or_404(invoice_id)
+    db.session.delete(inv)
+    db.session.commit()
+    flash("Faktura byla smazána.", "success")
+    return redirect(url_for("admin_fakturace"))
+
+
+@app.route("/admin/fakturace/<int:invoice_id>/patch", methods=["PATCH", "POST"])
+@login_required
+@role_required("admin")
+def admin_fakturace_patch(invoice_id):
+    """AJAX průběžné ukládání draftu (JSON tělo)."""
+    inv = Invoice.query.get_or_404(invoice_id)
+    data = request.get_json(silent=True) or {}
+    if "recipient_supplier_id" in data:
+        rs_id = data.get("recipient_supplier_id")
+        if rs_id:
+            sup = Supplier.query.get(rs_id)
+            inv.recipient_supplier_id = rs_id
+            inv.recipient_branch_id = None
+            inv.recipient_raw = _fakturace_supplier_to_text(sup) if sup else _fakturace_normlines(data.get("recipient_raw")) or None
+        else:
+            inv.recipient_supplier_id = None
+            inv.recipient_branch_id = None
+            inv.recipient_raw = _fakturace_normlines(data.get("recipient_raw")) or None
+    elif "recipient_raw" in data:
+        inv.recipient_raw = _fakturace_normlines(data.get("recipient_raw")) or None
+    if "supplier_id" in data:
+        sup_id = data.get("supplier_id")
+        if sup_id:
+            sup = Supplier.query.get(sup_id)
+            inv.supplier_id = sup_id
+            inv.supplier_raw = _fakturace_supplier_to_text(sup) if sup else None
+        else:
+            inv.supplier_id = None
+            inv.supplier_raw = _fakturace_normlines(data.get("supplier_raw")) or DEFAULT_SUPPLIER_RAW
+    elif "supplier_raw" in data:
+        inv.supplier_raw = _fakturace_normlines(data.get("supplier_raw")) or DEFAULT_SUPPLIER_RAW
+    if "items_json" in data:
+        inv.items_json = (data.get("items_json") or "").strip() or "[]"
+    if "issue_date" in data and data["issue_date"]:
+        try:
+            inv.issue_date = datetime.strptime(data["issue_date"], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            pass
+    if "due_date" in data and data["due_date"]:
+        try:
+            inv.due_date = datetime.strptime(data["due_date"], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            pass
+    if "tax_supply_date" in data:
+        if data["tax_supply_date"]:
+            try:
+                inv.tax_supply_date = datetime.strptime(data["tax_supply_date"], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                pass
+        else:
+            inv.tax_supply_date = None
+    if "payment_bank" in data:
+        inv.payment_bank = (data.get("payment_bank") or "").strip() or None
+    if "payment_account" in data:
+        inv.payment_account = (data.get("payment_account") or "").strip() or None
+    if "payment_iban" in data:
+        inv.payment_iban = (data.get("payment_iban") or "").strip() or None
+    if "payment_swift" in data:
+        inv.payment_swift = (data.get("payment_swift") or "").strip() or None
+    if "payment_vs" in data:
+        inv.payment_vs = (data.get("payment_vs") or "").strip() or None
+    if "payment_ks" in data:
+        inv.payment_ks = (data.get("payment_ks") or "").strip() or None
+    if "payment_message" in data:
+        inv.payment_message = (data.get("payment_message") or "").strip() or None
+    db.session.commit()
+    return jsonify({"ok": True, "updated_at": inv.updated_at.isoformat() if inv.updated_at else None})
+
+
+@app.route("/admin/fakturace/import-pdf", methods=["POST"])
+@login_required
+@role_required("admin")
+def admin_fakturace_import_pdf():
+    """Import dodacího listu z PDF; vytvoří nový draft a naplní pole."""
+    f = request.files.get("file")
+    if not f or not f.filename or not f.filename.lower().endswith(".pdf"):
+        flash("Nahrajte soubor PDF (dodací list).", "error")
+        return redirect(url_for("admin_fakturace"))
+    upload_dir = app.config["UPLOAD_FOLDER"]
+    os.makedirs(upload_dir, exist_ok=True)
+    safe_name = f"fakturace_dodaci_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{f.filename[:50]}"
+    filepath = os.path.join(upload_dir, safe_name)
+    try:
+        f.save(filepath)
+    except Exception:
+        flash("Nepodařilo se uložit soubor.", "error")
+        return redirect(url_for("admin_fakturace"))
+    parsed = _fakturace_parse_delivery_note_pdf(filepath)
+    today = datetime.now().date()
+    pay = _fakturace_get_payment_settings()
+    default_sup = _fakturace_default_supplier()
+    next_id = _fakturace_next_free_id()
+    next_num = _fakturace_next_invoice_number()
+    inv = Invoice(
+        id=next_id,
+        recipient_raw="",
+        supplier_id=default_sup.id if default_sup else None,
+        supplier_raw=_fakturace_supplier_to_text(default_sup) if default_sup else DEFAULT_SUPPLIER_RAW,
+        items_json=parsed.get("items_json") or "[]",
+        issue_date=today,
+        due_date=today,
+        tax_supply_date=today,
+        payment_bank=pay.get("payment_bank"),
+        payment_account=pay.get("payment_account"),
+        payment_iban=pay.get("payment_iban"),
+        payment_swift=pay.get("payment_swift"),
+        payment_vs=next_num,
+        payment_ks=pay.get("payment_ks"),
+        payment_message=pay.get("payment_message"),
+        source_pdf_path=filepath,
+        invoice_number=next_num,
+    )
+    db.session.add(inv)
+    db.session.commit()
+    flash("Dodací list importován. Upravte údaje v editoru.", "success")
+    return redirect(url_for("admin_fakturace_edit", invoice_id=inv.id))
+
+
+@app.route("/admin/fakturace/ares-refresh", methods=["POST"])
+@login_required
+@role_required("admin")
+def admin_fakturace_ares_refresh():
+    """Doplní IČO/DIČ u dodavatelů z ARES (pro ty, kteří mají vyplněné IČO)."""
+    updated = 0
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; Objednavac/1.0; +https://github.com)",
+    }
+    for s in Supplier.query.filter(Supplier.ico.isnot(None), Supplier.ico != "").all():
+        ico = (s.ico or "").strip()
+        if not ico:
+            continue
+        try:
+            r = requests.get(
+                f"https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/{ico}",
+                timeout=15,
+                headers=headers,
+            )
+            if r.status_code != 200:
+                continue
+            data = r.json()
+            # Různé struktury odpovědi ARES (plochá nebo vnořená)
+            subj = data if isinstance(data, dict) else {}
+            if isinstance(data.get("subjekt"), dict):
+                subj = data["subjekt"]
+            elif isinstance(data.get("rejstrik"), list) and data["rejstrik"]:
+                subj = data["rejstrik"][0] if isinstance(data["rejstrik"][0], dict) else subj
+            dic = (subj.get("dic") or subj.get("dicPlatce") or "").strip() or None
+            if dic and (len(dic) == 8 and not dic.upper().startswith("CZ")):
+                dic = "CZ" + dic
+            changed = False
+            if dic and dic != (s.dic or ""):
+                s.dic = dic[:20]
+                changed = True
+            obch = (subj.get("obchodniJmeno") or "").strip()
+            if obch and obch != (s.supplier_name or ""):
+                s.supplier_name = obch[:255]
+                changed = True
+            adr = subj.get("adresa") or subj.get("sidlo") or {}
+            if isinstance(adr, list) and adr:
+                adr = adr[0] if isinstance(adr[0], dict) else {}
+            ulice = (adr.get("ulice") or adr.get("nazevUlice") or "").strip()
+            if ulice and ulice != (s.street or ""):
+                s.street = ulice[:255]
+                changed = True
+            obec = (adr.get("nazevObce") or adr.get("obec") or "").strip()
+            if obec and obec != (s.municipality or ""):
+                s.municipality = obec[:255]
+                changed = True
+            if changed:
+                updated += 1
+        except Exception:
+            continue
+    db.session.commit()
+    flash(f"ARES: u {updated} dodavatelů doplněno DIČ a údaje.", "success")
+    return redirect(url_for("warehouse_suppliers"))
+
+
+def _fakturace_parse_items(inv):
+    """Vrátí seznam položek z invoice.items_json s doplněným line_total."""
+    try:
+        raw = json.loads(inv.items_json or "[]")
+    except Exception:
+        raw = []
+    out = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        qty = 0.0
+        try:
+            q = row.get("qty") or 0
+            qty = float(q) if isinstance(q, (int, float)) else float(str(q).replace(",", "."))
+        except (ValueError, TypeError):
+            pass
+        price = 0.0
+        try:
+            p = row.get("price_no_vat") or 0
+            price = float(p) if isinstance(p, (int, float)) else float(str(p).replace(",", "."))
+        except (ValueError, TypeError):
+            pass
+        row = dict(row)
+        # Cena celkem položky = množství × cena
+        row["line_total"] = round(qty * price, 2)
+        out.append(row)
+    return out
+
+
+@app.route("/admin/fakturace/<int:invoice_id>/print-tax")
+@login_required
+@role_required("admin")
+def admin_fakturace_print_tax(invoice_id):
+    """Náhled pro tisk – Faktura daňový doklad (s datem zdanitelného plnění, s okýnkem příjemce)."""
+    inv = Invoice.query.get_or_404(invoice_id)
+    items = _fakturace_parse_items(inv)
+    total_no_vat = 0.0
+    for item in items:
+        lt = item.get("line_total")
+        if lt is None or lt == "":
+            continue
+        try:
+            total_no_vat += float(lt) if isinstance(lt, (int, float)) else float(str(lt).replace(",", "."))
+        except (ValueError, TypeError):
+            pass
+    # Zaokrouhlení celkové ceny: > 0,5 = 1, < 0,5 = 0 (na celá čísla)
+    total_no_vat_rounded = int(total_no_vat + 0.5) if total_no_vat >= 0 else int(total_no_vat - 0.5)
+    return render_template(
+        "admin_fakturace_print_tax.html",
+        invoice=inv,
+        items=items,
+        total_no_vat=total_no_vat_rounded,
+        user=get_current_user(),
+    )
+
+
+@app.route("/admin/fakturace/<int:invoice_id>/print-invoice")
+@login_required
+@role_required("admin")
+def admin_fakturace_print_invoice(invoice_id):
+    """Náhled pro tisk – Faktura (bez data zdanitelného plnění, bez okýnka příjemce)."""
+    inv = Invoice.query.get_or_404(invoice_id)
+    items = _fakturace_parse_items(inv)
+    return render_template(
+        "admin_fakturace_print_invoice.html",
+        invoice=inv,
+        items=items,
+        user=get_current_user(),
+    )
+
+
+def _fakturace_spayd_string(iban, amount, vs=None, ks=None, message=None, due_date=None, swift=None):
+    """Sestaví SPAYD řetězec pro QR platbu dle specifikace qr-platba.cz (SPD*1.0*ACC:...*AM:...*CC:CZK*...)."""
+    iban_clean = (iban or "").replace(" ", "").upper()
+    if not iban_clean:
+        return ""
+    acc_val = iban_clean
+    if swift:
+        acc_val += "+" + (swift or "").replace(" ", "").upper()
+    tokens = ["SPD*1.0", "ACC:" + acc_val, "AM:%.2f" % round(float(amount), 2), "CC:CZK"]
+    if vs:
+        vs_str = "".join(c for c in str(vs)[:10] if c.isdigit())
+        if vs_str:
+            tokens.append("X-VS:" + vs_str)
+    if ks:
+        ks_str = "".join(c for c in str(ks)[:10] if c.isdigit())
+        if ks_str:
+            tokens.append("X-KS:" + ks_str)
+    if message:
+        msg_clean = str(message)[:60].replace("*", " ").replace("\n", " ").replace("\r", " ")
+        msg_clean = "".join(c if c.isalnum() or c in " .,+-/:%" else " " for c in msg_clean).strip()
+        if msg_clean:
+            tokens.append("MSG:" + msg_clean)
+    if due_date:
+        tokens.append("DT:" + due_date.strftime("%Y%m%d"))
+    return "*".join(tokens)
+
+
+@app.route("/admin/fakturace/<int:invoice_id>/qr")
+@login_required
+@role_required("admin")
+def admin_fakturace_qr(invoice_id):
+    """Vrátí obrázek QR kódu pro platbu (SPAYD) podle draftu faktury."""
+    inv = Invoice.query.get_or_404(invoice_id)
+    amount = 0.0
+    try:
+        items = json.loads(inv.items_json or "[]")
+        for it in items:
+            qty = float(str(it.get("qty") or "0").replace(",", "."))
+            price = float(str(it.get("price_no_vat") or "0").replace(",", "."))
+            amount += qty * price
+    except Exception:
+        pass
+    amount = round(amount, 2)
+    iban = (inv.payment_iban or "").strip().replace(" ", "")
+    if not iban:
+        from flask import Response
+        return Response("", status=404, mimetype="text/plain")
+    vs = (inv.payment_vs or "").strip() or str(inv.invoice_number or inv.id)
+    ks = (inv.payment_ks or "").strip()
+    msg = (inv.payment_message or "")[:60]
+    due_dt = inv.due_date
+    swift = (inv.payment_swift or "").strip()
+    spayd = _fakturace_spayd_string(iban, amount, vs=vs or None, ks=ks or None, message=msg or None, due_date=due_dt, swift=swift or None)
+    import io
+    buf = io.BytesIO()
+    try:
+        from qrplatba import QRPlatbaGenerator
+        gen = QRPlatbaGenerator(iban, amount, x_vs=vs or None, message=msg or None, due_date=datetime.combine(due_dt, datetime.min.time()) if due_dt else None)
+        img = gen.make_image()
+        if hasattr(img, "save"):
+            img.save(buf, format="PNG")
+            buf.seek(0)
+            from flask import send_file
+            return send_file(buf, mimetype="image/png")
+        buf = io.BytesIO(img.encode() if hasattr(img, "encode") else str(img).encode())
+        buf.seek(0)
+        from flask import send_file
+        return send_file(buf, mimetype="image/svg+xml")
+    except ImportError:
+        pass
+    except Exception:
+        pass
+    buf2 = io.BytesIO()
+    try:
+        import segno
+        qr = segno.make(spayd)
+        qr.save(buf2, kind="png", scale=4)
+        buf2.seek(0)
+        from flask import send_file
+        return send_file(buf2, mimetype="image/png")
+    except ImportError:
+        try:
+            import qrcode
+            qr = qrcode.QRCode(version=1, box_size=4, border=2)
+            qr.add_data(spayd)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+            img.save(buf2, format="PNG")
+            buf2.seek(0)
+            from flask import send_file
+            return send_file(buf2, mimetype="image/png")
+        except ImportError:
+            from flask import Response
+            return Response("", status=404, mimetype="text/plain")
+    except Exception:
+        from flask import Response
+        return Response("", status=500, mimetype="text/plain")
 
 
 @app.route("/admin/products")
@@ -3254,58 +4422,6 @@ def _import_orders_csv(path):
     return created, errors
 
 
-def _import_vydejky_csv(path):
-    """Import výdejek z CSV: order_id, order_item_id, shipped_quantity. Aktualizuje odeslané množství.
-    Položky objednávky, které v importu nejsou, se označí jako sklad nemá (unavailable=True)."""
-    import csv
-    from collections import defaultdict
-    updated = 0
-    errors = []
-    # order_id -> set of order_item_id, které jsou v importu
-    order_item_ids_in_import = defaultdict(set)
-    with open(path, "r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        if not reader.fieldnames:
-            raise ValueError("Prázdný soubor nebo chybějící hlavička")
-        cols = [c.strip().lower().replace(" ", "_") for c in reader.fieldnames]
-        for row in reader:
-            row = {cols[i]: (v.strip() if isinstance(v, str) else v) for i, v in enumerate(row.values()) if i < len(cols)}
-            oid = row.get("order_id")
-            iid = row.get("order_item_id") or row.get("item_id")
-            shipped = row.get("shipped_quantity")
-            if not oid or not iid:
-                errors.append("Chybějící order_id nebo order_item_id")
-                continue
-            try:
-                oid, iid = int(oid), int(iid)
-                shipped = float(shipped) if shipped not in (None, "") else 0
-            except (TypeError, ValueError):
-                errors.append(f"Neplatné číslo: order_id={oid}, item_id={iid}, shipped={shipped}")
-                continue
-            if shipped < 0:
-                continue
-            item = OrderItem.query.filter_by(id=iid, order_id=oid).first()
-            if not item:
-                errors.append(f"Položka order_item_id={iid} v objednávce {oid} neexistuje")
-                continue
-            item.shipped_quantity = shipped
-            order_item_ids_in_import[oid].add(iid)
-            order = Order.query.get(oid)
-            if order:
-                _update_order_status_from_items(order)
-            updated += 1
-    # Položky v objednávce, které v importu nebyly → sklad nemá
-    for oid, item_ids_in_import in order_item_ids_in_import.items():
-        order = Order.query.get(oid)
-        if not order:
-            continue
-        for item in order.items:
-            if item.id not in item_ids_in_import:
-                item.unavailable = True
-    db.session.commit()
-    return updated, errors
-
-
 @app.route("/admin/import-orders", methods=["POST"])
 @login_required
 @role_required("admin")
@@ -3330,36 +4446,6 @@ def admin_import_orders():
         flash(msg)
     except Exception as e:
         flash(f"Chyba importu objednávek: {e}", "error")
-    finally:
-        if os.path.exists(path):
-            os.remove(path)
-    return redirect(url_for("admin_import"))
-
-
-@app.route("/admin/import-vydejky", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_import_vydejky():
-    f = request.files.get("file")
-    if not f or not f.filename:
-        flash("Vyberte soubor.", "error")
-        return redirect(url_for("admin_import"))
-    ext = os.path.splitext(f.filename)[1].lower()
-    if ext != ".csv":
-        flash("Import výdejek podporuje pouze CSV.", "error")
-        return redirect(url_for("admin_import"))
-    path = os.path.join(app.config["UPLOAD_FOLDER"], f.filename)
-    f.save(path)
-    try:
-        updated, errors = _import_vydejky_csv(path)
-        msg = f"Import výdejek: aktualizováno {updated} položek."
-        if errors:
-            msg += " Chyby: " + "; ".join(errors[:10])
-            if len(errors) > 10:
-                msg += f" (+{len(errors) - 10} dalších)"
-        flash(msg)
-    except Exception as e:
-        flash(f"Chyba importu výdejek: {e}", "error")
     finally:
         if os.path.exists(path):
             os.remove(path)
@@ -3616,6 +4702,8 @@ def warehouse_supplier_edit(supplier_id):
     s.supplier_name = new_name
     s.street = (request.form.get("street") or "").strip() or None
     s.municipality = (request.form.get("municipality") or "").strip() or None
+    s.ico = (request.form.get("ico") or "").strip() or None
+    s.dic = (request.form.get("dic") or "").strip() or None
     db.session.commit()
     flash("Dodavatel byl upraven.")
     return redirect(url_for("warehouse_suppliers"))
@@ -4394,7 +5482,12 @@ def warehouse_order_check_scan(order_id):
             OrderItemCheck.order_item_id == it.id
         ).scalar() or 0
         item_totals[it.id] = s
-    all_checked = all(item_totals.get(it.id, 0) > 0 for it in all_items_with_product)
+    total_scanned = sum(item_totals.get(it.id, 0) for it in all_items_with_product)
+    total_expected = sum(it.shipped_quantity or 0 for it in all_items_with_product)
+    all_checked = (
+        all(item_totals.get(it.id, 0) > 0 for it in all_items_with_product)
+        or (total_scanned >= total_expected and total_expected > 0)
+    )
     all_correct = all(
         abs((item_totals.get(it.id) or 0) - (it.shipped_quantity or 0)) < 0.001
         for it in all_items_with_product
@@ -4424,8 +5517,13 @@ def warehouse_order_check_scan(order_id):
 
 
 def _order_check_recompute_status(order, all_items_with_product, item_totals):
-    """Po úpravě skenů přepočítá order.check_status (verified/error)."""
-    all_checked = all(item_totals.get(it.id, 0) > 0 for it in all_items_with_product)
+    """Po úpravě skenů přepočítá order.check_status (verified/error). Kontrola je dokončená i když celkové naskenované množství >= očekávané (např. 2× stejný EAN)."""
+    total_scanned = sum(item_totals.get(it.id, 0) for it in all_items_with_product)
+    total_expected = sum(it.shipped_quantity or 0 for it in all_items_with_product)
+    all_checked = (
+        all(item_totals.get(it.id, 0) > 0 for it in all_items_with_product)
+        or (total_scanned >= total_expected and total_expected > 0)
+    )
     all_correct = all(
         abs((item_totals.get(it.id) or 0) - (it.shipped_quantity or 0)) < 0.001
         for it in all_items_with_product

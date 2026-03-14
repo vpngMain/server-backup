@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Vaping směnovač – interní plánování směn">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Směnovač">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>{% block title %}Vaping směnovač{% endblock %}</title>
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('api_icon', size=180) }}">
+  <link rel="preload" href="{{ url_for('static', filename='css/style.css') }}" as="style">
+  <link rel="preload" href="{{ url_for('static', filename='js/app.js') }}" as="script">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  {% block body %}{% endblock %}
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+  <div id="pwa-install-banner" class="pwa-banner hidden" role="dialog" aria-label="Přidat na plochu">
+    <p>Přidej si Směnovač na plochu pro rychlý přístup</p>
+    <div class="pwa-banner-actions">
+      <button type="button" class="btn btn-primary btn-sm" id="pwa-install-btn">Přidat</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="pwa-install-dismiss">Teď ne</button>
+    </div>
+  </div>
+  {% block scripts %}{% endblock %}
+  <script>
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", {scope: "/"});
+    (function(){
+      let deferredPrompt;
+      const banner = document.getElementById("pwa-install-banner");
+      const installBtn = document.getElementById("pwa-install-btn");
+      const dismissBtn = document.getElementById("pwa-install-dismiss");
+      if (!banner) return;
+      window.addEventListener("beforeinstallprompt", function(e) {
+        e.preventDefault();
+        deferredPrompt = e;
+        if (!localStorage.getItem("pwa-install-dismissed")) banner.classList.remove("hidden");
+      });
+      installBtn?.addEventListener("click", function() {
+        if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt.userChoice.then(function(r) { if (r.outcome === "accepted") banner.classList.add("hidden"); deferredPrompt = null; }); }
+      });
+      dismissBtn?.addEventListener("click", function() { banner.classList.add("hidden"); localStorage.setItem("pwa-install-dismissed", "1"); });
+    })();
+  </script>
+</body>
+</html>

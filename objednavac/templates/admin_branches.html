@@ -2,7 +2,11 @@
 {% block title %}Admin – Pobočky{% endblock %}
 {% block content %}
 <h2>Pobočky</h2>
-<p class="hint">Pobočka = místo (prodejna). Uživatelé s rolí „branch“ se přiřazují k pobočce v sekci Uživatelé.</p>
+<p class="hint">Pobočka = místo (prodejna). Uživatelé s rolí „branch“ se přiřazují k pobočce v sekci Uživatelé. Při otevření stránky se pobočky synchronizují z centrálního systému (auth). Pokud admin přejmenoval pobočku v auth (např. Teplice → TP-Bene), po synchronizaci nebo po přihlášení se u objednávek zobrazí nový název; příp. zde pobočku můžete upravit ručně.</p>
+<form method="post" action="{{ url_for('admin_branches') }}" class="form-inline" style="margin-bottom: 1rem;">
+    <input type="hidden" name="action" value="sync">
+    <button type="submit" class="btn">Synchronizovat pobočky z auth</button>
+</form>
 <form method="post" action="{{ url_for('admin_branches') }}" class="form-inline">
     <input type="hidden" name="action" value="create">
     <div class="form-group">
@@ -20,6 +24,7 @@
         <tr>
             <th>Název</th>
             <th>Kód</th>
+            <th>IČO / DIČ</th>
             <th>Akce</th>
         </tr>
     </thead>
@@ -27,8 +32,8 @@
         {% for b in branches %}
         <tr>
             {% if b.id == edit_branch_id %}
-            <td colspan="3">
-                <form method="post" action="{{ url_for('admin_branch_edit', branch_id=b.id) }}" class="form-inline">
+            <td colspan="4">
+                <form method="post" action="{{ url_for('admin_branch_edit', branch_id=b.id) }}" class="form-inline form-stacked">
                     <div class="form-group">
                         <label>Název</label>
                         <input type="text" name="name" value="{{ b.name }}" required>
@@ -37,6 +42,22 @@
                         <label>Kód</label>
                         <input type="text" name="code" value="{{ b.code or '' }}">
                     </div>
+                    <div class="form-group">
+                        <label>Ulice</label>
+                        <input type="text" name="street" value="{{ b.street or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Obec</label>
+                        <input type="text" name="municipality" value="{{ b.municipality or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label>IČO</label>
+                        <input type="text" name="ico" value="{{ b.ico or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label>DIČ</label>
+                        <input type="text" name="dic" value="{{ b.dic or '' }}">
+                    </div>
                     <button type="submit" class="btn btn-sm">Uložit</button>
                     <a href="{{ url_for('admin_branches') }}" class="btn btn-sm">Zrušit</a>
                 </form>
@@ -44,6 +65,7 @@
             {% else %}
             <td>{{ b.name }}</td>
             <td>{{ b.code or '—' }}</td>
+            <td>{{ b.ico or '—' }} / {{ b.dic or '—' }}</td>
             <td>
                 <a href="{{ url_for('admin_branches') }}?edit={{ b.id }}" class="btn btn-sm">Upravit</a>
                 <form method="post" action="{{ url_for('admin_branch_delete', branch_id=b.id) }}" class="inline-form" onsubmit="return confirm('Smazat pobočku {{ b.name }}?');">

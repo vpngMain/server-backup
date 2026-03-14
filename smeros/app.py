@@ -30,6 +30,7 @@ apps_all = [
     {"name": "Objednávač", "port": 8082, "code": "objednavac", "description": "Interní objednávkový systém", "icon": "🧾"},
     {"name": "DPD - počítač", "port": 8083, "code": "dpd", "description": "Systém pro vyplácení DPD dobírek", "icon": "🚚"},
     {"name": "Správa uživatelů", "port": 8080, "code": "auth", "description": "Centrální databáze uživatelů – přihlášení do všech aplikací", "icon": "👤"},
+    {"name": "Smenos","port": 8084,"code": "auth", "description": "smeny", "icon": ""},
 ]
 
 

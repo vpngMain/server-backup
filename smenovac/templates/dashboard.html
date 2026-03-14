@@ -1,0 +1,650 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block body %}
+<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Tmavý/světlý režim" title="Tmavý/světlý režim">🌙</button>
+<div class="dashboard">
+  <header class="mobile-header" id="mobile-header">
+    <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+    <span class="mobile-header-title">Směnovač</span>
+  </header>
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+  <aside class="sidebar" id="sidebar">
+    <a href="/" class="sidebar-brand">Vaping směnovač</a>
+    <nav class="sidebar-nav">
+      <a href="#" data-view="prehled" class="nav-item" data-accountant-hide><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>Přehled</a>
+      <a href="#" data-view="kalendar" class="nav-item active" data-accountant-hide><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>Kalendář</a>
+      <a href="#" data-view="zadosti" class="nav-item" data-accountant-hide><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>Žádosti</a>
+      <a href="#" data-view="pobocky" class="nav-item" data-admin-only data-accountant-hide><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>Pobočky</a>
+      <a href="#" data-view="ucetni" class="nav-item" data-full-admin-only><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>Účetní</a>
+      <a href="#" data-view="zamestnanci" class="nav-item" data-admin-only data-accountant-hide><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Zaměstnanci</a>
+      <a href="#" data-view="presety" class="nav-item" data-admin-only data-accountant-hide><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>Presety</a>
+      <a href="#" data-view="hodiny" class="nav-item"><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span><span data-accountant-only style="display:none">Přehled hodin</span><span data-accountant-hide>Hodiny</span></a>
+      <a href="#" data-view="kdo-s-kym" class="nav-item" data-admin-only data-accountant-hide><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Kdo s kým</a>
+      <a href="#" data-view="exporty" class="nav-item" data-accountant-hide><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>Exporty</a>
+    </nav>
+    <div class="sidebar-foot">
+      <a href="{{ url_for('logout') }}" class="nav-item"><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span>Odhlásit</a>
+    </div>
+  </aside>
+  <main class="main">
+    <div id="view-prehled" class="view">
+      <header class="view-header view-header-compact">
+        <h1><span class="title-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>Přehled</h1>
+      </header>
+      <div class="prehled-admin" id="prehled-admin" data-admin-only>
+        <div class="overview-cards" id="overview-cards"></div>
+      <section class="section" data-admin-only>
+        <div class="coverage-section-header">
+          <h2><span class="section-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>Pokrytí směn – <span id="coverage-month-title">celý měsíc</span></h2>
+          <div class="coverage-toolbar">
+            <input type="month" id="coverage-month" class="input input-sm">
+            <button type="button" class="btn btn-sm btn-primary" id="btn-load-coverage">Načíst / Obnovit</button>
+          </div>
+        </div>
+        <p class="text-muted mb-3" style="font-size:0.8125rem">Směny musí pokrývat celou otevírací dobu pobočky (Pobočky → Upravit). Automaticky se obnovuje po změnách.</p>
+        <div id="coverage-grid-wrap" class="card card-overflow"></div>
+      </section>
+      <section class="section">
+        <h2><span class="section-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>Čekající žádosti</h2>
+        <div id="overview-requests" class="card card-overflow"></div>
+      </section>
+      <section class="section">
+        <h2><span class="section-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>Přehled zpoždění</h2>
+        <p class="text-muted mb-2" style="font-size:0.8125rem">Zaměstnanci pozdě více než 10 minut (tolerance). Zaměstnanec toleranci nevidí.</p>
+        <div class="form-row form-row-inline mb-2">
+          <input type="date" id="late-from" class="input input-sm">
+          <span class="text-muted">–</span>
+          <input type="date" id="late-to" class="input input-sm">
+          <button type="button" class="btn btn-sm btn-primary" id="btn-load-late">Obnovit</button>
+        </div>
+        <div id="overview-late" class="card card-overflow"></div>
+      </section>
+      </div>
+      <div class="prehled-employee" id="prehled-employee" data-employee-only>
+        <div class="employee-hello card mb-4">
+          <h2 class="employee-greeting" id="employee-greeting"></h2>
+        </div>
+        <div class="employee-today card mb-4">
+          <h3 class="section-title"><span class="section-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span><span id="employee-today-title">Dnes</span></h3>
+          <div id="employee-today-content" class="employee-today-content"></div>
+        </div>
+        <section class="section employee-week-section">
+          <h2><span class="section-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>Můj rozvrh – tento týden</h2>
+          <div id="employee-week-shifts" class="employee-week-grid card card-overflow"></div>
+        </section>
+        <section class="section">
+          <h2><span class="section-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>Žádosti, které se vás týkají</h2>
+          <p class="text-muted mb-2" style="font-size:0.8125rem">Volné směny ve vaší pobočce – můžete se přihlásit na záskok. Výměny směn (někdo chce vyměnit s vámi).</p>
+          <div id="employee-requests-for-me" class="card card-overflow"></div>
+        </section>
+      </div>
+    </div>
+    <div id="view-zadosti" class="view">
+      <header class="view-header">
+        <h1><span class="title-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>Žádosti</h1>
+        <p class="text-muted view-subtitle" style="margin:0;font-size:0.875rem">Registrace, reset hesla, volno, záskoky a výměny směn.</p>
+        <button type="button" class="btn btn-primary" id="btn-add-request" data-employee-only>+ Nová žádost</button>
+      </header>
+      <div id="requests-zadosti-tabs" class="flex gap-2 mb-4" data-full-admin-only style="display:none">
+        <button type="button" class="btn btn-sm requests-tab active" data-tab="registrace">Registrace</button>
+        <button type="button" class="btn btn-sm requests-tab" data-tab="reset-hesla">Reset hesla</button>
+        <button type="button" class="btn btn-sm requests-tab" data-tab="uzivatele">Uživatelé a role</button>
+        <button type="button" class="btn btn-sm requests-tab" data-tab="volno-zaskoky">Volno, záskoky</button>
+      </div>
+      <div id="requests-registrace" class="requests-panel" data-full-admin-only style="display:none">
+        <h2 class="section-title">Žádosti o registraci</h2>
+        <p class="text-muted mb-2" style="font-size:0.875rem">Schválením odešlete e-mail s odkazem na vytvoření hesla.</p>
+        <div id="registration-requests-list" class="card card-overflow"></div>
+      </div>
+      <div id="requests-reset-hesla" class="requests-panel hidden" data-full-admin-only style="display:none">
+        <h2 class="section-title">Žádosti o reset hesla</h2>
+        <p class="text-muted mb-2" style="font-size:0.875rem">Uživatelé žádají přes „Zapomněli jste heslo?“ – schválením odešlete e-mail s odkazem na nastavení nového hesla.</p>
+        <div id="password-reset-requests-list" class="card card-overflow"></div>
+      </div>
+      <div id="requests-uzivatele" class="requests-panel hidden" data-full-admin-only style="display:none">
+        <h2 class="section-title">Uživatelé a role</h2>
+        <p class="text-muted mb-2" style="font-size:0.875rem">Upravujte role: admin, zaměstnanec, účetní. Můžete uživateli poslat odkaz na reset hesla (když neví jak ho obnovit).</p>
+        <div id="users-list" class="card card-overflow"></div>
+      </div>
+      <div id="requests-zamestnanci" class="requests-panel">
+        <h2 class="section-title" data-full-admin-only style="display:none">Volno, záskoky, výměny směn</h2>
+        <p class="text-muted mb-3" data-full-admin-only style="display:none">Schvalujte nebo zamítejte žádosti zaměstnanců. U záskoků přiřaďte přihlášeného.</p>
+        <h3 class="section-subtitle" id="requests-available-title" data-employee-only style="display:none">Volné směny – můžete zaskočit</h3>
+        <p class="text-muted mb-2" id="requests-available-desc" data-employee-only style="display:none">Kolegové ve vaší pobočce nemohou na tyto směny. Přihlaste se a admin vás přiřadí.</p>
+        <div id="requests-available-covers" class="card card-overflow mb-4" data-employee-only style="display:none"></div>
+        <h3 class="section-subtitle" data-employee-only>Moje žádosti</h3>
+        <div id="requests-list" class="card card-overflow"></div>
+      </div>
+    </div>
+    <div id="view-kalendar" class="view active">
+      <header class="view-header view-header-compact">
+        <h1><span class="title-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>Kalendář</h1>
+        <div class="flex gap-2 flex-wrap align-center cal-header-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-copy-shifts" data-admin-only title="Zkopírujte směny z jednoho týdne do druhého – rychlé předvolby uvnitř">📋 Kopírovat rozpis</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-send-schedule-email" data-admin-only title="Odeslat zaměstnancům rozpis směn e-mailem">📧 Odeslat směny emailem</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-add-shift" data-admin-only>+ Přidat směnu</button>
+        </div>
+        <div class="cal-toolbar">
+          <select id="cal-branch" class="input input-sm" data-admin-only style="display:none;max-width:140px"></select>
+          <div class="cal-view-tabs">
+            <button type="button" class="btn btn-sm cal-tab" data-cal-view="month">Měsíc</button>
+            <button type="button" class="btn btn-sm cal-tab" data-cal-view="week">Týden</button>
+            <button type="button" class="btn btn-sm cal-tab" data-cal-view="day">Den</button>
+          </div>
+          <div class="cal-nav">
+            <button type="button" class="btn btn-sm btn-icon-only" id="cal-prev" aria-label="Předchozí">‹</button>
+            <span id="cal-range" class="cal-range"></span>
+            <button type="button" class="btn btn-sm btn-icon-only" id="cal-next" aria-label="Další">›</button>
+          </div>
+          <button type="button" class="btn btn-sm btn-secondary" id="cal-today">Dnes</button>
+        </div>
+      </header>
+      <div class="calendar-wrap">
+        <div id="cal-legend" class="cal-legend"></div>
+        <div id="cal-week-header" class="cal-week-header"></div>
+        <div id="calendar-grid" class="cal-grid"></div>
+        <div id="cal-employees" class="cal-employees" data-admin-only style="display:none">
+          <span class="cal-employees-label">Přidat směnu: klepni na jméno (dnes) nebo přetáhni na den</span>
+          <div id="cal-employees-list" class="cal-employees-list"></div>
+        </div>
+      </div>
+    </div>
+    <div id="view-ucetni" class="view" data-full-admin-only>
+      <header class="view-header">
+        <h1><span class="title-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>Přidat účetního</h1>
+      </header>
+      <p class="text-muted mb-4">Účetní může spravovat směny, schvalovat žádosti a exportovat data. Nemůže přidávat pobočky ani mazat zaměstnance.</p>
+      <h2 class="section-title">Nový účet účetního</h2>
+      <div class="card" style="max-width:420px">
+        <form id="form-invite-accountant">
+          <div class="form-group">
+            <label>E-mail</label>
+            <input type="email" id="accountant-email" class="input" required placeholder="ucetni@firma.cz">
+          </div>
+          <div class="form-group">
+            <label>Jméno</label>
+            <input type="text" id="accountant-name" class="input" placeholder="Marie Nováková">
+          </div>
+          <div class="form-group">
+            <label>Heslo</label>
+            <input type="password" id="accountant-password" class="input" required minlength="6" placeholder="Min. 6 znaků">
+          </div>
+          <button type="submit" class="btn btn-primary">Vytvořit účet účetního</button>
+        </form>
+      </div>
+      <h2 class="section-title mt-4">Účetní – správa přístupu</h2>
+      <p class="text-muted mb-2" style="font-size:0.875rem">Poslat účetnímu odkaz na reset hesla.</p>
+      <div id="accountant-list" class="mt-2"></div>
+    </div>
+    <div id="view-pobocky" class="view" data-admin-only>
+      <header class="view-header view-header-compact">
+        <h1><span class="title-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>Pobočky</h1>
+        <button type="button" class="btn btn-primary" id="btn-add-branch" data-full-admin-only>+ Přidat pobočku</button>
+      </header>
+      <div id="branches-list"></div>
+    </div>
+    <div id="view-zamestnanci" class="view" data-admin-only>
+      <header class="view-header">
+        <h1><span class="title-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Zaměstnanci</h1>
+        <p class="text-muted view-subtitle" style="margin:0;font-size:0.875rem">Seznam lidí v pobočkách – přiřazujete je ke směnám v kalendáři.</p>
+        <div class="view-header-row">
+          <select id="branch-filter" class="input input-sm" aria-label="Pobočka"></select>
+          <button type="button" class="btn btn-primary" id="btn-add-employee" data-full-admin-only>+ Přidat zaměstnance</button>
+        </div>
+      </header>
+      <div id="employees-list"></div>
+    </div>
+    <div id="view-presety" class="view" data-admin-only>
+      <header class="view-header">
+        <h1><span class="title-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>Presety směn</h1>
+        <div class="view-header-row">
+          <select id="preset-branch" class="input input-sm"></select>
+          <button type="button" class="btn btn-primary" id="btn-add-preset">+ Přidat preset</button>
+        </div>
+      </header>
+      <div id="presets-list"></div>
+    </div>
+    <div id="view-hodiny" class="view">
+      <header class="view-header">
+        <h1><span class="title-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span><span data-accountant-hide>Odpracované hodiny a orientační plat</span><span data-accountant-only>Přehled hodin – zaměstnanci a pobočky</span></h1>
+        <div class="view-header-row view-header-row-inline">
+          <select id="hours-branch" class="input input-sm" data-admin-only data-accountant-hide></select>
+          <input type="date" id="hours-from" class="input input-sm">
+          <span class="text-muted">–</span>
+          <input type="date" id="hours-to" class="input input-sm">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-load-hours">Obnovit</button>
+          <button type="button" id="btn-export-hours" class="btn btn-secondary btn-sm" style="display:none">Export CSV</button>
+        </div>
+      </header>
+      <p class="text-muted mb-4" style="font-size:0.875rem"><span data-accountant-hide>Nastavte výchozí hodinovou sazbu u pobočky nebo u konkrétního zaměstnance. Zaměstnanci uvidí orientační plat.</span><span data-accountant-only>Zaměstnanec + hodiny k dané pobočce. Možnost exportu do CSV.</span></p>
+      <div id="hours-table" class="card card-overflow"></div>
+    </div>
+    <div id="view-kdo-s-kym" class="view" data-admin-only>
+      <header class="view-header">
+        <h1><span class="title-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Kdo s kým má směnu</h1>
+        <div class="view-header-row view-header-row-inline">
+          <select id="who-branch" class="input input-sm"></select>
+          <input type="date" id="who-from" class="input input-sm">
+          <span class="text-muted">–</span>
+          <input type="date" id="who-to" class="input input-sm">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-load-who">Obnovit</button>
+        </div>
+      </header>
+      <p class="text-muted mb-4">Překrývání směn = kdo má v daný den směnu ve stejný čas s kým.</p>
+      <div id="who-content"></div>
+    </div>
+    <div id="view-exporty" class="view">
+      <header class="view-header">
+        <h1><span class="title-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>Export dat</h1>
+      </header>
+      <p class="text-muted mb-4" data-admin-only>Vyberte rozsah datumů a pobočku. CSV pro adminy.</p>
+      <p class="text-muted mb-4" data-employee-only>Exportujte si rozvrh a iCal pro aktuální měsíc.</p>
+      <div class="card" style="max-width:480px">
+        <div class="form-group" data-admin-only>
+          <label>Pobočka</label>
+          <select id="export-branch" class="input"></select>
+        </div>
+        <div class="form-row" data-admin-only>
+          <div class="form-group">
+            <label>Od</label>
+            <input type="date" id="export-from" class="input">
+          </div>
+          <div class="form-group">
+            <label>Do</label>
+            <input type="date" id="export-to" class="input">
+          </div>
+        </div>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <button type="button" id="btn-export-shifts" class="btn btn-primary" data-admin-only>Export směn (CSV)</button>
+          <button type="button" id="btn-export-hours-csv" class="btn btn-secondary" data-admin-only>Export hodin a platů (CSV)</button>
+          <button type="button" id="btn-export-pdf" class="btn btn-primary">Rozvrh (PDF)</button>
+          <button type="button" id="btn-export-ical" class="btn btn-secondary">iCal (Google, Apple)</button>
+        </div>
+        <div id="ical-subscribe-box" class="mt-4" style="display:none">
+          <h3 class="section-title" style="font-size:1rem">Odběr kalendáře pro Apple / iOS</h3>
+          <p class="text-muted" style="font-size:0.875rem">Na iPhone/iPad: Nastavení → Kalendáře → Přidat účet → Další → Přidejte odběr kalendáře → zadejte URL:</p>
+          <div class="flex gap-2 align-center" style="flex-wrap:wrap;margin-top:0.5rem">
+            <input type="text" id="ical-subscribe-url" class="input" readonly style="flex:1;min-width:200px;font-size:0.8rem">
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-copy-ical">Kopírovat</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<!-- Modals -->
+<div id="modal-shift" class="modal hidden">
+  <div class="modal-content modal-shift-content">
+    <h2 id="modal-shift-title">Přidat směnu</h2>
+    <form id="form-shift" class="form-shift">
+      <input type="hidden" id="shift-id">
+      <input type="hidden" id="shift-employee-id">
+      <div class="form-group">
+        <label>Datum</label>
+        <input type="date" id="shift-date" class="input" required>
+      </div>
+      <div class="form-group">
+        <label>Pobočka</label>
+        <select id="shift-branch" class="input"></select>
+      </div>
+      <div class="form-group">
+        <label>Zaměstnanec</label>
+        <select id="shift-employee" class="input"></select>
+      </div>
+      <div class="shift-time-desktop form-row">
+        <div class="form-group">
+          <label>Od (24 h)</label>
+          <span class="time-picker"><select id="shift-start-h" class="input time-h"></select><span class="time-sep">:</span><select id="shift-start-m" class="input time-m"></select></span>
+        </div>
+        <div class="form-group">
+          <label>Do (24 h)</label>
+          <span class="time-picker"><select id="shift-end-h" class="input time-h"></select><span class="time-sep">:</span><select id="shift-end-m" class="input time-m"></select></span>
+        </div>
+      </div>
+      <div class="shift-time-mobile">
+        <div class="form-group">
+          <label>Od</label>
+          <input type="time" id="shift-start-time" class="input input-time-mobile" value="08:00">
+        </div>
+        <div class="form-group">
+          <label>Do</label>
+          <input type="time" id="shift-end-time" class="input input-time-mobile" value="14:00">
+        </div>
+      </div>
+      <div class="form-actions form-actions-shift">
+        <button type="submit" class="btn btn-primary">Uložit</button>
+        <button type="button" class="btn btn-secondary" data-close>Zrušit</button>
+        <button type="button" class="btn btn-danger" id="btn-delete-shift" data-admin-only title="Smazat směnu" style="margin-left:auto;display:none">🗑 Smazat</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div id="modal-branch" class="modal hidden">
+  <div class="modal-content">
+    <h2 id="modal-branch-title">Nová pobočka</h2>
+    <form id="form-branch">
+      <input type="hidden" id="branch-id">
+      <div class="form-group">
+        <label>Název</label>
+        <input type="text" id="branch-name" class="input" required>
+      </div>
+      <div class="form-group">
+        <label>Adresa (nepovinné)</label>
+        <input type="text" id="branch-address" class="input">
+      </div>
+      <div class="form-group">
+        <label>Výchozí hodinová sazba (Kč) – pro orientační plat</label>
+        <input type="number" id="branch-hourly-rate" class="input" min="0" step="0.01" placeholder="např. 180">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Otevírací doba (Po–Pá)</label>
+          <span class="time-picker"><select id="branch-open-h" class="input time-h"></select><span class="time-sep">:</span><select id="branch-open-m" class="input time-m"></select></span>
+        </div>
+        <div class="form-group">
+          <label>Zavírací doba (Po–Pá)</label>
+          <span class="time-picker"><select id="branch-close-h" class="input time-h"></select><span class="time-sep">:</span><select id="branch-close-m" class="input time-m"></select></span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label><input type="checkbox" id="branch-use-weekend"> Jiná otevírací doba o víkendu (So–Ne)</label>
+      </div>
+      <div id="branch-weekend-row" class="form-row" style="display:none">
+        <div class="form-group">
+          <label>Otevření o víkendu</label>
+          <span class="time-picker"><select id="branch-open-weekend-h" class="input time-h"></select><span class="time-sep">:</span><select id="branch-open-weekend-m" class="input time-m"></select></span>
+        </div>
+        <div class="form-group">
+          <label>Zavření o víkendu</label>
+          <span class="time-picker"><select id="branch-close-weekend-h" class="input time-h"></select><span class="time-sep">:</span><select id="branch-close-weekend-m" class="input time-m"></select></span>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Uložit</button>
+        <button type="button" class="btn btn-secondary" data-close>Zrušit</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div id="modal-employee" class="modal hidden">
+  <div class="modal-content">
+    <h2 id="modal-employee-title">Nový zaměstnanec</h2>
+    <form id="form-employee">
+      <input type="hidden" id="employee-id">
+      <div class="form-group">
+        <label>Jméno</label>
+        <input type="text" id="employee-name" class="input" required>
+      </div>
+      <div class="form-group">
+        <label>E-mail</label>
+        <input type="email" id="employee-email" class="input">
+      </div>
+      <div class="form-group">
+        <label>Pobočka</label>
+        <select id="employee-branch" class="input"></select>
+      </div>
+      <div class="form-group">
+        <label>Hodinová sazba (Kč) – přepíše výchozí z pobočky</label>
+        <input type="number" id="employee-hourly-rate" class="input" min="0" step="0.01" placeholder="prázdné = z pobočky">
+      </div>
+      <div class="form-group">
+        <label>Barva – pro zobrazení v kalendáři</label>
+        <div class="flex gap-2 align-center" style="flex-wrap:wrap">
+          <input type="color" id="employee-color" class="input" style="width:3rem;height:2rem;padding:2px;cursor:pointer" value="#2563eb" title="Barva">
+          <input type="text" id="employee-color-text" class="input" style="width:7rem;font-family:monospace" placeholder="#2563eb" title="Hex kód barvy (volitelné)">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Uložit</button>
+        <button type="button" class="btn btn-secondary" data-close>Zrušit</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div id="modal-preset" class="modal hidden">
+  <div class="modal-content">
+    <h2 id="modal-preset-title">Nový preset</h2>
+    <form id="form-preset">
+      <input type="hidden" id="preset-id">
+      <div class="form-group">
+        <label>Pobočka</label>
+        <select id="preset-form-branch" class="input"></select>
+      </div>
+      <div class="form-group">
+        <label>Název</label>
+        <input type="text" id="preset-name" class="input" required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Od (24 h)</label>
+          <span class="time-picker"><select id="preset-start-h" class="input time-h"></select><span class="time-sep">:</span><select id="preset-start-m" class="input time-m"></select></span>
+        </div>
+        <div class="form-group">
+          <label>Do (24 h)</label>
+          <span class="time-picker"><select id="preset-end-h" class="input time-h"></select><span class="time-sep">:</span><select id="preset-end-m" class="input time-m"></select></span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label><input type="checkbox" id="preset-pinned"> Připnutý (Quick Presets)</label>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Uložit</button>
+        <button type="button" class="btn btn-secondary" data-close>Zrušit</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div id="modal-request" class="modal hidden">
+  <div class="modal-content">
+    <h2>Nová žádost</h2>
+    <form id="form-request">
+      <div class="form-group">
+        <label>Typ žádosti</label>
+        <select id="request-type" class="input">
+          <option value="leave">Žádost o volno</option>
+          <option value="swap">Výměna směny</option>
+          <option value="cover">Nemůžu – hledám záskok</option>
+          <option value="late">Omluva za zpoždění</option>
+        </select>
+      </div>
+      <div id="request-leave-fields">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Od</label>
+            <input type="date" id="request-date-from" class="input">
+          </div>
+          <div class="form-group">
+            <label>Do</label>
+            <input type="date" id="request-date-to" class="input">
+          </div>
+        </div>
+      </div>
+      <div id="request-swap-fields" style="display:none">
+        <div class="form-group">
+          <label>Moje směna (kterou chci vyměnit)</label>
+          <select id="request-swap-my-shift" class="input"><option value="">— vyberte —</option></select>
+        </div>
+        <div class="form-group">
+          <label>Směna kolegy (s kterou chci vyměnit)</label>
+          <select id="request-swap-other-shift" class="input"><option value="">— vyberte —</option></select>
+        </div>
+      </div>
+      <div id="request-cover-fields" style="display:none">
+        <div class="form-group">
+          <label>Směna, na kterou nemůžu</label>
+          <select id="request-cover-shift" class="input"><option value="">— vyberte —</option></select>
+        </div>
+      </div>
+      <div id="request-late-fields" style="display:none">
+        <div class="form-group">
+          <label>Datum směny</label>
+          <input type="date" id="request-shift-date" class="input">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Plánovaný čas (24 h)</label>
+            <span class="time-picker"><select id="request-planned-h" class="input time-h"></select><span class="time-sep">:</span><select id="request-planned-m" class="input time-m"></select></span>
+          </div>
+          <div class="form-group">
+            <label>Skutečný příchod (24 h)</label>
+            <span class="time-picker"><select id="request-actual-h" class="input time-h"></select><span class="time-sep">:</span><select id="request-actual-m" class="input time-m"></select></span>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Poznámka (nepovinné)</label>
+        <input type="text" id="request-note" class="input" placeholder="Důvod, doplnění...">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Odeslat</button>
+        <button type="button" class="btn btn-secondary" data-close>Zrušit</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div id="modal-user-edit" class="modal hidden">
+  <div class="modal-content">
+    <h2>Upravit uživatele</h2>
+    <form id="form-user-edit">
+      <input type="hidden" id="user-edit-id">
+      <div class="form-group">
+        <label>E-mail</label>
+        <input type="email" id="user-edit-email" class="input" required>
+      </div>
+      <div class="form-group">
+        <label>Jméno</label>
+        <input type="text" id="user-edit-name" class="input" placeholder="Volitelné">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Uložit</button>
+        <button type="button" class="btn btn-secondary" data-close>Zrušit</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div id="modal-quick-late" class="modal hidden">
+  <div class="modal-content">
+    <h2>Oznámit zpoždění</h2>
+    <div class="quick-late-type mb-4">
+      <button type="button" class="btn btn-sm" data-late-mode="arrived">Přišel jsem pozdě</button>
+      <button type="button" class="btn btn-sm" data-late-mode="willbe">Budu pozdě</button>
+    </div>
+    <form id="form-quick-late">
+      <input type="hidden" id="quick-late-mode" value="arrived">
+      <div class="form-group">
+        <label>Směna</label>
+        <select id="quick-late-shift" class="input"><option value="">— načítám —</option></select>
+      </div>
+      <div id="quick-late-arrived-fields">
+        <div class="form-group">
+          <label>Plánovaný začátek</label>
+          <div id="quick-late-planned-display" class="text-muted">—</div>
+        </div>
+        <div class="form-group">
+          <label>Skutečný příchod (24 h)</label>
+          <span class="time-picker"><select id="quick-late-actual-h" class="input time-h"></select><span class="time-sep">:</span><select id="quick-late-actual-m" class="input time-m"></select></span>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-late-now" style="margin-top:0.35rem">Teď</button>
+        </div>
+        <div id="quick-late-result" class="form-group" style="display:none">
+          <div class="late-result-box">Jste <strong id="quick-late-mins">0</strong> minut pozdě.</div>
+        </div>
+      </div>
+      <div id="quick-late-willbe-fields" style="display:none">
+        <p class="text-muted" style="font-size:0.875rem">Oznámíte, že budete pozdě. Admin bude informován.</p>
+      </div>
+      <div class="form-group">
+        <label>Poznámka (nepovinné)</label>
+        <input type="text" id="quick-late-note" class="input" placeholder="Důvod zpoždění...">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Odeslat</button>
+        <button type="button" class="btn btn-secondary" data-close>Zrušit</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div id="modal-copy-shifts" class="modal hidden">
+  <div class="modal-content modal-copy-shifts-content copy-modal">
+    <h2 class="copy-modal-title">📋 Kopírovat rozpis</h2>
+    <p class="copy-modal-desc">Zkopírujte směny z jednoho období do druhého. Zvolte předvolbu nebo vyplňte datumy (stejný počet dní).</p>
+    <div class="copy-presets">
+      <span class="copy-presets-label">Rychlé předvolby</span>
+      <div class="copy-presets-btns">
+        <button type="button" class="btn btn-secondary btn-sm copy-preset-btn" id="copy-preset-this-to-next" title="Tento týden (Po–Ne) → příští týden">Tento → příští týden</button>
+        <button type="button" class="btn btn-secondary btn-sm copy-preset-btn" id="copy-preset-last-to-this" title="Minulý týden → tento týden">Minulý → tento týden</button>
+        <button type="button" class="btn btn-secondary btn-sm copy-preset-btn" id="copy-preset-next-week" title="Příští týden → týden po něm">Příští → za 2 týdny</button>
+        <button type="button" class="btn btn-secondary btn-sm copy-preset-btn copy-preset-month" id="copy-preset-month" title="První den měsíce → první den příštího měsíce (celý měsíc)">Celý měsíc → příští</button>
+      </div>
+    </div>
+    <form id="form-copy-shifts" class="copy-form">
+      <div class="form-group">
+        <label>Pobočka</label>
+        <select id="copy-branch" class="input" required></select>
+      </div>
+      <div class="copy-range-cards">
+        <div class="copy-card copy-card-source">
+          <div class="copy-card-label">Zdroj</div>
+          <div class="copy-card-dates">
+            <input type="date" id="copy-source-from" class="input" required aria-label="Zdroj od">
+            <span class="copy-card-sep">–</span>
+            <input type="date" id="copy-source-to" class="input" required aria-label="Zdroj do">
+          </div>
+          <div id="copy-source-summary" class="copy-card-summary" aria-live="polite"></div>
+        </div>
+        <div class="copy-card-arrow" aria-hidden="true">→</div>
+        <div class="copy-card copy-card-target">
+          <div class="copy-card-label">Cíl</div>
+          <div class="copy-card-dates">
+            <input type="date" id="copy-target-from" class="input" required aria-label="Cíl od">
+            <span class="copy-card-sep">–</span>
+            <input type="date" id="copy-target-to" class="input" required aria-label="Cíl do">
+          </div>
+          <div id="copy-target-summary" class="copy-card-summary" aria-live="polite"></div>
+        </div>
+      </div>
+      <div class="copy-options">
+        <label class="copy-option"><input type="checkbox" id="copy-preserve-assignment" checked> Zachovat přiřazení zaměstnanců</label>
+        <div id="copy-default-emp-row" class="form-group copy-default-emp-row" style="display:none">
+          <label>Výchozí zaměstnanec (pro všechny směny)</label>
+          <select id="copy-default-employee" class="input"><option value="">— vyberte —</option></select>
+        </div>
+        <label class="copy-option copy-option-skip"><input type="checkbox" id="copy-skip-conflicts"> Při konfliktu přeskočit směnu (vytvořit zbytek)</label>
+      </div>
+      <div id="copy-preview" class="copy-preview-box" style="display:none" role="status"></div>
+      <div id="copy-conflicts" class="copy-conflicts-box" style="display:none"></div>
+      <div class="form-actions copy-actions">
+        <button type="button" class="btn btn-secondary" id="btn-copy-preview">Náhled</button>
+        <button type="submit" class="btn btn-primary" id="btn-copy-submit">Kopírovat</button>
+        <button type="button" class="btn btn-secondary" data-close>Zrušit</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div id="modal-send-schedule" class="modal hidden">
+  <div class="modal-content">
+    <h2>Odeslat rozpis směn e-mailem</h2>
+    <p class="text-muted mb-3" style="font-size:0.875rem">Každý zaměstnanec s e-mailem dostane svůj rozpis. V mailu bude upozornění, že jde o plán a směny se mohou změnit.</p>
+    <form id="form-send-schedule">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Od</label>
+          <input type="date" id="schedule-email-from" class="input" required>
+        </div>
+        <div class="form-group">
+          <label>Do</label>
+          <input type="date" id="schedule-email-to" class="input" required>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Odeslat e-maily</button>
+        <button type="button" class="btn btn-secondary" data-close>Zrušit</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}

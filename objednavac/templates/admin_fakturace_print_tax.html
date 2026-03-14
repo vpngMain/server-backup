@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Faktura – daňový doklad č. {{ invoice.invoice_number or invoice.id }}{% endblock %}
+{% block content %}
+<style>
+    .fakturace-print { max-width: 210mm; margin: 0 auto; padding: 12mm; font-family: Arial, sans-serif; color: var(--text); background: var(--bg); }
+    .fakturace-print table { width: 100%; border-collapse: collapse; margin: 0; background: var(--bg-card); border: 1px solid var(--border); }
+    .fakturace-print th, .fakturace-print td { border: 1px solid var(--table-border); padding: 5px 8px; text-align: left; vertical-align: top; color: var(--text); }
+    .fakturace-print th { background: var(--table-head); font-weight: bold; }
+    .fakturace-print .parties-table { border: none; background: transparent; }
+    .fakturace-print .parties-table td { border: none; }
+    .fakturace-print .party-box { border: 1px solid var(--border); background: var(--bg-card); color: var(--text); }
+    .fakturace-print .payment-wrap { display: flex; align-items: flex-start; gap: 1rem; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); padding: 6px; }
+    .fakturace-print .payment { flex: 1; }
+    .fakturace-print .payment .qr-block { flex-shrink: 0; margin: 0; }
+    .fakturace-print .text-right { text-align: right; }
+    .fakturace-print .header-row { border-bottom: 2px solid var(--border); padding-bottom: 4px; margin-bottom: 6px; }
+    .fakturace-print .print-title-number { display: flex; justify-content: space-between; align-items: baseline; }
+    .fakturace-print .parties-table { width: 100%; margin: 6px 0; }
+    .fakturace-print .parties-table td { width: 50%; vertical-align: top; padding: 0 12px 0 0; }
+    .fakturace-print .parties-table td:last-child { padding: 0 0 0 12px; }
+    .fakturace-print .party-label { font-weight: bold; margin-bottom: 2px; }
+    .fakturace-print .meta { margin: 4px 0; }
+    .fakturace-print .meta p { margin: 1px 0; }
+    .fakturace-print .totals { margin-top: 4px; text-align: right; }
+    .fakturace-print .qr-block { margin-top: 10px; }
+</style>
+<style media="print">
+    body { font-size: 10pt; background: #fff; color: #000; }
+    .no-print { display: none !important; }
+    .fakturace-print { max-width: 210mm; margin: 0 auto; padding: 12mm; font-family: Arial, sans-serif; color: #000; background: #fff; }
+    .fakturace-print * { box-sizing: border-box; }
+    .fakturace-print table { width: 100%; border-collapse: collapse; margin: 0; background: #fff; border: 1px solid #333; }
+    .fakturace-print th, .fakturace-print td { border: 1px solid #333; padding: 5px 8px; text-align: left; vertical-align: top; color: #000; }
+    .fakturace-print th { background: #f5f5f5; font-weight: bold; }
+    .fakturace-print .text-right { text-align: right; }
+    .fakturace-print .header-row { border-bottom: 2px solid #333; padding-bottom: 4px; margin-bottom: 6px; }
+    .fakturace-print .print-title-number { display: flex; justify-content: space-between; align-items: baseline; }
+    .fakturace-print .parties-table { width: 100%; margin: 6px 0; border-collapse: collapse; background: transparent; border: none; }
+    .fakturace-print .parties-table td { width: 50%; vertical-align: top; padding: 0 12px 0 0; border: none; }
+    .fakturace-print .parties-table td:last-child { padding: 0 0 0 12px; }
+    .fakturace-print .party-label { font-weight: bold; margin-bottom: 2px; font-size: 10pt; }
+    .fakturace-print .party-box { border: 1px solid #333; padding: 6px; min-height: 60px; white-space: pre-wrap; font-size: 10pt; background: #fff; color: #000; }
+    .fakturace-print .meta { margin: 4px 0; }
+    .fakturace-print .meta p { margin: 1px 0; }
+    .fakturace-print .totals { margin-top: 4px; text-align: right; }
+    .fakturace-print .payment-wrap { display: flex; align-items: flex-start; gap: 12px; margin-top: 6px; padding: 6px; border: 1px solid #333; background: #fff; color: #000; }
+    .fakturace-print .payment { flex: 1; }
+    .fakturace-print .payment .qr-block { flex-shrink: 0; margin: 0; }
+</style>
+<div class="no-print" style="margin-bottom: 1rem;">
+    <a href="{{ url_for('admin_fakturace_edit', invoice_id=invoice.id) }}" class="btn btn-back">← Zpět na úpravy</a>
+    <button type="button" class="btn btn-primary" onclick="window.print();">Tisknout</button>
+</div>
+<div class="fakturace-print">
+    <div class="header-row">
+        <h1 class="print-title-number" style="margin: 0 0 4px 0; font-size: 16pt; display: flex; justify-content: space-between; align-items: baseline; gap: 1rem;">
+            <span>Faktura – DAŇOVÝ DOKLAD č.</span>
+            <span>{{ invoice.invoice_number or invoice.id }}</span>
+        </h1>
+        <div class="meta">
+            <p><strong>Datum vystavení:</strong> {{ invoice.issue_date.strftime('%d.%m.%Y') if invoice.issue_date else '—' }}</p>
+            <p><strong>Datum uskutečnění zdanitelného plnění:</strong> {{ invoice.tax_supply_date.strftime('%d.%m.%Y') if invoice.tax_supply_date else '—' }}</p>
+            <p><strong>Datum splatnosti:</strong> {{ invoice.due_date.strftime('%d.%m.%Y') if invoice.due_date else '—' }}</p>
+        </div>
+    </div>
+
+    <table class="parties-table" role="presentation">
+        <tr>
+            <td>
+                <div class="party-label">Dodavatel</div>
+                <div class="party-box" style="white-space: pre-wrap;">{{ (invoice.supplier_raw or '—') | normlines }}</div>
+            </td>
+            <td>
+                <div class="party-label">Odběratel / Příjemce</div>
+                <div class="party-box" style="white-space: pre-wrap;">{{ (invoice.recipient_raw or '—') | normlines }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <h2 style="font-size: 12pt; margin: 8px 0 4px 0;">Platební údaje</h2>
+    <div class="payment-wrap">
+        <div class="payment">
+            <p style="margin: 2px 0;">Banka: {{ invoice.payment_bank or '—' }}</p>
+            <p style="margin: 2px 0;">Číslo účtu: {{ invoice.payment_account or '—' }}</p>
+            <p style="margin: 2px 0;">IBAN: {{ invoice.payment_iban or '—' }}</p>
+            <p style="margin: 2px 0;">SWIFT: {{ invoice.payment_swift or '—' }}</p>
+            <p style="margin: 2px 0;">Variabilní symbol: {{ invoice.invoice_number or invoice.id }}</p>
+            {% if invoice.payment_message %}<p style="margin: 2px 0;">Zpráva: {{ invoice.payment_message }}</p>{% endif %}
+        </div>
+        <div class="qr-block">
+            <img src="{{ url_for('admin_fakturace_qr', invoice_id=invoice.id) }}?t={{ invoice.updated_at.timestamp() if invoice.updated_at else '' }}" alt="QR platba" style="max-width: 120px; height: auto;">
+        </div>
+    </div>
+
+    <h2 style="font-size: 12pt; margin: 8px 0 4px 0;">Položky</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Kód</th>
+                <th>Název zboží</th>
+                <th>Barva / velikost</th>
+                <th class="text-right">Množství</th>
+                <th class="text-right">DPH</th>
+                <th class="text-right">Cena</th>
+                <th class="text-right">Cena celkem</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in items %}
+            <tr>
+                <td>{{ row.get('code') or '—' }}</td>
+                <td>{{ row.name or '—' }}</td>
+                <td>{{ row.get('color_size') or '—' }}</td>
+                <td class="text-right">{{ row.qty or '—' }}</td>
+                <td class="text-right">{{ row.get('dph') or '—' }}</td>
+                <td class="text-right">{{ row.get('price_no_vat') if row.get('price_no_vat') is not none and row.get('price_no_vat') != '' else '—' }}</td>
+                <td class="text-right">{% if row.get('line_total') is not none and row.get('line_total') != '' %}{% if row.line_total is number %}{{ "%.2f"|format(row.line_total) }}{% else %}{{ row.line_total }}{% endif %}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="totals">
+        <p><strong>Celkem bez DPH:</strong> {{ total_no_vat }} Kč</p>
+    </div>
+</div>
+{% endblock %}

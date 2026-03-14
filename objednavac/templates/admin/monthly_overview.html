@@ -20,9 +20,14 @@
     <button type="submit" class="btn">Zobrazit</button>
 </form>
 {% if rows %}
-<table class="table">
+<style>
+.monthly-overview-order-row.monthly-overview-orders-hidden { display: none; }
+.monthly-overview-toggle { background: none; border: none; cursor: pointer; padding: 0.25rem 0.5rem; font-size: 0.9rem; }
+</style>
+<table class="table monthly-overview-table">
     <thead>
         <tr>
+            <th style="width: 2.5rem;"></th>
             <th>Sklad</th>
             <th>Pobočka</th>
             <th>Celkové nákupní náklady (nc)</th>
@@ -31,15 +36,51 @@
     </thead>
     <tbody>
         {% for r in rows %}
-        <tr>
+        <tr class="monthly-overview-group-header">
+            <td>
+                {% if r.order_summaries %}
+                <button type="button" class="monthly-overview-toggle" aria-label="Rozbalit přehled objednávek" title="Rozbalit / sbalit objednávky">▼</button>
+                {% endif %}
+            </td>
             <td>{{ r.warehouse_name }}</td>
             <td>{{ r.branch_name }}</td>
             <td>{{ "%.2f"|format(r.total_nc) }}</td>
             <td>{{ "%.2f"|format(r.total_pc) }}</td>
         </tr>
+        {% for s in r.order_summaries %}
+        <tr class="monthly-overview-order-row monthly-overview-orders-hidden">
+            <td></td>
+            <td><a href="{{ url_for('admin_order_detail', order_id=s.order.id) }}">Objednávka #{{ s.order.id }}</a></td>
+            <td></td>
+            <td>{{ "%.2f"|format(s.order_nc) }}</td>
+            <td>{{ "%.2f"|format(s.order_pc) }}</td>
+        </tr>
+        {% endfor %}
         {% endfor %}
     </tbody>
 </table>
+<script>
+(function() {
+    document.querySelectorAll('.monthly-overview-table .monthly-overview-toggle').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var headerRow = this.closest('tr');
+            var next = headerRow.nextElementSibling;
+            var orderRows = [];
+            while (next && !next.classList.contains('monthly-overview-group-header')) {
+                if (next.classList.contains('monthly-overview-order-row')) orderRows.push(next);
+                next = next.nextElementSibling;
+            }
+            var isHidden = orderRows.length && orderRows[0].classList.contains('monthly-overview-orders-hidden');
+            orderRows.forEach(function(row) {
+                if (isHidden) row.classList.remove('monthly-overview-orders-hidden');
+                else row.classList.add('monthly-overview-orders-hidden');
+            });
+            this.textContent = isHidden ? '▲' : '▼';
+            this.setAttribute('aria-label', isHidden ? 'Sbalit přehled objednávek' : 'Rozbalit přehled objednávek');
+        });
+    });
+})();
+</script>
 {% else %}
 <p>Pro zvolený měsíc nejsou žádné odeslané položky s nákupní cenou.</p>
 {% endif %}
@@ -61,7 +102,28 @@
         <tbody>
             {% for r in group.receipts %}
             <tr>
-                <td><a href="{{ url_for('admin_goods_receipt_detail', receipt_id=r.id) }}">{{ r.label }}</a></td>
+                <td>
+                    <details class="monthly-overview-details">
+                        <summary><a href="{{ url_for('admin_goods_receipt_detail', receipt_id=r.id) }}">{{ r.label }}</a> {{ r.received_at.strftime('%d.%m.%Y') if r.received_at else '' }}</summary>
+                        {% if r.items %}
+                        <table class="table table-sm monthly-overview-items">
+                            <thead>
+                                <tr><th>Produkt</th><th>Množství</th><th>Nákupní cena (nc)</th><th>Řádek nc</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for it in r.items %}
+                                <tr>
+                                    <td>{{ it.name }}</td>
+                                    <td>{{ "%.2f"|format(it.quantity or 0) }}</td>
+                                    <td>{{ "%.2f"|format(it.nc or 0) }}</td>
+                                    <td>{{ "%.2f"|format(it.line_nc or 0) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% endif %}
+                    </details>
+                </td>
                 <td>{{ "%.2f"|format(r.total_nc) }}</td>
                 <td>{{ "%.2f"|format(r.total_pc) }}</td>
             </tr>

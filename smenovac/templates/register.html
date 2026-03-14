@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Registrace{% endblock %}
+{% block body %}
+<div class="auth-page">
+  <a href="/" class="auth-back">← Zpět na úvod</a>
+  <div class="auth-box">
+    <h1>Registrace</h1>
+    <p class="text-muted" style="font-size:0.875rem;margin-bottom:1rem">Zadejte e-mail. Po schválení administrátorem vám přijde odkaz pro vytvoření hesla.</p>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    {% if success %}<p class="success">{{ success }}</p>{% endif %}
+    <form method="post" class="auth-form">
+      <label>E-mail</label>
+      <input type="email" name="email" required placeholder="vas@email.cz">
+      <label>Jméno (nepovinné)</label>
+      <input type="text" name="name" placeholder="Vaše jméno">
+      <button type="submit" class="btn btn-primary btn-block">Odeslat žádost</button>
+    </form>
+    <p class="auth-foot"><a href="{{ url_for('login') }}">Už máte účet? Přihlaste se</a></p>
+  </div>
+</div>
+{% endblock %}

@@ -16,6 +16,15 @@
     <span>Datum: {{ order.created_at | format_datetime }}</span>
     <span><strong>Sklad odeslání:</strong> {{ order.warehouse.name if order.warehouse else '—' }}{% if order.warehouse and order.warehouse.code %} ({{ order.warehouse.code }}){% endif %}</span>
 </p>
+<form method="post" action="{{ url_for('admin_order_set_branch', order_id=order.id) }}" class="inline-form order-set-warehouse-form">
+    <label for="branch_id">Změnit pobočku (odběratel)</label>
+    <select name="branch_id" id="branch_id">
+        {% for b in branches %}
+        <option value="{{ b.id }}" {{ 'selected' if order.branch_id == b.id else '' }}>{{ b.name }}{% if b.code %} ({{ b.code }}){% endif %}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm">Uložit</button>
+</form>
 <form method="post" action="{{ url_for('admin_order_set_warehouse', order_id=order.id) }}" class="inline-form order-set-warehouse-form">
     <label for="warehouse_id">Změnit sklad odeslání</label>
     <select name="warehouse_id" id="warehouse_id">
@@ -80,35 +89,40 @@
     {% endif %}
 </div>
 {% endif %}
+<p class="hint">Přehled jen odeslaných položek. Pro podrobný rozpis (objednáno, poznámky, kód zboží, úpravy) otevřete <a href="{{ url_for('warehouse_order_detail', order_id=order.id) }}">Přejít na sklad (detail)</a>.</p>
 <table class="table">
     <thead>
         <tr>
             <th>Produkt</th>
-            {% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}<th>Kód zboží</th>{% endif %}
             <th>ks</th>
-            <th>Objednáno</th>
             <th>Odesláno</th>
+            <th>Nákupní cena</th>
             <th>Prodejní cena (pc)</th>
-            <th>Poznámka</th>
         </tr>
     </thead>
     <tbody>
+        {% set ns = namespace(total_nc=0, total_pc=0) %}
         {% for i in order.items %}
-        <tr class="{% if i.unavailable %}item-unavailable item-unavailable-branch{% elif (i.shipped_quantity or 0) >= (i.ordered_quantity or 0) and i.ordered_quantity %}item-shipped{% elif (i.shipped_quantity or 0) > 0 and (i.shipped_quantity or 0) < (i.ordered_quantity or 0) %}item-partial{% endif %}">
-            <td>{{ i.display_name() }}{% if i.branch_note %} <span class="branch-note">({{ i.branch_note }})</span>{% endif %}</td>
-            {% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}<td>{{ i.product.kod_zbozi if i.product else '—' }}</td>{% endif %}
+        {% if (i.shipped_quantity or 0) > 0 %}
+        {% set line_nc = (i.product.nc or 0) * (i.shipped_quantity or 0) %}
+        {% set line_pc = (i.product.pc or 0) * (i.shipped_quantity or 0) %}
+        {% set ns.total_nc = ns.total_nc + line_nc %}
+        {% set ns.total_pc = ns.total_pc + line_pc %}
+        <tr>
+            <td>{{ i.display_name() }}</td>
             <td>{{ i.product.mj if i.product and i.product.mj else 'ks' }}</td>
-            <td>{{ i.ordered_quantity | format_qty }}</td>
-            <td>{% if i.shipped_quantity is not none %}{{ i.shipped_quantity | format_qty }}{% else %}—{% endif %}</td>
-            <td>{{ "%.2f"|format((i.product.pc or 0) * (i.shipped_quantity or 0)) if i.product and i.product.pc is not none else '—' }}</td>
-            <td>{% if i.warehouse_note %}<span class="warehouse-note-text">{{ i.warehouse_note }}</span>{% elif i.unavailable %}<span class="badge badge-unavailable badge-sklad-nema">Sklad nemá</span>{% else %}—{% endif %}</td>
+            <td>{{ i.shipped_quantity | format_qty }}</td>
+            <td>{{ "%.2f"|format(line_nc) if i.product and i.product.nc is not none else '—' }}</td>
+            <td>{{ "%.2f"|format(line_pc) if i.product and i.product.pc is not none else '—' }}</td>
         </tr>
+        {% endif %}
         {% endfor %}
     </tbody>
     <tfoot>
         <tr>
-            <td colspan="{% if current_user.role == 'warehouse' or (current_user.role == 'admin' and acting_as_role == 'warehouse') %}6{% else %}5{% endif %}" class="text-right"><strong>Celková prodejní cena objednávky:</strong></td>
-            <td><strong>{{ "%.2f"|format(order_total_selling) }}</strong></td>
+            <td colspan="3" class="text-right"><strong>Celkem (odeslané):</strong></td>
+            <td><strong>{{ "%.2f"|format(ns.total_nc) }}</strong></td>
+            <td><strong>{{ "%.2f"|format(ns.total_pc) }}</strong></td>
         </tr>
     </tfoot>
 </table>

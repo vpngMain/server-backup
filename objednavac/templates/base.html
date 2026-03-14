@@ -10,6 +10,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style media="print">
+        .admin-topbar, .admin-sidebar, .admin-sidebar-overlay { display: none !important; }
+        header.header { display: none !important; }
+    </style>
     <script>
     (function(){var k='darkMode';var v=localStorage.getItem(k);if(v==='1')document.documentElement.classList.add('dark-mode');})();
     </script>
@@ -63,6 +67,10 @@
             <a href="{{ url_for('admin_goods_receipts') }}" class="admin-nav-item {% if request.endpoint == 'admin_goods_receipts' or request.endpoint == 'admin_goods_receipt_detail' %}active{% endif %}">
                 <span class="admin-nav-icon" aria-hidden="true">📥</span>
                 <span>Příjmy zboží</span>
+            </a>
+            <a href="{{ url_for('admin_fakturace') }}" class="admin-nav-item {% if request.endpoint and request.endpoint.startswith('admin_fakturace') %}active{% endif %}">
+                <span class="admin-nav-icon" aria-hidden="true">🧾</span>
+                <span>Fakturace</span>
             </a>
             <a href="{{ url_for('admin_act_as') }}" class="admin-nav-item {% if request.endpoint == 'admin_act_as' %}active{% endif %}">
                 <span class="admin-nav-icon" aria-hidden="true">👤</span>
